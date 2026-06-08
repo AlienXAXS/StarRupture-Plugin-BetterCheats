@@ -1,5 +1,6 @@
 #include "panel_player.h"
 #include "player_attributes.h"
+#include "player_items.h"
 #include "player_skills.h"
 
 namespace BetterCheats::Panels
@@ -7,6 +8,11 @@ namespace BetterCheats::Panels
 	void RenderPlayer_Self(IModLoaderImGui* imgui)
 	{
 		Attributes::RenderImGui(imgui);
+	}
+
+	void RenderPlayer_ItemSpawner(IModLoaderImGui* imgui)
+	{
+		Items::RenderImGui(imgui);
 	}
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)

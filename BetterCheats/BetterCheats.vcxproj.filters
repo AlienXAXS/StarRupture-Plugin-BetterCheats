@@ -94,6 +94,9 @@
     <ClInclude Include="player_attributes.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
+    <ClInclude Include="player_items.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
     <ClInclude Include="player_skills.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
@@ -153,6 +156,9 @@
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_attributes.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="player_items.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_skills.cpp">

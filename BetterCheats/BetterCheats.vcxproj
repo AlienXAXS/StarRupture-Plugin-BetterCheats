@@ -105,6 +105,7 @@
     <ClCompile Include="panel_player.cpp" />
     <ClCompile Include="panel_world.cpp" />
     <ClCompile Include="player_attributes.cpp" />
+    <ClCompile Include="player_items.cpp" />
     <ClCompile Include="player_skills.cpp" />
     <ClCompile Include="plugin.cpp" />
     <ClCompile Include="plugin_config.cpp" />
@@ -118,6 +119,7 @@
     <ClInclude Include="panel_player.h" />
     <ClInclude Include="panel_world.h" />
     <ClInclude Include="player_attributes.h" />
+    <ClInclude Include="player_items.h" />
     <ClInclude Include="player_skills.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />

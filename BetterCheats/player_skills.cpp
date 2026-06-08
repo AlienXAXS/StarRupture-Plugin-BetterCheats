@@ -11,6 +11,17 @@ namespace BetterCheats::Panels::Skills
 {
 	namespace
 	{
+		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
+		constexpr int kSkillTableFlags = (1 << 6) | (1 << 9) | (3 << 13);
+		// ImGuiTableColumnFlags_WidthFixed
+		constexpr int kColumnWidthFixed = 1 << 4;
+
+		void SetupSkillTableColumns(IModLoaderImGui* imgui)
+		{
+			imgui->TableSetupColumn("Skill", kColumnWidthFixed, 110.0f);
+			imgui->TableSetupColumn("Level", 0, 0.0f);
+		}
+
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
@@ -122,19 +133,31 @@ namespace BetterCheats::Panels::Skills
 		imgui->SeparatorText("Per-Skill Overrides");
 
 		char idBuf[16];
-		char label[48];
-		for (int i = 0; i < count; ++i)
+		if (imgui->BeginTable("##skills_table", 2, kSkillTableFlags))
 		{
-			const uint8_t skillId = static_cast<uint8_t>(data[i].Skill);
-			const std::string& name = LocalizedSkillName(skillId);
+			SetupSkillTableColumns(imgui);
 
-			snprintf(idBuf, sizeof(idBuf), "skill_%d", i);
-			imgui->PushIDStr(idBuf);
+			for (int i = 0; i < count; ++i)
+			{
+				const uint8_t skillId = static_cast<uint8_t>(data[i].Skill);
+				const std::string& name = LocalizedSkillName(skillId);
 
-			snprintf(label, sizeof(label), "%s Level", name.c_str());
-			imgui->SliderInt(label, &data[i].Level, 0, 100, "%d");
+				snprintf(idBuf, sizeof(idBuf), "skill_%d", i);
+				imgui->PushIDStr(idBuf);
 
-			imgui->PopID();
+				imgui->TableNextRow(0, 0.0f);
+
+				imgui->TableSetColumnIndex(0);
+				imgui->Text(name.c_str());
+
+				imgui->TableSetColumnIndex(1);
+				imgui->SetNextItemWidth(-1.0f);
+				imgui->SliderInt("##level", &data[i].Level, 0, 100, "%d");
+
+				imgui->PopID();
+			}
+
+			imgui->EndTable();
 		}
 
 		imgui->Spacing();

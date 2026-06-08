@@ -96,7 +96,6 @@ namespace BetterCheats
 	void CheatMenu::Toggle()
 	{
 		if (!s_panelHandle || !s_self) return;
-		if (!s_open && !ShouldShowMenu()) return;
 
 		s_open = !s_open;
 		if (s_open)
@@ -121,12 +120,27 @@ namespace BetterCheats
 			s_inChimeraMain = false;
 	}
 
-	bool CheatMenu::ShouldShowMenu()
+	bool CheatMenu::IsSinglePlayer()
 	{
-		if (!s_inChimeraMain || !s_self || !s_self->hooks->NetMode)
+		if (!s_self || !s_self->hooks->NetMode)
 			return false;
 
 		return s_self->hooks->NetMode->GetNetMode() == EPluginNetMode::Standalone;
+	}
+
+	// -------------------------------------------------------------------------
+	// Centered placeholder shown when the menu can't be used right now
+	// -------------------------------------------------------------------------
+
+	void CheatMenu::RenderUnavailableMessage(IModLoaderImGui* imgui, float avail_x, float avail_y, const char* message)
+	{
+		float text_x, text_y;
+		imgui->CalcTextSize(message, &text_x, &text_y, false, 0.0f);
+
+		float cursor_x = imgui->GetCursorPosX();
+		float cursor_y = imgui->GetCursorPosY();
+		imgui->SetCursorPos(cursor_x + (avail_x - text_x) * 0.5f, cursor_y + (avail_y - text_y) * 0.5f);
+		imgui->Text(message);
 	}
 
 	// -------------------------------------------------------------------------
@@ -135,18 +149,20 @@ namespace BetterCheats
 
 	void CheatMenu::OnRender(IModLoaderImGui* imgui)
 	{
-		if (!ShouldShowMenu())
+		float avail_x, avail_y;
+		imgui->GetContentRegionAvail(&avail_x, &avail_y);
+
+		if (!s_inChimeraMain)
 		{
-			if (s_open)
-			{
-				s_open = false;
-				s_self->hooks->UI->SetPanelClose(s_panelHandle);
-			}
+			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in game");
 			return;
 		}
 
-		float avail_x, avail_y;
-		imgui->GetContentRegionAvail(&avail_x, &avail_y);
+		if (!IsSinglePlayer())
+		{
+			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in single player");
+			return;
+		}
 
 		// Sidebar
 		imgui->PushStyleColor(Col_ChildBg, kNavBgR, kNavBgG, kNavBgB, 1.0f);
@@ -217,6 +233,7 @@ namespace BetterCheats
 
 		NavGroup("PLAYER");
 		NavItem(imgui, "  Self",                MenuCategory::Player_Self);
+		NavItem(imgui, "  Item Spawner",        MenuCategory::Player_ItemSpawner);
 		NavItem(imgui, "  Weapon",              MenuCategory::Player_Weapon);
 		NavItem(imgui, "  Movement",            MenuCategory::Player_Movement);
 		NavItem(imgui, "  Teleport",            MenuCategory::Player_Teleport);
@@ -248,6 +265,7 @@ namespace BetterCheats
 		{
 		case MenuCategory::World_Environment:      Panels::RenderWorld_Environment(imgui);       break;
 		case MenuCategory::Player_Self:            Panels::RenderPlayer_Self(imgui);             break;
+		case MenuCategory::Player_ItemSpawner:     Panels::RenderPlayer_ItemSpawner(imgui);      break;
 		case MenuCategory::Player_Weapon:          Panels::RenderPlayer_Weapon(imgui);           break;
 		case MenuCategory::Player_Movement:        Panels::RenderPlayer_Movement(imgui);         break;
 		case MenuCategory::Player_Teleport:        Panels::RenderPlayer_Teleport(imgui);         break;
