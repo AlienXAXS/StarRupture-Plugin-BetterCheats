@@ -3,6 +3,7 @@
 #include "plugin_config.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
+#include "player_skills.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -32,6 +33,7 @@ static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 static void OnEngineTick(float deltaSeconds)
 {
 	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
+	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 }
 
 extern "C" {

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <mutex>
 #include <string>
 
 #include "Chimera_classes.hpp"
@@ -16,12 +17,20 @@ namespace BetterCheats::Panels::Skills
 		// ImGuiTableColumnFlags_WidthFixed
 		constexpr int kColumnWidthFixed = 1 << 4;
 
+		// ECrPlayerProgressionSkill currently only defines Movement/Combat/Survival —
+		// generous headroom for future skills without growing the snapshot dynamically.
+		constexpr int kMaxSkills = 16;
+
 		void SetupSkillTableColumns(IModLoaderImGui* imgui)
 		{
 			imgui->TableSetupColumn("Skill", kColumnWidthFixed, 110.0f);
 			imgui->TableSetupColumn("Level", 0, 0.0f);
 		}
 
+		// Only ever called from Tick() (the engine-tick callback, which runs on the
+		// game thread) — never from RenderImGui(), which runs on a different thread
+		// where UWorld::GetWorld() and UObject access intermittently crash inside the
+		// renderer (FD3D12DynamicRHI::HandleFailedD3D12Result, no useful callstack).
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
@@ -97,37 +106,144 @@ namespace BetterCheats::Panels::Skills
 
 			return g_localizedNames[id];
 		}
+
+		// -------------------------------------------------------------------------
+		// Snapshot — plain data describing the controller's current skill levels.
+		// Refreshed on the game thread by Tick() and read by RenderImGui(), which
+		// runs on a different thread and must never touch SDK/UObjects directly
+		// (doing so intermittently crashes inside the renderer with no useful
+		// callstack — FD3D12DynamicRHI::HandleFailedD3D12Result).
+		// -------------------------------------------------------------------------
+		struct SkillsSnapshot
+		{
+			bool    hasController = false;
+			int     count = 0;
+			uint8_t skillIds[kMaxSkills] = {};
+			int32_t levels[kMaxSkills]   = {};
+		};
+
+		std::mutex     g_snapshotMutex;
+		SkillsSnapshot g_snapshot;
+
+		// Edits queued by RenderImGui() (UI thread) for Tick() (game thread) to apply.
+		struct PendingEdit { bool pending = false; int32_t level = 0; };
+
+		std::mutex  g_pendingMutex;
+		PendingEdit g_pendingLevel[kMaxSkills];
+		bool        g_pendingMaxAll = false;
+
+		void QueueLevelEdit(int index, int32_t level)
+		{
+			if (index < 0 || index >= kMaxSkills)
+				return;
+
+			std::lock_guard<std::mutex> lock(g_pendingMutex);
+			g_pendingLevel[index] = { true, level };
+		}
+
+		void QueueMaxAllSkills()
+		{
+			std::lock_guard<std::mutex> lock(g_pendingMutex);
+			g_pendingMaxAll = true;
+		}
+
+		// Copies the controller's current skill state into the snapshot — must run
+		// on the game thread.
+		void RefreshSnapshot(SDK::ACrPlayerControllerBase* pc)
+		{
+			SkillsSnapshot snapshot;
+			snapshot.hasController = pc != nullptr;
+
+			if (pc)
+			{
+				SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
+				const SDK::FCrSkillData* data = skills.GetDataPtr();
+
+				const int rawCount = skills.Num();
+				snapshot.count = rawCount < kMaxSkills ? rawCount : kMaxSkills;
+				for (int i = 0; i < snapshot.count; ++i)
+				{
+					snapshot.skillIds[i] = static_cast<uint8_t>(data[i].Skill);
+					snapshot.levels[i]   = data[i].Level;
+				}
+			}
+
+			std::lock_guard<std::mutex> lock(g_snapshotMutex);
+			g_snapshot = snapshot;
+		}
+
+		// Applies any edits RenderImGui() queued since the last tick — must run on
+		// the game thread.
+		void ApplyPendingEdits(SDK::ACrPlayerControllerBase* pc)
+		{
+			if (!pc)
+				return;
+
+			SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
+			const int count = skills.Num();
+			SDK::FCrSkillData* data = const_cast<SDK::FCrSkillData*>(skills.GetDataPtr());
+
+			std::lock_guard<std::mutex> lock(g_pendingMutex);
+
+			if (g_pendingMaxAll)
+			{
+				for (int i = 0; i < count; ++i)
+				{
+					data[i].Level      = 999;
+					data[i].Experience = 0.0f;
+				}
+				g_pendingMaxAll = false;
+			}
+
+			for (int i = 0; i < count && i < kMaxSkills; ++i)
+			{
+				PendingEdit& edit = g_pendingLevel[i];
+				if (!edit.pending)
+					continue;
+
+				data[i].Level = edit.level;
+				edit.pending  = false;
+			}
+		}
+	}
+
+	void Tick(float /*deltaSeconds*/)
+	{
+		SDK::ACrPlayerControllerBase* pc = GetLocalController();
+
+		// Keep RenderImGui()'s snapshot fresh and apply any edits it queued —
+		// both must happen here, on the game thread.
+		RefreshSnapshot(pc);
+		ApplyPendingEdits(pc);
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		imgui->SeparatorText("Skill Progression");
 
-		SDK::ACrPlayerControllerBase* pc = GetLocalController();
-		if (!pc)
+		// RenderImGui() runs on the ImGui render thread, not the game thread —
+		// it must only ever read the snapshot Tick() refreshed, never touch
+		// SDK/UObjects directly (see GetLocalController()'s comment for why).
+		SkillsSnapshot snapshot;
+		{
+			std::lock_guard<std::mutex> lock(g_snapshotMutex);
+			snapshot = g_snapshot;
+		}
+
+		if (!snapshot.hasController)
 		{
 			imgui->TextDisabled("No local player controller found.");
 			return;
 		}
 
-		SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
-		const int count = skills.Num();
-		if (count <= 0)
+		if (snapshot.count <= 0)
 		{
 			imgui->TextDisabled("Player has no skill data yet.");
 			return;
 		}
 
-		SDK::FCrSkillData* data = const_cast<SDK::FCrSkillData*>(skills.GetDataPtr());
-
 		if (imgui->Button("Max All Skills"))
-		{
-			for (int i = 0; i < count; ++i)
-			{
-				data[i].Level      = 999;
-				data[i].Experience = 0.0f;
-			}
-		}
+			QueueMaxAllSkills();
 
 		imgui->Spacing();
 		imgui->SeparatorText("Per-Skill Overrides");
@@ -137,10 +253,9 @@ namespace BetterCheats::Panels::Skills
 		{
 			SetupSkillTableColumns(imgui);
 
-			for (int i = 0; i < count; ++i)
+			for (int i = 0; i < snapshot.count; ++i)
 			{
-				const uint8_t skillId = static_cast<uint8_t>(data[i].Skill);
-				const std::string& name = LocalizedSkillName(skillId);
+				const std::string& name = LocalizedSkillName(snapshot.skillIds[i]);
 
 				snprintf(idBuf, sizeof(idBuf), "skill_%d", i);
 				imgui->PushIDStr(idBuf);
@@ -152,7 +267,9 @@ namespace BetterCheats::Panels::Skills
 
 				imgui->TableSetColumnIndex(1);
 				imgui->SetNextItemWidth(-1.0f);
-				imgui->SliderInt("##level", &data[i].Level, 0, 100, "%d");
+				int level = snapshot.levels[i];
+				if (imgui->SliderInt("##level", &level, 0, 100, "%d"))
+					QueueLevelEdit(i, level);
 
 				imgui->PopID();
 			}
