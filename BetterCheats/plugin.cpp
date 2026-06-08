@@ -1,0 +1,78 @@
+#include "plugin.h"
+#include "plugin_helpers.h"
+#include "plugin_config.h"
+#include "cheat_menu.h"
+#include "temp_detours.h"
+
+static IPluginSelf* g_self = nullptr;
+
+IPluginSelf* GetSelf() { return g_self; }
+
+#ifndef MODLOADER_BUILD_TAG
+#define MODLOADER_BUILD_TAG "dev"
+#endif
+
+static PluginInfo s_pluginInfo = {
+	"BetterCheats",
+	MODLOADER_BUILD_TAG,
+	"AlienX",
+	"Modular in-game cheat menu for StarRupture",
+	PLUGIN_INTERFACE_VERSION,
+	PLUGIN_TARGET_CLIENT
+};
+
+// Keybind callback — fires on key press to toggle the menu
+static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
+{
+	BetterCheats::CheatMenu::Toggle();
+}
+
+extern "C" {
+
+	__declspec(dllexport) PluginInfo* GetPluginInfo()
+	{
+		return &s_pluginInfo;
+	}
+
+	__declspec(dllexport) bool PluginInit(IPluginSelf* self)
+	{
+		g_self = self;
+
+		LOG_INFO("BetterCheats initializing...");
+
+		BetterCheatsConfig::Config::Initialize(self);
+
+		if (!BetterCheatsConfig::Config::IsEnabled())
+		{
+			LOG_WARN("BetterCheats is disabled in config");
+			return true;
+		}
+
+		// Register the cheat menu widget
+		BetterCheats::CheatMenu::Initialize(self);
+
+		// Register the toggle keybind — modloader tracks rebinds automatically
+		const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
+		self->hooks->Input->RegisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+
+		LOG_INFO("BetterCheats initialized — toggle key: %s", toggleKey);
+
+		return true;
+	}
+
+	__declspec(dllexport) void PluginShutdown()
+	{
+		LOG_INFO("BetterCheats shutting down...");
+
+		if (g_self)
+		{
+			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
+			g_self->hooks->Input->UnregisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+		}
+
+		BetterCheats::CheatMenu::Shutdown();
+
+		g_self = nullptr;
+	}
+
+} // extern "C"

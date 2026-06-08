@@ -1,0 +1,5 @@
+LIBRARY BetterCheats
+EXPORTS
+    GetPluginInfo
+    PluginInit
+    PluginShutdown

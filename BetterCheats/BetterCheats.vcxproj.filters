@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- =========================================================
+       Filter (virtual folder) definitions
+       ========================================================= -->
+  <ItemGroup>
+
+    <!-- Plugin bootstrap & entry points -->
+    <Filter Include="Plugin Core">
+      <UniqueIdentifier>{a1b2c3d4-0001-0001-0001-000000000001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Plugin Core\Config">
+      <UniqueIdentifier>{a1b2c3d4-0001-0001-0001-000000000002}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Plugin Core\Helpers">
+      <UniqueIdentifier>{a1b2c3d4-0001-0001-0001-000000000003}</UniqueIdentifier>
+    </Filter>
+
+    <!-- Modloader SDK header (read-only, from include\) -->
+    <Filter Include="SDK">
+      <UniqueIdentifier>{a1b2c3d4-0002-0002-0002-000000000001}</UniqueIdentifier>
+    </Filter>
+
+    <!-- Cheat menu shell + per-category panels -->
+    <Filter Include="Cheats">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\Menu">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000002}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\World">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000003}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\Player">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\Machines">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000005}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\Enemies">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000006}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Cheats\Misc">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000007}</UniqueIdentifier>
+    </Filter>
+
+    <!-- Single AOB pattern registry -->
+    <Filter Include="Patterns">
+      <UniqueIdentifier>{a1b2c3d4-0004-0004-0004-000000000001}</UniqueIdentifier>
+    </Filter>
+
+    <!-- Temporary detours — remove when done -->
+    <Filter Include="Temp">
+      <UniqueIdentifier>{a1b2c3d4-0005-0005-0005-000000000001}</UniqueIdentifier>
+    </Filter>
+
+  </ItemGroup>
+
+  <!-- =========================================================
+       Header files
+       ========================================================= -->
+  <ItemGroup>
+
+    <!-- Plugin Core -->
+    <ClInclude Include="plugin.h">
+      <Filter>Plugin Core</Filter>
+    </ClInclude>
+
+    <!-- Plugin Core\Config -->
+    <ClInclude Include="plugin_config.h">
+      <Filter>Plugin Core\Config</Filter>
+    </ClInclude>
+
+    <!-- Plugin Core\Helpers -->
+    <ClInclude Include="plugin_helpers.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+
+    <!-- SDK (header resolved via $(PluginSDKInclude) in Shared.props) -->
+    <ClInclude Include="$(PluginSDKInclude)\plugin_interface.h">
+      <Filter>SDK</Filter>
+    </ClInclude>
+
+    <!-- Cheats\Menu -->
+    <ClInclude Include="cheat_menu.h">
+      <Filter>Cheats\Menu</Filter>
+    </ClInclude>
+
+    <!-- Cheats\World -->
+    <ClInclude Include="panel_world.h">
+      <Filter>Cheats\World</Filter>
+    </ClInclude>
+
+    <!-- Cheats\Player -->
+    <ClInclude Include="panel_player.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="player_skills.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
+
+    <!-- Cheats\Machines -->
+    <ClInclude Include="panel_machines.h">
+      <Filter>Cheats\Machines</Filter>
+    </ClInclude>
+
+    <!-- Cheats\Enemies -->
+    <ClInclude Include="panel_enemies.h">
+      <Filter>Cheats\Enemies</Filter>
+    </ClInclude>
+
+    <!-- Cheats\Misc -->
+    <ClInclude Include="panel_misc.h">
+      <Filter>Cheats\Misc</Filter>
+    </ClInclude>
+
+    <!-- Patterns -->
+    <ClInclude Include="aob_patterns.h">
+      <Filter>Patterns</Filter>
+    </ClInclude>
+
+    <!-- Temp -->
+    <ClInclude Include="temp_detours.h">
+      <Filter>Temp</Filter>
+    </ClInclude>
+
+  </ItemGroup>
+
+  <!-- =========================================================
+       Source files
+       ========================================================= -->
+  <ItemGroup>
+
+    <!-- Plugin Core -->
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Plugin Core</Filter>
+    </ClCompile>
+    <ClCompile Include="plugin.cpp">
+      <Filter>Plugin Core</Filter>
+    </ClCompile>
+
+    <!-- Plugin Core\Config -->
+    <ClCompile Include="plugin_config.cpp">
+      <Filter>Plugin Core\Config</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Menu -->
+    <ClCompile Include="cheat_menu.cpp">
+      <Filter>Cheats\Menu</Filter>
+    </ClCompile>
+
+    <!-- Cheats\World -->
+    <ClCompile Include="panel_world.cpp">
+      <Filter>Cheats\World</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Player -->
+    <ClCompile Include="panel_player.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="player_skills.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Machines -->
+    <ClCompile Include="panel_machines.cpp">
+      <Filter>Cheats\Machines</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Enemies -->
+    <ClCompile Include="panel_enemies.cpp">
+      <Filter>Cheats\Enemies</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Misc -->
+    <ClCompile Include="panel_misc.cpp">
+      <Filter>Cheats\Misc</Filter>
+    </ClCompile>
+
+    <!-- Temp -->
+    <ClCompile Include="temp_detours.cpp">
+      <Filter>Temp</Filter>
+    </ClCompile>
+
+    <!-- SDK source files (hidden, auto-included via props) -->
+    <ClCompile Include="$(StarRuptureSDKSourceDir)Basic.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)CoreUObject_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)Engine_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+
+  </ItemGroup>
+
+  <!-- =========================================================
+       Module definition
+       ========================================================= -->
+  <ItemGroup>
+    <None Include="BetterCheats.def">
+      <Filter>Plugin Core</Filter>
+    </None>
+  </ItemGroup>
+
+</Project>

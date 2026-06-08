@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Client Debug|x64">
+      <Configuration>Client Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Client Release|x64">
+      <Configuration>Client Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6D64DCCE-D4B2-49B5-AAF9-6647AB86B6A5}</ProjectGuid>
+    <RootNamespace>BetterCheats</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <!-- ===== Client Debug ===== -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Client Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <LanguageStandard>stdcpp20</LanguageStandard>
+  </PropertyGroup>
+  <!-- ===== Client Release ===== -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Client Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <LanguageStandard>stdcpp20</LanguageStandard>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="Shared">
+    <Import Project="$(SolutionDir)Shared.props" />
+  </ImportGroup>
+  <!-- ===== Output dirs ===== -->
+  <PropertyGroup Condition="'$(Platform)'=='x64'">
+    <OutDir>$(SolutionDir)build\$(Configuration)\Plugins\</OutDir>
+    <IntDir>$(SolutionDir)build\intermediate\$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>BetterCheats</TargetName>
+  </PropertyGroup>
+  <!-- ===== Client Debug compiler settings ===== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Client Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(StarRuptureSDKConfigDir);$(PluginSDKInclude);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <ModuleDefinitionFile>$(ProjectDir)BetterCheats.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <!-- ===== Client Release compiler settings ===== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Client Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(StarRuptureSDKConfigDir);$(PluginSDKInclude);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+      <OptimizeReferences>false</OptimizeReferences>
+      <ModuleDefinitionFile>$(ProjectDir)BetterCheats.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <!-- ===== Source files ===== -->
+  <ItemGroup>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)Basic.cpp">
+      <Visible>false</Visible>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)CoreUObject_functions.cpp">
+      <Visible>false</Visible>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)Engine_functions.cpp">
+      <Visible>false</Visible>
+    </ClCompile>
+    <ClCompile Include="cheat_menu.cpp" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="panel_enemies.cpp" />
+    <ClCompile Include="panel_machines.cpp" />
+    <ClCompile Include="panel_misc.cpp" />
+    <ClCompile Include="panel_player.cpp" />
+    <ClCompile Include="panel_world.cpp" />
+    <ClCompile Include="player_skills.cpp" />
+    <ClCompile Include="plugin.cpp" />
+    <ClCompile Include="plugin_config.cpp" />
+    <ClCompile Include="temp_detours.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="aob_patterns.h" />
+    <ClInclude Include="cheat_menu.h" />
+    <ClInclude Include="panel_enemies.h" />
+    <ClInclude Include="panel_machines.h" />
+    <ClInclude Include="panel_misc.h" />
+    <ClInclude Include="panel_player.h" />
+    <ClInclude Include="panel_world.h" />
+    <ClInclude Include="player_skills.h" />
+    <ClInclude Include="plugin.h" />
+    <ClInclude Include="plugin_config.h" />
+    <ClInclude Include="plugin_helpers.h" />
+    <ClInclude Include="temp_detours.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="BetterCheats.def" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
