@@ -90,9 +90,6 @@ namespace BetterCheats::Panels::Skills
 
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
-		static int   maxLevel      = 10;
-		static float maxExperience = 100.0f;
-
 		imgui->SeparatorText("Skill Progression");
 
 		SDK::ACrPlayerControllerBase* pc = GetLocalController();
@@ -110,17 +107,14 @@ namespace BetterCheats::Panels::Skills
 			return;
 		}
 
-		imgui->InputInt("Max Level", &maxLevel, 1, 5);
-		imgui->SliderFloat("Max Experience", &maxExperience, 0.0f, 1000.0f, "%.0f");
-
 		SDK::FCrSkillData* data = const_cast<SDK::FCrSkillData*>(skills.GetDataPtr());
 
 		if (imgui->Button("Max All Skills"))
 		{
 			for (int i = 0; i < count; ++i)
 			{
-				data[i].Level      = maxLevel;
-				data[i].Experience = maxExperience;
+				data[i].Level      = 999;
+				data[i].Experience = 0.0f;
 			}
 		}
 
@@ -140,10 +134,12 @@ namespace BetterCheats::Panels::Skills
 			snprintf(label, sizeof(label), "%s Level", name.c_str());
 			imgui->SliderInt(label, &data[i].Level, 0, 100, "%d");
 
-			snprintf(label, sizeof(label), "%s Experience", name.c_str());
-			imgui->SliderFloat(label, &data[i].Experience, 0.0f, 1000.0f, "%.0f");
-
 			imgui->PopID();
 		}
+
+		imgui->Spacing();
+		imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
+			"Note: Setting skills here will persist in the player save file, "
+			"even if BetterCheats is later removed.");
 	}
 }

@@ -50,11 +50,6 @@
       <UniqueIdentifier>{a1b2c3d4-0004-0004-0004-000000000001}</UniqueIdentifier>
     </Filter>
 
-    <!-- Temporary detours — remove when done -->
-    <Filter Include="Temp">
-      <UniqueIdentifier>{a1b2c3d4-0005-0005-0005-000000000001}</UniqueIdentifier>
-    </Filter>
-
   </ItemGroup>
 
   <!-- =========================================================
@@ -96,6 +91,9 @@
     <ClInclude Include="panel_player.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
+    <ClInclude Include="player_attributes.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
     <ClInclude Include="player_skills.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
@@ -118,11 +116,6 @@
     <!-- Patterns -->
     <ClInclude Include="aob_patterns.h">
       <Filter>Patterns</Filter>
-    </ClInclude>
-
-    <!-- Temp -->
-    <ClInclude Include="temp_detours.h">
-      <Filter>Temp</Filter>
     </ClInclude>
 
   </ItemGroup>
@@ -159,6 +152,9 @@
     <ClCompile Include="panel_player.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
+    <ClCompile Include="player_attributes.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
     <ClCompile Include="player_skills.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
@@ -178,11 +174,6 @@
       <Filter>Cheats\Misc</Filter>
     </ClCompile>
 
-    <!-- Temp -->
-    <ClCompile Include="temp_detours.cpp">
-      <Filter>Temp</Filter>
-    </ClCompile>
-
     <!-- SDK source files (hidden, auto-included via props) -->
     <ClCompile Include="$(StarRuptureSDKSourceDir)Basic.cpp">
       <Filter>SDK</Filter>
@@ -191,6 +182,9 @@
       <Filter>SDK</Filter>
     </ClCompile>
     <ClCompile Include="$(StarRuptureSDKSourceDir)Engine_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)UMG_functions.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
 

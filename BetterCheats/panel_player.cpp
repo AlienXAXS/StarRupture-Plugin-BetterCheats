@@ -1,18 +1,12 @@
 #include "panel_player.h"
+#include "player_attributes.h"
 #include "player_skills.h"
 
 namespace BetterCheats::Panels
 {
 	void RenderPlayer_Self(IModLoaderImGui* imgui)
 	{
-		static bool  godMode      = false;
-		static bool  infiniteStam = false;
-		static float healthPct    = 1.0f;
-
-		imgui->SeparatorText("Health & Status");
-		imgui->Checkbox("God Mode", &godMode);
-		imgui->Checkbox("Infinite Stamina", &infiniteStam);
-		imgui->SliderFloat("Health %", &healthPct, 0.0f, 1.0f, "%.0f%%");
+		Attributes::RenderImGui(imgui);
 	}
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)

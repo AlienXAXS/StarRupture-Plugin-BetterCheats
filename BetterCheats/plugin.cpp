@@ -2,7 +2,7 @@
 #include "plugin_helpers.h"
 #include "plugin_config.h"
 #include "cheat_menu.h"
-#include "temp_detours.h"
+#include "player_attributes.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -27,6 +27,13 @@ static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 	BetterCheats::CheatMenu::Toggle();
 }
 
+// Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
+// whether the menu is currently open.
+static void OnEngineTick(float deltaSeconds)
+{
+	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
+}
+
 extern "C" {
 
 	__declspec(dllexport) PluginInfo* GetPluginInfo()
@@ -41,6 +48,7 @@ extern "C" {
 		LOG_INFO("BetterCheats initializing...");
 
 		BetterCheatsConfig::Config::Initialize(self);
+		BetterCheats::Panels::Attributes::Initialize();
 
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
@@ -55,6 +63,8 @@ extern "C" {
 		const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 		self->hooks->Input->RegisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
 
+		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
+
 		LOG_INFO("BetterCheats initialized — toggle key: %s", toggleKey);
 
 		return true;
@@ -68,6 +78,7 @@ extern "C" {
 		{
 			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 			g_self->hooks->Input->UnregisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
 		}
 
 		BetterCheats::CheatMenu::Shutdown();

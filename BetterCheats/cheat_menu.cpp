@@ -6,11 +6,17 @@
 #include "panel_enemies.h"
 #include "panel_misc.h"
 
+#include "Chimera_classes.hpp"
+
+#include <cstring>
+
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
 // ---------------------------------------------------------------------------
 namespace
 {
+	constexpr const char* kChimeraMainWorldName = "ChimeraMain";
+
 	// ImGuiCol
 	constexpr int Col_Text          = 0;
 	constexpr int Col_ChildBg       = 3;
@@ -22,12 +28,11 @@ namespace
 	constexpr int Var_WindowPadding = 2;  // vec2
 	constexpr int Var_ItemSpacing   = 14; // vec2
 
-	// ImGuiCond
-	constexpr int Cond_FirstUseEver = 8;
-
 	// Layout
-	constexpr float kNavWidth  = 160.0f;
-	constexpr float kSepWidth  =   1.0f;
+	constexpr float kNavWidth     = 160.0f;
+	constexpr float kSepWidth     =   1.0f;
+	constexpr float kContentPadX  =  14.0f;
+	constexpr float kContentPadY  =  10.0f;
 
 	// Colours
 	constexpr float kAccR = 0.12f, kAccG = 0.30f, kAccB = 0.58f; // active item
@@ -39,8 +44,9 @@ namespace
 namespace BetterCheats
 {
 	IPluginSelf* CheatMenu::s_self           = nullptr;
-	WidgetHandle CheatMenu::s_widgetHandle   = nullptr;
+	PanelHandle  CheatMenu::s_panelHandle    = nullptr;
 	bool         CheatMenu::s_open           = false;
+	bool         CheatMenu::s_inChimeraMain  = false;
 	MenuCategory CheatMenu::s_activeCategory = MenuCategory::World_Environment;
 
 	// -------------------------------------------------------------------------
@@ -49,39 +55,78 @@ namespace BetterCheats
 	{
 		s_self = self;
 
-		static PluginWindowHints hints{};
-		hints.width     = 900.0f;
-		hints.height    = 530.0f;
-		hints.pos_x     = -1.0f;
-		hints.pos_y     = -1.0f;
-		hints.size_cond = 8; // ImGuiCond_FirstUseEver — allows user to resize freely after first open
-		hints.pos_cond  = 8;
-
-		static PluginWidgetDesc desc{};
-		desc.name        = "BetterCheats";
+		static PluginPanelDesc desc{};
+		desc.buttonLabel = "BetterCheats";
+		desc.windowTitle = "BetterCheats";
 		desc.renderFn    = &CheatMenu::OnRender;
-		desc.windowHints = &hints;
 
-		s_widgetHandle = self->hooks->UI->RegisterWidget(&desc);
-		self->hooks->UI->SetWidgetVisible(s_widgetHandle, false);
+		s_panelHandle = self->hooks->UI->RegisterPanel(&desc);
+
+		self->hooks->World->RegisterOnWorldBeginPlay(&CheatMenu::OnWorldBeginPlay);
+		self->hooks->World->RegisterOnAfterWorldEndPlay(&CheatMenu::OnWorldEndPlay);
+
+		// Hot-reload: the world begin-play event already fired before we registered
+		// for it, so probe the current world directly to pick up an in-progress session.
+		try
+		{
+			SDK::UWorld* world = SDK::UWorld::GetWorld();
+			if (world && world->GetName() == kChimeraMainWorldName)
+				s_inChimeraMain = true;
+		}
+		catch (...) {}
 	}
 
 	void CheatMenu::Shutdown()
 	{
-		if (s_widgetHandle && s_self)
+		if (s_self)
 		{
-			s_self->hooks->UI->SetWidgetVisible(s_widgetHandle, false);
-			s_self->hooks->UI->UnregisterWidget(s_widgetHandle);
-			s_widgetHandle = nullptr;
+			s_self->hooks->World->UnregisterOnWorldBeginPlay(&CheatMenu::OnWorldBeginPlay);
+			s_self->hooks->World->UnregisterOnAfterWorldEndPlay(&CheatMenu::OnWorldEndPlay);
+		}
+
+		if (s_panelHandle && s_self)
+		{
+			s_self->hooks->UI->SetPanelClose(s_panelHandle);
+			s_self->hooks->UI->UnregisterPanel(s_panelHandle);
+			s_panelHandle = nullptr;
 		}
 		s_self = nullptr;
 	}
 
 	void CheatMenu::Toggle()
 	{
-		if (!s_widgetHandle || !s_self) return;
+		if (!s_panelHandle || !s_self) return;
+		if (!s_open && !ShouldShowMenu()) return;
+
 		s_open = !s_open;
-		s_self->hooks->UI->SetWidgetVisible(s_widgetHandle, s_open);
+		if (s_open)
+			s_self->hooks->UI->SetPanelOpen(s_panelHandle);
+		else
+			s_self->hooks->UI->SetPanelClose(s_panelHandle);
+	}
+
+	// -------------------------------------------------------------------------
+	// Visibility gate — single-player ChimeraMain sessions only
+	// -------------------------------------------------------------------------
+
+	void CheatMenu::OnWorldBeginPlay(SDK::UWorld* /*world*/)
+	{
+		// Only fires for the ChimeraMain world (main game world only).
+		s_inChimeraMain = true;
+	}
+
+	void CheatMenu::OnWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
+	{
+		if (worldName && std::strcmp(worldName, kChimeraMainWorldName) == 0)
+			s_inChimeraMain = false;
+	}
+
+	bool CheatMenu::ShouldShowMenu()
+	{
+		if (!s_inChimeraMain || !s_self || !s_self->hooks->NetMode)
+			return false;
+
+		return s_self->hooks->NetMode->GetNetMode() == EPluginNetMode::Standalone;
 	}
 
 	// -------------------------------------------------------------------------
@@ -90,6 +135,16 @@ namespace BetterCheats
 
 	void CheatMenu::OnRender(IModLoaderImGui* imgui)
 	{
+		if (!ShouldShowMenu())
+		{
+			if (s_open)
+			{
+				s_open = false;
+				s_self->hooks->UI->SetPanelClose(s_panelHandle);
+			}
+			return;
+		}
+
 		float avail_x, avail_y;
 		imgui->GetContentRegionAvail(&avail_x, &avail_y);
 
@@ -112,9 +167,11 @@ namespace BetterCheats
 
 		// Content
 		imgui->SameLine(0.0f, 0.0f);
+		imgui->PushStyleVarVec2(Var_WindowPadding, kContentPadX, kContentPadY);
 		if (imgui->BeginChild("##content", 0.0f, avail_y, false))
 			RenderContent(imgui);
 		imgui->EndChild();
+		imgui->PopStyleVar(1);
 	}
 
 	// -------------------------------------------------------------------------

@@ -94,6 +94,9 @@
     <ClCompile Include="$(StarRuptureSDKSourceDir)Engine_functions.cpp">
       <Visible>false</Visible>
     </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)UMG_functions.cpp">
+      <Visible>false</Visible>
+    </ClCompile>
     <ClCompile Include="cheat_menu.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="panel_enemies.cpp" />
@@ -101,10 +104,10 @@
     <ClCompile Include="panel_misc.cpp" />
     <ClCompile Include="panel_player.cpp" />
     <ClCompile Include="panel_world.cpp" />
+    <ClCompile Include="player_attributes.cpp" />
     <ClCompile Include="player_skills.cpp" />
     <ClCompile Include="plugin.cpp" />
     <ClCompile Include="plugin_config.cpp" />
-    <ClCompile Include="temp_detours.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aob_patterns.h" />
@@ -114,11 +117,11 @@
     <ClInclude Include="panel_misc.h" />
     <ClInclude Include="panel_player.h" />
     <ClInclude Include="panel_world.h" />
+    <ClInclude Include="player_attributes.h" />
     <ClInclude Include="player_skills.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />
     <ClInclude Include="plugin_helpers.h" />
-    <ClInclude Include="temp_detours.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="BetterCheats.def" />
