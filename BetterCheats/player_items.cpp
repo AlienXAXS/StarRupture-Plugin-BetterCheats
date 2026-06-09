@@ -428,6 +428,16 @@ namespace BetterCheats::Panels::Items
 						if (entry.name.empty() || entry.name == "<MISSING STRING TABLE ENTRY>")
 							entry.name = entry.uniqueName;
 
+						// Skip placeholder/stub items that have no real presence in the game.
+						if (entry.name == "None")
+							continue;
+						if (entry.icon)
+						{
+							const std::string iconName = entry.icon->GetName();
+							if (iconName.find("WhiteSquareTexture") != std::string::npos)
+								continue;
+						}
+
 						if (!entry.icon)
 							++noIconCount;
 
