@@ -11,4 +11,5 @@ namespace BetterCheats::Panels
 	void RenderPlayer_Teleport(IModLoaderImGui* imgui);
 	void RenderPlayer_Building(IModLoaderImGui* imgui);
 	void RenderPlayer_Skills(IModLoaderImGui* imgui);
+	void RenderPlayer_Tools(IModLoaderImGui* imgui);
 }

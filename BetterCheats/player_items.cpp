@@ -78,10 +78,17 @@ namespace BetterCheats::Panels::Items
 		// no handle yet.  Safe to call from any thread — LoadFromUTexture2D returns
 		// NULL (without throwing) when D3D12 is not yet ready, so entries that miss
 		// here are retried the next time this function is called.
-		void LoadItemTexHandles(std::vector<ItemEntry>& items)
+		void LoadItemTexHandles(std::vector<ItemEntry>& items, IPluginSplash* splash = nullptr)
 		{
 			IPluginHooks* hooks = GetHooks();
 			if (!hooks || !hooks->ImGuiTextures) return;
+
+			const int total = static_cast<int>(items.size());
+			int loaded = 0;
+
+			if (splash && splash->IsVisible())
+				splash->SetSubStatus("(BetterCheats) Copying Item Textures... Wait!");
+
 			for (ItemEntry& e : items)
 			{
 				if (e.iconIsTexture2D && e.icon && !e.cachedTexHandle)
@@ -89,7 +96,16 @@ namespace BetterCheats::Panels::Items
 					const std::string texName = e.icon->GetName();
 					e.cachedTexHandle = hooks->ImGuiTextures->LoadFromUTexture2D(e.icon, texName.c_str());
 				}
+
+				if (splash && splash->IsVisible() && total > 0)
+				{
+					++loaded;
+					splash->SetSubProgress(static_cast<float>(loaded) / static_cast<float>(total));
+				}
 			}
+
+			if (splash && splash->IsVisible())
+				splash->ClearSubBar();
 		}
 
 		// Lower-cases ASCII letters; item names are plain English so this is sufficient
@@ -375,6 +391,14 @@ namespace BetterCheats::Panels::Items
 		{
 			std::vector<ItemEntry> items;
 
+			IPluginSelf* self = GetSelf();
+			IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
+			if (splash && splash->IsVisible())
+			{
+				splash->SetSubStatus("Building item list...");
+				splash->SetSubProgress(0.0f);
+			}
+
 			LOG_INFO("Item Spawner: refreshing item list from the asset registry...");
 
 			try
@@ -438,8 +462,11 @@ namespace BetterCheats::Panels::Items
 								continue;
 						}
 
-						if (!entry.icon)
+						if (!entry.icon || !entry.iconIsTexture2D)
+						{
 							++noIconCount;
+							continue;
+						}
 
 						items.push_back(std::move(entry));
 					}
@@ -463,13 +490,21 @@ namespace BetterCheats::Panels::Items
 			// Pre-load texture handles while still on the game thread.  D3D12 may
 			// not be ready yet (returns NULL), in which case the fallback in
 			// AdoptPendingItemsIfReady will pick up the remainder on first render.
-			LoadItemTexHandles(items);
+			LoadItemTexHandles(items, splash);
 
-			std::lock_guard<std::mutex> lock(g_pendingMutex);
-			g_pendingItems      = std::move(items);
-			g_pendingItemsReady = true;
-			g_refreshInFlight.store(false, std::memory_order_release);
-			LOG_DEBUG("Item Spawner: published %d pending item(s) for adoption.", static_cast<int>(g_pendingItems.size()));
+			{
+				std::lock_guard<std::mutex> lock(g_pendingMutex);
+				g_pendingItems      = std::move(items);
+				g_pendingItemsReady = true;
+				g_refreshInFlight.store(false, std::memory_order_release);
+				LOG_DEBUG("Item Spawner: published %d pending item(s) for adoption.", static_cast<int>(g_pendingItems.size()));
+			}
+
+			if (splash)
+			{
+				splash->ClearSubBar();
+				splash->ReleaseSplashHold();
+			}
 		}
 
 		// Triggers an asynchronous item-list reload on the game thread. Safe to call
@@ -487,6 +522,7 @@ namespace BetterCheats::Panels::Items
 				return;
 			}
 
+			LOG_INFO("{POSTING_TO_GAME_THREAD} Item Spawner: posting item list refresh to game thread.");
 			hooks->Engine->PostToGameThread(&RefreshItemListOnGameThread, nullptr);
 		}
 
@@ -563,7 +599,14 @@ namespace BetterCheats::Panels::Items
 
 	void Initialize()
 	{
+		IPluginSelf* self = GetSelf();
+		IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
+		if (splash && splash->IsVisible())
+			splash->AcquireSplashHold();
+
+#ifndef _DEBUG
 		RequestRefreshItemList();
+#endif
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
@@ -578,19 +621,9 @@ namespace BetterCheats::Panels::Items
 			"local player. The total amount given is stacks \xC3\x97 the item's stack size.");
 		imgui->Spacing();
 
-		if (imgui->Button("Refresh Item List"))
-			RequestRefreshItemList();
-
-		imgui->SameLine(0.0f, -1.0f);
-		char countLabel[64];
-		snprintf(countLabel, sizeof(countLabel), "%d item(s) loaded", static_cast<int>(g_items.size()));
-		imgui->TextDisabled(countLabel);
-
-		imgui->Spacing();
-
 		if (g_items.empty())
 		{
-			imgui->TextDisabled("No items found — open a world and try Refresh Item List.");
+			imgui->TextDisabled("No items found — open a world and wait for items to load.");
 			return;
 		}
 
@@ -601,8 +634,10 @@ namespace BetterCheats::Panels::Items
 		const int totalAmount = (g_stacks > 0 ? g_stacks : 1) * maxStack;
 
 		// Search bar
+		char searchHint[64];
+		snprintf(searchHint, sizeof(searchHint), "Search %d items...", static_cast<int>(g_items.size()));
 		imgui->SetNextItemWidth(-1.0f);
-		if (imgui->InputTextWithHint("##item_search", "Search items...", g_searchBuf, sizeof(g_searchBuf)))
+		if (imgui->InputTextWithHint("##item_search", searchHint, g_searchBuf, sizeof(g_searchBuf)))
 			RefreshFilteredItems();
 
 		imgui->Spacing();
@@ -689,15 +724,6 @@ namespace BetterCheats::Panels::Items
 			}
 		}
 		imgui->EndChild();
-
-		imgui->Spacing();
-
-		// --- Controls below the list ---
-		{
-			char matchLabel[64];
-			snprintf(matchLabel, sizeof(matchLabel), "%d item(s) matched", static_cast<int>(g_filteredIndices.size()));
-			imgui->TextDisabled(matchLabel);
-		}
 
 		imgui->Spacing();
 

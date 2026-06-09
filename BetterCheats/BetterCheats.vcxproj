@@ -107,6 +107,7 @@
     <ClCompile Include="player_attributes.cpp" />
     <ClCompile Include="player_items.cpp" />
     <ClCompile Include="player_skills.cpp" />
+    <ClCompile Include="player_tools.cpp" />
     <ClCompile Include="plugin.cpp" />
     <ClCompile Include="plugin_config.cpp" />
   </ItemGroup>
@@ -121,6 +122,7 @@
     <ClInclude Include="player_attributes.h" />
     <ClInclude Include="player_items.h" />
     <ClInclude Include="player_skills.h" />
+    <ClInclude Include="player_tools.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />
     <ClInclude Include="plugin_helpers.h" />

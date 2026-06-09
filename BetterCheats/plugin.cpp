@@ -5,6 +5,7 @@
 #include "player_attributes.h"
 #include "player_items.h"
 #include "player_skills.h"
+#include "player_tools.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -53,6 +54,7 @@ extern "C" {
 		BetterCheatsConfig::Config::Initialize(self);
 		BetterCheats::Panels::Attributes::Initialize();
 		BetterCheats::Panels::Items::Initialize();
+		BetterCheats::Panels::Tools::Initialize();
 
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
@@ -88,6 +90,7 @@ extern "C" {
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::Panels::Attributes::Shutdown();
 		BetterCheats::Panels::Items::Shutdown();
+		BetterCheats::Panels::Tools::Shutdown();
 
 		g_self = nullptr;
 	}

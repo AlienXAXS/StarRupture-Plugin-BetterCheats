@@ -47,4 +47,13 @@ namespace BetterCheats::AOB
 		"?? ?? ?? ?? 48 8D 8E ?? ?? ?? ?? ?? ?? ?? FF 50 ?? 48 8B CE 48 8B D8 E8 ?? ?? ?? ?? 48 8B F0 48 85 DB 0F 84 "
 		"?? ?? ?? ?? 48 85 C0 0F 84 ?? ?? ?? ?? 48 89 6C 24";
 
+	// -------------------------------------------------------------------------
+	// Mining
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UCrMiningComponent::GetMiningDamage
+	// Parameters       (UCrMiningComponent* this, bool IsHittingWeakSpot)
+	constexpr const char* GetMiningDamage =
+		"40 55 56 57 41 56 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8B B9";
+
 } // namespace BetterCheats::AOB

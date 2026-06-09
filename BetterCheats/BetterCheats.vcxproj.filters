@@ -100,6 +100,9 @@
     <ClInclude Include="player_skills.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
+    <ClInclude Include="player_tools.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
 
     <!-- Cheats\Machines -->
     <ClInclude Include="panel_machines.h">
@@ -162,6 +165,9 @@
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_skills.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="player_tools.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
 

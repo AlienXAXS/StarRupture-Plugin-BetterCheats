@@ -17,6 +17,7 @@ namespace BetterCheats
 		Player_Teleport,
 		Player_Building,
 		Player_Skills,
+		Player_Tools,
 
 		// ENEMIES
 		Enemies_Enemies,

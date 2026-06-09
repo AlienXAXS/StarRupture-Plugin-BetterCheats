@@ -239,6 +239,7 @@ namespace BetterCheats
 		NavItem(imgui, "  Teleport",            MenuCategory::Player_Teleport);
 		NavItem(imgui, "  Building",            MenuCategory::Player_Building);
 		NavItem(imgui, "  Skills",              MenuCategory::Player_Skills);
+		NavItem(imgui, "  Tools",               MenuCategory::Player_Tools);
 
 		NavGroup("ENEMIES");
 		NavItem(imgui, "  Enemies",             MenuCategory::Enemies_Enemies);
@@ -271,6 +272,7 @@ namespace BetterCheats
 		case MenuCategory::Player_Teleport:        Panels::RenderPlayer_Teleport(imgui);         break;
 		case MenuCategory::Player_Building:        Panels::RenderPlayer_Building(imgui);         break;
 		case MenuCategory::Player_Skills:          Panels::RenderPlayer_Skills(imgui);           break;
+		case MenuCategory::Player_Tools:           Panels::RenderPlayer_Tools(imgui);            break;
 		case MenuCategory::Enemies_Enemies:        Panels::RenderEnemies(imgui);                 break;
 		case MenuCategory::Machinery_Crafters:     Panels::RenderMachines_Crafters(imgui);       break;
 		case MenuCategory::Machinery_Power:        Panels::RenderMachines_Power(imgui);          break;

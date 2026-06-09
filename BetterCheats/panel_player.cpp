@@ -2,6 +2,7 @@
 #include "player_attributes.h"
 #include "player_items.h"
 #include "player_skills.h"
+#include "player_tools.h"
 
 namespace BetterCheats::Panels
 {
@@ -52,5 +53,10 @@ namespace BetterCheats::Panels
 	void RenderPlayer_Skills(IModLoaderImGui* imgui)
 	{
 		Skills::RenderImGui(imgui);
+	}
+
+	void RenderPlayer_Tools(IModLoaderImGui* imgui)
+	{
+		Tools::RenderImGui(imgui);
 	}
 }
