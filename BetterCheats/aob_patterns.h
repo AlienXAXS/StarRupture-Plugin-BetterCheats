@@ -48,6 +48,38 @@ namespace BetterCheats::AOB
 		"?? ?? ?? ?? 48 85 C0 0F 84 ?? ?? ?? ?? 48 89 6C 24";
 
 	// -------------------------------------------------------------------------
+	// Building
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UCrBuildingComponent::GetResourceConditionResult
+	// Parameters       (UCrBuildingComponent* this) -> EAuAPlacementConditionResult
+	// Hooked to return Valid (1) when no-build-cost cheat is active.
+	constexpr const char* GetResourceConditionResult =
+		"48 8B C4 53 57 48 83 EC ?? 48 89 68 ?? 48 8B D9 48 89 70 ?? 4C 89 70";
+
+	// Class::Function  UAuActorPlacementComponent::AddPoint
+	// Parameters       (UAuActorPlacementComponent* this) -> FScriptContainerElement*
+	// Called each time the player adds a foundation to the zoop chain.
+	// Documented for reference; zoop limit is bypassed via MaxMultiConfirmPoints field writes
+	// on the top-level UAuActorPlacementData and all its sub-variant pointers.
+	constexpr const char* AddPoint =
+		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 4C 89 74 24 ?? 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B D9";
+
+	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
+	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)
+	// Rebuilds AvailableBuildings from AllBuildings, filtering by research state.
+	// When bUnlockAllBuildings is true, Corporation/Reputation are unused — safe to pass nullptr/0.
+	constexpr const char* CheckAvailableBuildings =
+		"48 89 4C 24 ?? 55 56 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 80 B9";
+
+	// Class::Function  ACrCraftingRecipeOwner::IsRecipeUnlocked
+	// Parameters       (ACrCraftingRecipeOwner* this, UCrItemRecipeData* InRecipe) -> bool
+	// Returns true if the given recipe has been unlocked for crafting.
+	// Hooked to always return true when unlock all recipes cheat is active.
+	constexpr const char* IsRecipeUnlocked =
+		"48 89 5C 24 ?? 57 48 83 EC ?? 48 8B DA 48 8B F9 E8 ?? ?? ?? ?? 84 C0 75 ?? 48 8B D3";
+
+	// -------------------------------------------------------------------------
 	// Mining
 	// -------------------------------------------------------------------------
 

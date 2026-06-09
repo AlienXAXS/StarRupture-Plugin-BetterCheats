@@ -1,5 +1,6 @@
 #include "panel_player.h"
 #include "player_attributes.h"
+#include "player_building.h"
 #include "player_items.h"
 #include "player_skills.h"
 #include "player_tools.h"
@@ -46,8 +47,7 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_Building(IModLoaderImGui* imgui)
 	{
-		imgui->SeparatorText("Building");
-		imgui->TextDisabled("No building options yet.");
+		Building::RenderImGui(imgui);
 	}
 
 	void RenderPlayer_Skills(IModLoaderImGui* imgui)

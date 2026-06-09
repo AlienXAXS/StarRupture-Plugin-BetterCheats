@@ -4,9 +4,11 @@
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
+#include "player_building.h"
 #include "player_items.h"
 #include "player_skills.h"
 #include "player_tools.h"
+#include "world_wave.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -35,9 +37,14 @@ static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
 {
+	if (!BetterCheats::GameContext::IsInChimeraMain())
+		return;
+
 	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
+	BetterCheats::Panels::Building::Tick(deltaSeconds);
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 	BetterCheats::Panels::Tools::Tick(deltaSeconds);
+	BetterCheats::Panels::Wave::Tick(deltaSeconds);
 }
 
 extern "C" {
@@ -53,17 +60,32 @@ extern "C" {
 
 		LOG_INFO("BetterCheats initializing...");
 
-		BetterCheatsConfig::Config::Initialize(self);
-		BetterCheats::GameContext::Initialize(self);
-		BetterCheats::Panels::Attributes::Initialize();
-		BetterCheats::Panels::Items::Initialize();
-		BetterCheats::Panels::Tools::Initialize();
-
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
 			LOG_WARN("BetterCheats is disabled in config");
 			return true;
 		}
+
+		LOG_INFO("Initializing config...");
+		BetterCheatsConfig::Config::Initialize(self);
+
+		LOG_INFO("Initializing game context and panels...");
+		BetterCheats::GameContext::Initialize(self);
+
+		LOG_INFO("Initializing Attribute panel...");
+		BetterCheats::Panels::Attributes::Initialize();
+
+		LOG_INFO("Initializing Building panel...");
+		BetterCheats::Panels::Building::Initialize();
+
+		LOG_INFO("Initializing Item Spawner panel...");
+		BetterCheats::Panels::Items::Initialize();
+
+		LOG_INFO("Initializing Tools panel...");
+		BetterCheats::Panels::Tools::Initialize();
+
+		LOG_INFO("Initializing Wave panel...");
+		BetterCheats::Panels::Wave::Initialize();
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
@@ -93,8 +115,10 @@ extern "C" {
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
 		BetterCheats::Panels::Attributes::Shutdown();
+		BetterCheats::Panels::Building::Shutdown();
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Tools::Shutdown();
+		BetterCheats::Panels::Wave::Shutdown();
 
 		g_self = nullptr;
 	}

@@ -8,8 +8,7 @@ namespace BetterCheats::Panels
 		static bool noResourceCost = false;
 
 		imgui->SeparatorText("Crafters");
-		imgui->Checkbox("Instant Build", &instantBuild);
-		imgui->Checkbox("No Resource Cost", &noResourceCost);
+		imgui->TextDisabled("No options yet.");
 	}
 
 	void RenderMachines_Power(IModLoaderImGui* imgui)
@@ -17,7 +16,7 @@ namespace BetterCheats::Panels
 		static bool noPowerDrain = false;
 
 		imgui->SeparatorText("Power");
-		imgui->Checkbox("No Power Drain", &noPowerDrain);
+		imgui->TextDisabled("No options yet.");
 	}
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)

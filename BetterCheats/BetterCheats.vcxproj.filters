@@ -89,12 +89,18 @@
     <ClInclude Include="panel_world.h">
       <Filter>Cheats\World</Filter>
     </ClInclude>
+    <ClInclude Include="world_wave.h">
+      <Filter>Cheats\World</Filter>
+    </ClInclude>
 
     <!-- Cheats\Player -->
     <ClInclude Include="panel_player.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
     <ClInclude Include="player_attributes.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="player_building.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
     <ClInclude Include="player_items.h">
@@ -161,12 +167,18 @@
     <ClCompile Include="panel_world.cpp">
       <Filter>Cheats\World</Filter>
     </ClCompile>
+    <ClCompile Include="world_wave.cpp">
+      <Filter>Cheats\World</Filter>
+    </ClCompile>
 
     <!-- Cheats\Player -->
     <ClCompile Include="panel_player.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_attributes.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="player_building.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_items.cpp">

@@ -606,6 +606,8 @@ namespace BetterCheats::Panels::Items
 
 #ifndef _DEBUG
 		RequestRefreshItemList();
+#else
+		self->hooks->Splash->ReleaseSplashHold();
 #endif
 	}
 

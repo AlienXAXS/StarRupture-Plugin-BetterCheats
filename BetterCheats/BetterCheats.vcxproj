@@ -111,7 +111,9 @@
     <ClCompile Include="panel_misc.cpp" />
     <ClCompile Include="panel_player.cpp" />
     <ClCompile Include="panel_world.cpp" />
+    <ClCompile Include="world_wave.cpp" />
     <ClCompile Include="player_attributes.cpp" />
+    <ClCompile Include="player_building.cpp" />
     <ClCompile Include="player_items.cpp" />
     <ClCompile Include="player_skills.cpp" />
     <ClCompile Include="player_tools.cpp" />
@@ -127,7 +129,9 @@
     <ClInclude Include="panel_misc.h" />
     <ClInclude Include="panel_player.h" />
     <ClInclude Include="panel_world.h" />
+    <ClInclude Include="world_wave.h" />
     <ClInclude Include="player_attributes.h" />
+    <ClInclude Include="player_building.h" />
     <ClInclude Include="player_items.h" />
     <ClInclude Include="player_skills.h" />
     <ClInclude Include="player_tools.h" />

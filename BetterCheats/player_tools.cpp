@@ -24,8 +24,9 @@ namespace BetterCheats::Panels::Tools
 		UpdateRepHarvesterHeatStackFn g_originalUpdateRepHarvesterHeatStack = nullptr;
 		HookHandle                    g_hookUpdateRepHarvesterHeatStack      = nullptr;
 
-		bool g_overload        = false;
-		bool g_noDrillOverheat = false;
+		bool     g_overload        = false;
+		bool     g_noDrillOverheat = false;
+		int32_t  g_overheatTickCounter = 0;
 
 		float __fastcall Detour_GetMiningDamage(void* self, bool isHittingWeakSpot)
 		{
@@ -56,9 +57,13 @@ namespace BetterCheats::Panels::Tools
 
 			*outHandle = hooks->Install(addr, detour, original);
 			if (!*outHandle)
+			{
 				LOG_WARN("Tools: failed to install %s hook", name);
+			}
 			else
+			{
 				LOG_INFO("Tools: %s hook installed", name);
+			}
 		}
 
 		void RemoveHook(HookHandle* handle, void** original, const char* name)
@@ -79,7 +84,7 @@ namespace BetterCheats::Panels::Tools
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
-			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
+			SDK::ACrPlayerControllerBase* pc = reinterpret_cast<SDK::ACrPlayerControllerBase*>(SDK::UGameplayStatics::GetPlayerController(world, 0));
 			if (!pc || !pc->Pawn) return nullptr;
 
 			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
@@ -132,16 +137,21 @@ namespace BetterCheats::Panels::Tools
 
 			if (g_noDrillOverheat)
 			{
-				for (int32_t i = 0; i < effects.Num(); ++i)
+				++g_overheatTickCounter;
+				if (g_overheatTickCounter >= 300)
 				{
-					if (effects[i].Handle == -1)
-						continue;
+					g_overheatTickCounter = 0;
+					for (int32_t i = 0; i < effects.Num(); ++i)
+					{
+						if (effects[i].Handle == -1)
+							continue;
 
-					const SDK::UGameplayEffect* ge = SDK::UAbilitySystemBlueprintLibrary::GetGameplayEffectFromActiveEffectHandle(effects[i]);
-					if (!ge || ge->GetName() != "Default__GE_WeaponHeatStackBase_C")
-						continue;
+						const SDK::UGameplayEffect* ge = SDK::UAbilitySystemBlueprintLibrary::GetGameplayEffectFromActiveEffectHandle(effects[i]);
+						if (!ge || ge->GetName() != "Default__GE_WeaponHeatStackBase_C")
+							continue;
 
-					asc->RemoveActiveGameplayEffect(effects[i], -1);
+						asc->RemoveActiveGameplayEffect(effects[i], -1);
+					}
 				}
 			}
 		}
