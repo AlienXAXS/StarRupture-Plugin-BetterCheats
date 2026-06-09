@@ -4,8 +4,12 @@
 
 namespace BetterCheats::Panels::Attributes
 {
-	// Resolves and caches AOB-pattern function pointers — call once during plugin init.
+	// Resolves and caches AOB-pattern function pointers, and registers the world
+	// begin/end-play hooks used to gate Tick() to ChimeraMain — call once during plugin init.
 	void Initialize();
+
+	// Unregisters the world begin/end-play hooks — call once during plugin shutdown.
+	void Shutdown();
 
 	void RenderImGui(IModLoaderImGui* imgui);
 

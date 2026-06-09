@@ -6,12 +6,31 @@
 #include "ChimeraUI_classes.hpp"
 #include "UMG_classes.hpp"
 
+#include <cstring>
 #include <mutex>
 
 namespace BetterCheats::Panels::Attributes
 {
 	namespace
 	{
+		constexpr const char* kChimeraMainWorldName = "ChimeraMain";
+
+		// Set/cleared by the world begin/end-play hooks below — Tick() reads this
+		// instead of probing UWorld::GetWorld() every engine tick.
+		bool g_inChimeraMain = false;
+
+		void OnWorldBeginPlay(SDK::UWorld* /*world*/)
+		{
+			// Only fires for the ChimeraMain world (main game world only).
+			g_inChimeraMain = true;
+		}
+
+		void OnWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
+		{
+			if (worldName && std::strcmp(worldName, kChimeraMainWorldName) == 0)
+				g_inChimeraMain = false;
+		}
+
 		// -------------------------------------------------------------------------
 		// One slot per lockable attribute. "Locked" pins CurrentValue (and
 		// BaseValue, so gameplay-effect re-evaluation can't override it) to
@@ -407,6 +426,23 @@ namespace BetterCheats::Panels::Attributes
 
 	void Initialize()
 	{
+		IPluginSelf* self = GetSelf();
+		if (self)
+		{
+			self->hooks->World->RegisterOnWorldBeginPlay(&OnWorldBeginPlay);
+			self->hooks->World->RegisterOnAfterWorldEndPlay(&OnWorldEndPlay);
+
+			// Hot-reload: the world begin-play event already fired before we registered
+			// for it, so probe the current world directly to pick up an in-progress session.
+			try
+			{
+				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				if (world && world->GetName() == kChimeraMainWorldName)
+					g_inChimeraMain = true;
+			}
+			catch (...) {}
+		}
+
 		IPluginScanner* scanner = GetScanner();
 		if (!scanner)
 			return;
@@ -417,8 +453,20 @@ namespace BetterCheats::Panels::Attributes
 			LOG_WARN("Failed to resolve UCrUW_HealthHud::SetupProgressBar pattern — HUD will not refresh immediately.");
 	}
 
+	void Shutdown()
+	{
+		if (IPluginSelf* self = GetSelf())
+		{
+			self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
+			self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnWorldEndPlay);
+		}
+	}
+
 	void Tick(float /*deltaSeconds*/)
 	{
+		if (!g_inChimeraMain)
+			return;
+
 		SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
 
 		// Keep RenderImGui()'s snapshot fresh and apply any edits it queued —

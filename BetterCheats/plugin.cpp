@@ -3,6 +3,7 @@
 #include "plugin_config.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
+#include "player_items.h"
 #include "player_skills.h"
 
 static IPluginSelf* g_self = nullptr;
@@ -51,6 +52,7 @@ extern "C" {
 
 		BetterCheatsConfig::Config::Initialize(self);
 		BetterCheats::Panels::Attributes::Initialize();
+		BetterCheats::Panels::Items::Initialize();
 
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
@@ -84,6 +86,8 @@ extern "C" {
 		}
 
 		BetterCheats::CheatMenu::Shutdown();
+		BetterCheats::Panels::Attributes::Shutdown();
+		BetterCheats::Panels::Items::Shutdown();
 
 		g_self = nullptr;
 	}
