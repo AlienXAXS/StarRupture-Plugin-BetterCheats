@@ -71,6 +71,9 @@
     <ClInclude Include="plugin_helpers.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="game_context.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
 
     <!-- SDK (header resolved via $(PluginSDKInclude) in Shared.props) -->
     <ClInclude Include="$(PluginSDKInclude)\plugin_interface.h">
@@ -144,6 +147,11 @@
       <Filter>Plugin Core\Config</Filter>
     </ClCompile>
 
+    <!-- Plugin Core\Helpers -->
+    <ClCompile Include="game_context.cpp">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClCompile>
+
     <!-- Cheats\Menu -->
     <ClCompile Include="cheat_menu.cpp">
       <Filter>Cheats\Menu</Filter>
@@ -197,6 +205,12 @@
       <Filter>SDK</Filter>
     </ClCompile>
     <ClCompile Include="$(StarRuptureSDKSourceDir)UMG_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)GameplayAbilities_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)Chimera_functions.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
 

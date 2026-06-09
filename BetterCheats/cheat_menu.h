@@ -49,15 +49,9 @@ namespace BetterCheats
 		static void RenderUnavailableMessage(IModLoaderImGui* imgui, float avail_x, float avail_y, const char* message);
 		static void NavItem(IModLoaderImGui* imgui, const char* label, MenuCategory cat);
 
-		// Gates the menu to single-player ChimeraMain sessions only.
-		static void OnWorldBeginPlay(SDK::UWorld* world);
-		static void OnWorldEndPlay(SDK::UWorld* world, const char* worldName);
-		static bool IsSinglePlayer();
-
 		static IPluginSelf*  s_self;
 		static PanelHandle   s_panelHandle;
 		static bool          s_open;
-		static bool          s_inChimeraMain;
 		static MenuCategory  s_activeCategory;
 	};
 }

@@ -1,4 +1,5 @@
 #include "cheat_menu.h"
+#include "game_context.h"
 #include "plugin_helpers.h"
 #include "panel_world.h"
 #include "panel_player.h"
@@ -6,17 +7,11 @@
 #include "panel_enemies.h"
 #include "panel_misc.h"
 
-#include "Chimera_classes.hpp"
-
-#include <cstring>
-
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
 // ---------------------------------------------------------------------------
 namespace
 {
-	constexpr const char* kChimeraMainWorldName = "ChimeraMain";
-
 	// ImGuiCol
 	constexpr int Col_Text          = 0;
 	constexpr int Col_ChildBg       = 3;
@@ -46,7 +41,6 @@ namespace BetterCheats
 	IPluginSelf* CheatMenu::s_self           = nullptr;
 	PanelHandle  CheatMenu::s_panelHandle    = nullptr;
 	bool         CheatMenu::s_open           = false;
-	bool         CheatMenu::s_inChimeraMain  = false;
 	MenuCategory CheatMenu::s_activeCategory = MenuCategory::World_Environment;
 
 	// -------------------------------------------------------------------------
@@ -61,29 +55,10 @@ namespace BetterCheats
 		desc.renderFn    = &CheatMenu::OnRender;
 
 		s_panelHandle = self->hooks->UI->RegisterPanel(&desc);
-
-		self->hooks->World->RegisterOnWorldBeginPlay(&CheatMenu::OnWorldBeginPlay);
-		self->hooks->World->RegisterOnAfterWorldEndPlay(&CheatMenu::OnWorldEndPlay);
-
-		// Hot-reload: the world begin-play event already fired before we registered
-		// for it, so probe the current world directly to pick up an in-progress session.
-		try
-		{
-			SDK::UWorld* world = SDK::UWorld::GetWorld();
-			if (world && world->GetName() == kChimeraMainWorldName)
-				s_inChimeraMain = true;
-		}
-		catch (...) {}
 	}
 
 	void CheatMenu::Shutdown()
 	{
-		if (s_self)
-		{
-			s_self->hooks->World->UnregisterOnWorldBeginPlay(&CheatMenu::OnWorldBeginPlay);
-			s_self->hooks->World->UnregisterOnAfterWorldEndPlay(&CheatMenu::OnWorldEndPlay);
-		}
-
 		if (s_panelHandle && s_self)
 		{
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
@@ -102,30 +77,6 @@ namespace BetterCheats
 			s_self->hooks->UI->SetPanelOpen(s_panelHandle);
 		else
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
-	}
-
-	// -------------------------------------------------------------------------
-	// Visibility gate — single-player ChimeraMain sessions only
-	// -------------------------------------------------------------------------
-
-	void CheatMenu::OnWorldBeginPlay(SDK::UWorld* /*world*/)
-	{
-		// Only fires for the ChimeraMain world (main game world only).
-		s_inChimeraMain = true;
-	}
-
-	void CheatMenu::OnWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
-	{
-		if (worldName && std::strcmp(worldName, kChimeraMainWorldName) == 0)
-			s_inChimeraMain = false;
-	}
-
-	bool CheatMenu::IsSinglePlayer()
-	{
-		if (!s_self || !s_self->hooks->NetMode)
-			return false;
-
-		return s_self->hooks->NetMode->GetNetMode() == EPluginNetMode::Standalone;
 	}
 
 	// -------------------------------------------------------------------------
@@ -152,13 +103,13 @@ namespace BetterCheats
 		float avail_x, avail_y;
 		imgui->GetContentRegionAvail(&avail_x, &avail_y);
 
-		if (!s_inChimeraMain)
+		if (!GameContext::IsInChimeraMain())
 		{
 			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in game");
 			return;
 		}
 
-		if (!IsSinglePlayer())
+		if (!GameContext::IsSinglePlayer())
 		{
 			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in single player");
 			return;

@@ -1,6 +1,7 @@
 #include "plugin.h"
 #include "plugin_helpers.h"
 #include "plugin_config.h"
+#include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
 #include "player_items.h"
@@ -36,6 +37,7 @@ static void OnEngineTick(float deltaSeconds)
 {
 	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
+	BetterCheats::Panels::Tools::Tick(deltaSeconds);
 }
 
 extern "C" {
@@ -52,6 +54,7 @@ extern "C" {
 		LOG_INFO("BetterCheats initializing...");
 
 		BetterCheatsConfig::Config::Initialize(self);
+		BetterCheats::GameContext::Initialize(self);
 		BetterCheats::Panels::Attributes::Initialize();
 		BetterCheats::Panels::Items::Initialize();
 		BetterCheats::Panels::Tools::Initialize();
@@ -88,6 +91,7 @@ extern "C" {
 		}
 
 		BetterCheats::CheatMenu::Shutdown();
+		BetterCheats::GameContext::Shutdown();
 		BetterCheats::Panels::Attributes::Shutdown();
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Tools::Shutdown();
