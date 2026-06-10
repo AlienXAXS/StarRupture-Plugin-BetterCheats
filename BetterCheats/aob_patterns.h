@@ -93,4 +93,46 @@ namespace BetterCheats::AOB
 	constexpr const char* UpdateRepHarvesterHeatStack =
 		"40 57 48 81 EC ?? ?? ?? ?? 48 8B F9 E8 ?? ?? ?? ?? 83 F8";
 
+	// -------------------------------------------------------------------------
+	// Mass Entity Templates
+	// -------------------------------------------------------------------------
+
+	// Class::Function  FMassEntityConfig::DestroyEntityTemplate
+	// Parameters       (FMassEntityConfig* self, const UWorld* world)
+	// Removes the cached FMassEntityTemplate (and its baked FConstSharedStruct
+	// fragments, e.g. FCrElectricityParameters) for this config from the world's
+	// FMassEntityTemplateRegistry, so the next GetOrCreateEntityTemplate rebuilds
+	// it from the trait's current values.
+	constexpr const char* FMassEntityConfig_DestroyEntityTemplate =
+		"48 8B C4 48 89 58 ?? 48 89 70 ?? 57 48 83 EC ?? 33 FF 4C 8D 40";
+
+	// Class::Function  FMassEntityConfig::GetOrCreateEntityTemplate
+	// Parameters       (FMassEntityConfig* self, const UWorld* world) -> const FMassEntityTemplate*
+	// Rebuilds (or returns the cached) FMassEntityTemplate for this config,
+	// re-running each trait's BuildTemplate (e.g. UCrElectricityTrait::BuildTemplate)
+	// against the trait's current property values.
+	constexpr const char* FMassEntityConfig_GetOrCreateEntityTemplate =
+		"40 55 53 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 45 33 FF";
+
+	// Class::Function  UWorld::GetSubsystem<UMassEntitySubsystem>
+	// Parameters       (UWorld* self) -> UMassEntitySubsystem*
+	constexpr const char* UWorld_GetMassEntitySubsystem =
+		"48 89 5C 24 ?? 57 48 83 EC ?? 48 8D B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? ?? 48 8B D8 74 ?? 48 85 C0 74 ?? 48 8B C8 E8 ?? ?? ?? ?? EB ?? 48 85 DB 74 ?? E8 ?? ?? ?? ?? 48 85 C0 74 ?? 48 8D 50 ?? 48 63 40 ?? 3B 43 ?? 7F ?? 48 8B C8 48 8B 43 ?? ?? ?? ?? ?? 74 ?? 33 DB 48 8B D3 48 8B CF 48 8B 5C 24 ?? 48 83 C4 ?? 5F E9 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 4C 89 4C 24 ?? 4C 89 44 24";
+
+	// Class::Function  FMassEntityManager::TSharedFragmentsContainer<FConstSharedStruct>::FindOrAdd
+	// Parameters       (TSharedFragmentsContainer<FConstSharedStruct>* self, uint32 Hash, const UScriptStruct* Type, const uint8* Data) -> FScriptContainerElement*
+	// Looks up (or registers) the content-hashed const-shared-fragment block for a
+	// struct value. Used to locate the existing FCrElectricityParameters block that
+	// already-placed buildings reference, so it can be patched in place.
+	constexpr const char* FMassEntityManager_ConstSharedFragments_FindOrAdd =
+		"48 8B C4 48 89 58 ?? 48 89 68 ?? 89 50 ?? 56 57 41 54 41 56 41 57 48 83 EC ?? BD ?? ?? ?? ?? 45 33 F6";
+
+	// Class::Function  UE::StructUtils::GetStructInstanceCrc32
+	// Parameters       (const UScriptStruct* ScriptStruct, const uint8* StructMemory, uint32 CRC) -> uint32
+	// Same hashing function UCrElectricityTrait::BuildTemplate uses to key the
+	// const-shared-fragment pool - used to re-derive the hash of the pre-edit
+	// FCrElectricityParameters so the existing shared block can be found.
+	constexpr const char* StructUtils_GetStructInstanceCrc32 =
+		"48 89 5C 24 ?? 57 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 ?? ?? ?? ?? 48 8B D9 48 8B FA 48 C1 E9";
+
 } // namespace BetterCheats::AOB

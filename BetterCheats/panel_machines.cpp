@@ -1,4 +1,5 @@
 #include "panel_machines.h"
+#include "machine_power.h"
 
 namespace BetterCheats::Panels
 {
@@ -13,10 +14,7 @@ namespace BetterCheats::Panels
 
 	void RenderMachines_Power(IModLoaderImGui* imgui)
 	{
-		static bool noPowerDrain = false;
-
-		imgui->SeparatorText("Power");
-		imgui->TextDisabled("No options yet.");
+		Power::RenderImGui(imgui);
 	}
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)

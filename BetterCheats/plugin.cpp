@@ -9,6 +9,7 @@
 #include "player_skills.h"
 #include "player_tools.h"
 #include "world_wave.h"
+#include "machine_power.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -86,6 +87,9 @@ extern "C" {
 
 		LOG_INFO("Initializing Wave panel...");
 		BetterCheats::Panels::Wave::Initialize();
+
+		LOG_INFO("Initializing Power panel...");
+		BetterCheats::Panels::Power::Initialize();
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
