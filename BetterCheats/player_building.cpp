@@ -1,6 +1,7 @@
 #include "player_building.h"
 #include "plugin_helpers.h"
 #include "aob_patterns.h"
+#include "session_config.h"
 
 #include "AuActorPlacement_classes.hpp"
 #include "Chimera_classes.hpp"
@@ -332,6 +333,19 @@ namespace BetterCheats::Panels::Building
 
 	}
 
+	void ApplySavedConfig()
+	{
+		if (!SessionConfig::IsLoaded())
+			return;
+
+		g_noBuildCost      = SessionConfig::Get("playerBuilding.noBuildCost", false);
+		g_unlimitedZoop    = SessionConfig::Get("playerBuilding.unlimitedZoop", false);
+		g_unlockAllBuildings = SessionConfig::Get("playerBuilding.unlockAllBuildings", false);
+		g_unlockAllRecipes = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
+
+		LOG_INFO("Building: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
+	}
+
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
@@ -350,14 +364,16 @@ namespace BetterCheats::Panels::Building
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Build Cost");
 			imgui->TableSetColumnIndex(1);
-			imgui->Checkbox("##no_build_cost", &g_noBuildCost);
+			if (imgui->Checkbox("##no_build_cost", &g_noBuildCost))
+				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlimited Foundation Zoop (Not working in this build)");
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(true);
-			imgui->Checkbox("##unlimited_zoop", &g_unlimitedZoop);
+			if (imgui->Checkbox("##unlimited_zoop", &g_unlimitedZoop))
+				SessionConfig::Set("playerBuilding.unlimitedZoop", g_unlimitedZoop);
 			imgui->EndDisabled();
 
 			imgui->EndTable();
@@ -378,13 +394,15 @@ namespace BetterCheats::Panels::Building
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlock All Buildings");
 			imgui->TableSetColumnIndex(1);
-			imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings);
+			if (imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
+				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlock All Recipes");
 			imgui->TableSetColumnIndex(1);
-			imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes);
+			if (imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
+				SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes);
 
 			imgui->EndTable();
 		}

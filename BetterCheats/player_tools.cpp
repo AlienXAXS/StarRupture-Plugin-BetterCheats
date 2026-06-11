@@ -1,6 +1,7 @@
 #include "player_tools.h"
 #include "plugin_helpers.h"
 #include "aob_patterns.h"
+#include "session_config.h"
 
 #include "Chimera_classes.hpp"
 
@@ -158,6 +159,17 @@ namespace BetterCheats::Panels::Tools
 		catch (...) {}
 	}
 
+	void ApplySavedConfig()
+	{
+		if (!SessionConfig::IsLoaded())
+			return;
+
+		g_overload        = SessionConfig::Get("playerTools.overloadMining", false);
+		g_noDrillOverheat = SessionConfig::Get("playerTools.noDrillOverheat", false);
+
+		LOG_INFO("Tools: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
+	}
+
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		imgui->SeparatorText("Mining");
@@ -171,13 +183,15 @@ namespace BetterCheats::Panels::Tools
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Overload Handheld Mining Laser");
 			imgui->TableSetColumnIndex(1);
-			imgui->Checkbox("##overload_mining", &g_overload);
+			if (imgui->Checkbox("##overload_mining", &g_overload))
+				SessionConfig::Set("playerTools.overloadMining", g_overload);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Handheld Drill Overheat");
 			imgui->TableSetColumnIndex(1);
-			imgui->Checkbox("##no_drill_overheat", &g_noDrillOverheat);
+			if (imgui->Checkbox("##no_drill_overheat", &g_noDrillOverheat))
+				SessionConfig::Set("playerTools.noDrillOverheat", g_noDrillOverheat);
 
 			imgui->EndTable();
 		}

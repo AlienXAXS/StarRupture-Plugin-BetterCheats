@@ -50,6 +50,11 @@
       <UniqueIdentifier>{a1b2c3d4-0004-0004-0004-000000000001}</UniqueIdentifier>
     </Filter>
 
+    <!-- Third-party libraries (vendored, unmodified) -->
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{a1b2c3d4-0005-0005-0005-000000000001}</UniqueIdentifier>
+    </Filter>
+
   </ItemGroup>
 
   <!-- =========================================================
@@ -73,6 +78,17 @@
     </ClInclude>
     <ClInclude Include="game_context.h">
       <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="session_config.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+
+    <!-- ThirdParty -->
+    <ClInclude Include="json.hpp">
+      <Filter>ThirdParty</Filter>
+    </ClInclude>
+    <ClInclude Include="json_fwd.hpp">
+      <Filter>ThirdParty</Filter>
     </ClInclude>
 
     <!-- SDK (header resolved via $(PluginSDKInclude) in Shared.props) -->
@@ -158,6 +174,9 @@
 
     <!-- Plugin Core\Helpers -->
     <ClCompile Include="game_context.cpp">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="session_config.cpp">
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
 

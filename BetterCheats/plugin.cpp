@@ -1,6 +1,7 @@
 #include "plugin.h"
 #include "plugin_helpers.h"
 #include "plugin_config.h"
+#include "session_config.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -32,6 +33,21 @@ static PluginInfo s_pluginInfo = {
 static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 {
 	BetterCheats::CheatMenu::Toggle();
+}
+
+// Fires once a save is fully loaded into the world — reload this session's
+// JSON config and re-apply any persisted cheat settings.
+static void OnExperienceLoadComplete()
+{
+	if (!BetterCheats::SessionConfig::Reload())
+	{
+		return;
+	}
+
+	BetterCheats::Panels::Attributes::ApplySavedConfig();
+	BetterCheats::Panels::Building::ApplySavedConfig();
+	BetterCheats::Panels::Tools::ApplySavedConfig();
+	BetterCheats::Panels::Power::ApplySavedConfig();
 }
 
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
@@ -69,6 +85,7 @@ extern "C" {
 
 		LOG_INFO("Initializing config...");
 		BetterCheatsConfig::Config::Initialize(self);
+		BetterCheats::SessionConfig::Initialize(self);
 
 		LOG_INFO("Initializing game context and panels...");
 		BetterCheats::GameContext::Initialize(self);
@@ -99,6 +116,15 @@ extern "C" {
 		self->hooks->Input->RegisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
 
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
+		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
+
+		// Hot-reload: experience-load-complete may have already fired before we
+		// registered, so if a session is already in progress, run the same setup now.
+		if (BetterCheats::GameContext::IsInChimeraMain())
+		{
+			LOG_INFO("BetterCheats: hot-reloaded into an active session — running experience-load setup now.");
+			OnExperienceLoadComplete();
+		}
 
 		LOG_INFO("BetterCheats initialized — toggle key: %s", toggleKey);
 
@@ -114,6 +140,7 @@ extern "C" {
 			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 			g_self->hooks->Input->UnregisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
 			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
+			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 		}
 
 		BetterCheats::CheatMenu::Shutdown();
@@ -123,6 +150,7 @@ extern "C" {
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Wave::Shutdown();
+		BetterCheats::SessionConfig::Shutdown();
 
 		g_self = nullptr;
 	}

@@ -24,9 +24,7 @@ namespace BetterCheats::Panels
 		static bool instantCooldown = false;
 
 		imgui->SeparatorText("Weapons");
-		imgui->Checkbox("Infinite Ammo", &infiniteAmmo);
-		imgui->Checkbox("No Reload", &noReload);
-		imgui->Checkbox("Instant Ability Cooldown", &instantCooldown);
+		imgui->TextDisabled("No options yet.");
 	}
 
 	void RenderPlayer_Movement(IModLoaderImGui* imgui)
@@ -35,8 +33,7 @@ namespace BetterCheats::Panels
 		static float speedMul   = 1.0f;
 
 		imgui->SeparatorText("Movement");
-		imgui->Checkbox("No-Clip", &noClip);
-		imgui->SliderFloat("Speed Multiplier", &speedMul, 0.1f, 10.0f, "%.1fx");
+		imgui->TextDisabled("No options yet.");
 	}
 
 	void RenderPlayer_Teleport(IModLoaderImGui* imgui)

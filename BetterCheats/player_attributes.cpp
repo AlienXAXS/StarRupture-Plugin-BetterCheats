@@ -1,6 +1,7 @@
 #include "player_attributes.h"
 #include "plugin_helpers.h"
 #include "aob_patterns.h"
+#include "session_config.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
@@ -44,6 +45,13 @@ namespace BetterCheats::Panels::Attributes
 		};
 		constexpr int kAttrCount = static_cast<int>(AttrId::Count);
 
+		// Names used as JSON keys under "playerAttributes.locks" in the
+		// per-session config (see session_config.h) — order matches AttrId.
+		constexpr const char* kAttrNames[kAttrCount] = {
+			"Health", "Energy", "Shield", "Hydration", "Calories", "Oxygen",
+			"Toxicity", "Radiation", "Heat", "Drain", "Corrosion", "Infection", "Temperature"
+		};
+
 		// `value` doubles as both the slider's live value and, while locked, the
 		// value Tick() pins the attribute to — there's no separate lock value.
 		struct LockSlot
@@ -52,6 +60,15 @@ namespace BetterCheats::Panels::Attributes
 			float value  = 0.0f;
 		};
 		LockSlot g_locks[kAttrCount];
+
+		// Persists a slot's lock state/value to the active session's JSON
+		// config so it's restored next time this session loads.
+		void PersistLock(AttrId id, const LockSlot& lock)
+		{
+			const std::string base = std::string("playerAttributes.locks.") + kAttrNames[static_cast<int>(id)];
+			SessionConfig::Set(base + ".locked", lock.locked);
+			SessionConfig::Set(base + ".value", lock.value);
+		}
 
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kAttributeTableFlags = (1 << 6) | (1 << 9) | (3 << 13);
@@ -398,17 +415,24 @@ namespace BetterCheats::Panels::Attributes
 			char format[32];
 			snprintf(format, sizeof(format), "%%.0f / %.0f", attr.max);
 			if (imgui->SliderFloat("##value", &lock.value, attr.min, attr.max, format))
+			{
 				QueueAttributeEdit(id, lock.value);
+				PersistLock(id, lock);
+			}
 
 			imgui->SameLine(0.0f, -1.0f);
 			if (imgui->SmallButton(snapLabel))
 			{
 				lock.value = snapTarget;
 				QueueAttributeEdit(id, snapTarget);
+				PersistLock(id, lock);
 			}
 
 			imgui->TableSetColumnIndex(2);
+			const bool wasLocked = lock.locked;
 			RenderLockCheckbox(imgui, lock);
+			if (lock.locked != wasLocked)
+				PersistLock(id, lock);
 
 			imgui->PopID();
 		}
@@ -460,6 +484,28 @@ namespace BetterCheats::Panels::Attributes
 			self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 			self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnWorldEndPlay);
 		}
+	}
+
+	void ApplySavedConfig()
+	{
+		if (!SessionConfig::IsLoaded())
+			return;
+
+		for (int i = 0; i < kAttrCount; ++i)
+		{
+			const std::string base = std::string("playerAttributes.locks.") + kAttrNames[i];
+			LockSlot& lock = g_locks[i];
+			lock.locked = SessionConfig::Get(base + ".locked", false);
+			lock.value  = SessionConfig::Get(base + ".value", 0.0f);
+
+			if (lock.locked)
+				QueueAttributeEdit(static_cast<AttrId>(i), lock.value);
+		}
+
+		if (SessionConfig::Get("playerAttributes.maxHealth.set", false))
+			QueueMaxHealthEdit(SessionConfig::Get("playerAttributes.maxHealth.value", 0.0f));
+
+		LOG_INFO("Attributes: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
 	void Tick(float /*deltaSeconds*/)
@@ -548,7 +594,11 @@ namespace BetterCheats::Panels::Attributes
 				imgui->InputFloat("##max_health", &maxHealthValue, 10.0f, 100.0f, "%.0f");
 				imgui->SameLine(0.0f, -1.0f);
 				if (imgui->Button("Set##max_health"))
+				{
 					QueueMaxHealthEdit(maxHealthValue);
+					SessionConfig::Set("playerAttributes.maxHealth.set", true);
+					SessionConfig::Set("playerAttributes.maxHealth.value", maxHealthValue);
+				}
 
 				// Column 3 left blank — Max Health has no lock toggle.
 				imgui->TableSetColumnIndex(2);

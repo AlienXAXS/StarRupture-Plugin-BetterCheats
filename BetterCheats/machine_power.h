@@ -9,4 +9,10 @@ namespace BetterCheats::Panels::Power
 	void Initialize();
 
 	void RenderImGui(IModLoaderImGui* imgui);
+
+	// Re-applies the electricity overrides persisted in the active session's
+	// JSON config (see session_config.h) by triggering a fresh building scan.
+	// Call on the game thread after SessionConfig::Reload(), e.g. from
+	// OnExperienceLoadComplete.
+	void ApplySavedConfig();
 }

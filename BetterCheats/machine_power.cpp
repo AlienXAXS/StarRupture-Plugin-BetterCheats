@@ -1,7 +1,7 @@
 #include "machine_power.h"
 #include "aob_patterns.h"
-#include "plugin_config.h"
 #include "plugin_helpers.h"
+#include "session_config.h"
 
 #include "Chimera_classes.hpp"
 #include "Chimera_parameters.hpp"
@@ -286,7 +286,7 @@ namespace BetterCheats::Panels::Power
 			}
 
 			const int rawCount = assetData.Num();
-			LOG_INFO("Power: asset registry reports %d CrBuildingData asset(s).", rawCount);
+			LOG_DEBUG("Power: asset registry reports %d CrBuildingData asset(s).", rawCount);
 
 			for (int i = 0; i < rawCount; ++i)
 			{
@@ -350,7 +350,7 @@ namespace BetterCheats::Panels::Power
 						}
 
 						const int rawCount = assetData.Num();
-						LOG_INFO("Power: asset registry reports %d MassEntityConfigAsset asset(s).", rawCount);
+						LOG_DEBUG("Power: asset registry reports %d MassEntityConfigAsset asset(s).", rawCount);
 
 						for (int i = 0; i < rawCount; ++i)
 						{
@@ -391,19 +391,20 @@ namespace BetterCheats::Panels::Power
 							// Reloading a save reloads this asset from disk, discarding any
 							// in-memory edit from a previous session — re-apply any
 							// persisted override now so newly-spawned entities pick it up.
-							if (BetterCheatsConfig::Config::HasPowerOverride(entry.assetName))
+							const nlohmann::json overrideJson = SessionConfig::Get("power." + entry.assetName, nlohmann::json());
+							if (!overrideJson.is_null())
 							{
-								const float overrideValue = BetterCheatsConfig::Config::GetPowerOverride(entry.assetName, entry.value);
+								const float overrideValue = overrideJson.get<float>();
 								if (overrideValue != trait->Parameters.ElectricityValue)
 								{
-									LOG_INFO("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
+									LOG_DEBUG("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
 										entry.name.c_str(), trait->Parameters.ElectricityValue, overrideValue);
 									trait->Parameters.ElectricityValue = overrideValue;
 								}
 								entry.value = overrideValue;
 							}
 
-							LOG_INFO("Power:   [%s] type=%s value=%.2f trait=%p configAsset=%p (asset '%s')",
+							LOG_DEBUG("Power:   [%s] type=%s value=%.2f trait=%p configAsset=%p (asset '%s')",
 								entry.name.c_str(), AgentTypeName(entry.type), entry.value,
 								static_cast<void*>(trait), static_cast<void*>(configAsset), assetName.c_str());
 
@@ -447,7 +448,7 @@ namespace BetterCheats::Panels::Power
 				return;
 			}
 
-			LOG_INFO("{POSTING_TO_GAME_THREAD} Power: posting building scan to game thread.");
+			LOG_DEBUG("{POSTING_TO_GAME_THREAD} Power: posting building scan to game thread.");
 			hooks->Engine->PostToGameThread(&ScanEntriesOnGameThread, nullptr);
 		}
 
@@ -541,14 +542,14 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				LOG_INFO("Power: rebuilding Mass entity template for '%s' (configAsset=%p, world=%p)...",
+				LOG_DEBUG("Power: rebuilding Mass entity template for '%s' (configAsset=%p, world=%p)...",
 					assetName, static_cast<void*>(configAsset), static_cast<void*>(world));
 
 				g_destroyEntityTemplate(&configAsset->Config, world);
-				LOG_INFO("Power: DestroyEntityTemplate done for '%s'.", assetName);
+				LOG_DEBUG("Power: DestroyEntityTemplate done for '%s'.", assetName);
 
 				g_getOrCreateEntityTemplate(&configAsset->Config, world);
-				LOG_INFO("Power: rebuilt Mass entity template for '%s'.", assetName);
+				LOG_DEBUG("Power: rebuilt Mass entity template for '%s'.", assetName);
 			}
 			catch (...)
 			{
@@ -717,7 +718,7 @@ namespace BetterCheats::Panels::Power
 				const float before = liveParams->ElectricityValue;
 				liveParams->ElectricityValue = newValue;
 
-				LOG_INFO("Power: patched existing shared ElectricityValue %.2f -> %.2f for '%s' (hash=%08X, block=%p).",
+				LOG_DEBUG("Power: patched existing shared ElectricityValue %.2f -> %.2f for '%s' (hash=%08X, block=%p).",
 					before, newValue, assetName, oldHash, sharedMemory);
 			}
 			catch (...)
@@ -772,8 +773,7 @@ namespace BetterCheats::Panels::Power
 
 				// Persist the override so it can be re-applied after a save reload
 				// reloads the asset from disk and discards this in-memory edit.
-				BetterCheatsConfig::Config::SetPowerOverride(ctx->assetName, ctx->value);
-				LOG_INFO("Power: persisted override '%s' = %.2f.", ctx->assetName.c_str(), ctx->value);
+				SessionConfig::Set("power." + ctx->assetName, ctx->value);
 
 				// Force the cached Mass entity template to rebuild from the trait's
 				// new value, so newly-spawned buildings of this type pick it up
@@ -796,7 +796,7 @@ namespace BetterCheats::Panels::Power
 				return;
 			}
 
-			LOG_INFO("{POSTING_TO_GAME_THREAD} Power: posting ElectricityValue=%.2f write for '%s'.", value, assetName.c_str());
+			LOG_DEBUG("{POSTING_TO_GAME_THREAD} Power: posting ElectricityValue=%.2f write for '%s'.", value, assetName.c_str());
 			hooks->Engine->PostToGameThread(&ApplyValueOnGameThread, new ApplyValueContext{ packageName, assetName, value });
 		}
 	}
@@ -805,6 +805,18 @@ namespace BetterCheats::Panels::Power
 	{
 		ResolveTemplateFunctions();
 		ResolveSharedFragmentFunctions();
+	}
+
+	void ApplySavedConfig()
+	{
+		if (!SessionConfig::IsLoaded())
+			return;
+
+		// ScanEntriesOnGameThread re-applies any persisted "power.<assetName>"
+		// overrides as it discovers each electricity-using building, so a
+		// rescan is sufficient to restore this session's settings.
+		LOG_INFO("Power: applying saved config for session '%s' via rescan.", SessionConfig::GetSessionName().c_str());
+		RequestRescan();
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)

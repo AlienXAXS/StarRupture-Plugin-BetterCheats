@@ -120,6 +120,7 @@
     <ClCompile Include="player_tools.cpp" />
     <ClCompile Include="plugin.cpp" />
     <ClCompile Include="plugin_config.cpp" />
+    <ClCompile Include="session_config.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aob_patterns.h" />
@@ -140,6 +141,9 @@
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />
     <ClInclude Include="plugin_helpers.h" />
+    <ClInclude Include="session_config.h" />
+    <ClInclude Include="json.hpp" />
+    <ClInclude Include="json_fwd.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="BetterCheats.def" />

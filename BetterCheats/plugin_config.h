@@ -2,8 +2,6 @@
 
 #include "plugin_interface.h"
 
-#include <string>
-
 namespace BetterCheatsConfig
 {
 	static const ConfigEntry CONFIG_ENTRIES[] = {
@@ -56,27 +54,6 @@ namespace BetterCheatsConfig
 			if (s_self && s_self->config->ReadString(s_self, "Menu", "ToggleKey", buffer, sizeof(buffer), "F10"))
 				return buffer;
 			return "F10";
-		}
-
-		// Persisted per-building electricity output/consumption overrides, keyed by
-		// the building's Mass entity config asset name (e.g. "DA_WindPowerGenerator").
-		// Reloading a save reloads these assets from disk, discarding any in-memory
-		// edit, so the Power panel re-applies these overrides on every rescan.
-		static bool HasPowerOverride(const std::string& key)
-		{
-			return s_self ? s_self->config->ReadBool(s_self, "PowerOverrides", (key + "_set").c_str(), false) : false;
-		}
-
-		static float GetPowerOverride(const std::string& key, float defaultValue)
-		{
-			return s_self ? s_self->config->ReadFloat(s_self, "PowerOverrides", key.c_str(), defaultValue) : defaultValue;
-		}
-
-		static void SetPowerOverride(const std::string& key, float value)
-		{
-			if (!s_self) return;
-			s_self->config->WriteFloat(s_self, "PowerOverrides", key.c_str(), value);
-			s_self->config->WriteBool(s_self, "PowerOverrides", (key + "_set").c_str(), true);
 		}
 
 	private:
