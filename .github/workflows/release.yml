@@ -122,7 +122,7 @@ jobs:
 
       - name: Build Client Release
         run: |
-          msbuild "BetterCheats.sln" `
+          msbuild "StarRupture-Plugin-BetterCheats.sln" `
             /p:Configuration="Client Release" `
             /p:Platform=x64 `
             /p:PostBuildEventUseInBuild=false `
@@ -209,14 +209,14 @@ jobs:
             --title "BetterCheats Plugin $tag" `
             --generate-notes
 
-      - name: Upload Client build to Nexus Mods
-        uses: Nexus-Mods/upload-action@main
-        with:
-          api_key: ${{ secrets.NEXUS_APIKEY }}
-          file_group_id: ${{ secrets.NEXUS_CLIENT_GROUP_ID }}
-          filename: ${{ github.workspace }}\BetterCheats-Client-${{ steps.tag.outputs.TAG }}.zip
-          archive_existing_file: true
-          allow_mod_manager_download: false
-          display_name: "BetterCheats Client ${{ steps.tag.outputs.TAG }}"
-          description: "Changelog: https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.TAG }}"
-          version: ${{ steps.tag.outputs.NEXUS_VERSION }}
+      # - name: Upload Client build to Nexus Mods
+      #   uses: Nexus-Mods/upload-action@main
+      #   with:
+      #     api_key: ${{ secrets.NEXUS_APIKEY }}
+      #     file_group_id: ${{ secrets.NEXUS_CLIENT_GROUP_ID }}
+      #     filename: ${{ github.workspace }}\BetterCheats-Client-${{ steps.tag.outputs.TAG }}.zip
+      #     archive_existing_file: true
+      #     allow_mod_manager_download: false
+      #     display_name: "BetterCheats Client ${{ steps.tag.outputs.TAG }}"
+      #     description: "Changelog: https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.TAG }}"
+      #     version: ${{ steps.tag.outputs.NEXUS_VERSION }}
