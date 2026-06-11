@@ -8,4 +8,5 @@ namespace BetterCheats::Panels::Wave
 	void Shutdown();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
+	void ApplySavedConfig();
 }

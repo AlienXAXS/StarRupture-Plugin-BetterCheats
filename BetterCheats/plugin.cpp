@@ -48,6 +48,7 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Building::ApplySavedConfig();
 	BetterCheats::Panels::Tools::ApplySavedConfig();
 	BetterCheats::Panels::Power::ApplySavedConfig();
+	BetterCheats::Panels::Wave::ApplySavedConfig();
 }
 
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of

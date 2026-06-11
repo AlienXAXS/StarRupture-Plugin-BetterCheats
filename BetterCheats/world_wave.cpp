@@ -1,5 +1,6 @@
 #include "world_wave.h"
 #include "plugin_helpers.h"
+#include "session_config.h"
 
 #include "Chimera_classes.hpp"
 
@@ -106,9 +107,29 @@ namespace BetterCheats::Panels::Wave
 		// Pending action — queued from the ImGui render thread, applied on the
 		// game thread in Tick(). Last write wins within a single frame.
 		// -------------------------------------------------------------------------
-		enum class PendingAction : int { None, Pause, Resume, Cancel, SkipSegment, WavesOn, WavesOff, StartHeat, StartCold };
+		enum class PendingAction : int { None, Pause, Resume, Cancel, SkipSegment, WavesOn, WavesOff, StartHeat };
 
 		std::atomic<int> g_pendingAction{ static_cast<int>(PendingAction::None) };
+
+		// -------------------------------------------------------------------------
+		// "Pause Waves Entirely" — pins ACrWaveTimerActor::bPause so the timer's
+		// countdown never advances (the next wave is marked as never to arrive),
+		// even with no wave currently active. Persisted per-session.
+		// -------------------------------------------------------------------------
+		std::atomic<bool> g_pauseWavesEnabled{ false };
+
+		void EnforceWavePause()
+		{
+			try
+			{
+				if (g_timerSubsys && g_timerSubsys->TimerActor)
+					g_timerSubsys->TimerActor->bPause = g_pauseWavesEnabled.load();
+			}
+			catch (...)
+			{
+				LOG_WARN("Wave: exception enforcing wave pause.");
+			}
+		}
 
 		void ApplyPendingAction()
 		{
@@ -129,7 +150,6 @@ namespace BetterCheats::Panels::Wave
 					case PendingAction::WavesOn:      if (g_timerSubsys) g_timerSubsys->WavesActive(true);                       break;
 					case PendingAction::WavesOff:     if (g_timerSubsys) g_timerSubsys->WavesActive(false);                      break;
 					case PendingAction::StartHeat:    if (g_waveSubsys)  g_waveSubsys->StartWave(SDK::EEnviroWave::Heat);        break;
-					case PendingAction::StartCold:    if (g_waveSubsys)  g_waveSubsys->StartWave(SDK::EEnviroWave::Cold);        break;
 					default: break;
 				}
 			}
@@ -158,7 +178,6 @@ namespace BetterCheats::Panels::Wave
 			switch (t)
 			{
 			case SDK::EEnviroWave::Heat: return "Heat Wave";
-			case SDK::EEnviroWave::Cold: return "Cold Wave";
 			default:                     return "None";
 			}
 		}
@@ -214,7 +233,13 @@ namespace BetterCheats::Panels::Wave
 			RunObjectScan();
 
 		ApplyPendingAction();
+		EnforceWavePause();
 		RefreshSnapshot();
+	}
+
+	void ApplySavedConfig()
+	{
+		g_pauseWavesEnabled = SessionConfig::Get("wave.pauseWavesEnabled", false);
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
@@ -288,16 +313,13 @@ namespace BetterCheats::Panels::Wave
 			imgui->TableSetColumnIndex(1);
 			if (imgui->SmallButton("Heat"))
 				g_pendingAction.store(static_cast<int>(PendingAction::StartHeat));
-			imgui->SameLine(0.0f, 4.0f);
-			if (imgui->SmallButton("Cold"))
-				g_pendingAction.store(static_cast<int>(PendingAction::StartCold));
 			imgui->TableSetColumnIndex(2);
 
 			// Pause / Resume
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Pause");
 			imgui->TableSetColumnIndex(1);
-			if (!snap.inProgress)   imgui->TextDisabled("No wave active");
+			if (!snap.inProgress)   imgui->TextDisabled("Planet Stable");
 			else if (snap.isPaused) imgui->Text("Paused");
 			else                    imgui->Text("Running");
 			imgui->TableSetColumnIndex(2);
@@ -318,12 +340,28 @@ namespace BetterCheats::Panels::Wave
 			// Cancel
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Cancel Wave");
-			imgui->TableSetColumnIndex(1); imgui->Text(snap.inProgress ? "In Progress" : "No Wave Active");
+			imgui->TableSetColumnIndex(1); imgui->Text(snap.inProgress ? "In Progress" : "Planet Stable");
 			imgui->TableSetColumnIndex(2);
 			if (snap.inProgress)
 			{
 				if (imgui->SmallButton("Cancel"))
 					g_pendingAction.store(static_cast<int>(PendingAction::Cancel));
+			}
+
+			// Pause Waves Entirely
+			{
+				const bool pauseWaves = g_pauseWavesEnabled.load();
+				imgui->TableNextRow(0, 0.0f);
+				imgui->TableSetColumnIndex(0); imgui->Text("Pause Waves");
+				imgui->TableSetColumnIndex(1); imgui->Text(pauseWaves ? "Paused" : "Planet Stable");
+				imgui->TableSetColumnIndex(2);
+				if (imgui->SmallButton(pauseWaves ? "Unpause##wave_timer" : "Pause##wave_timer"))
+				{
+					g_pauseWavesEnabled = !pauseWaves;
+					SessionConfig::Set("wave.pauseWavesEnabled", !pauseWaves);
+				}
+				imgui->SetItemTooltip("Pins the wave timer so the next wave never arrives, "
+					"even while the menu is closed.");
 			}
 
 			imgui->EndTable();
