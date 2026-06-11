@@ -1,78 +1,82 @@
-# StarRupture Plugin SDK
+# BetterCheats -- StarRupture Plugin
 
-Everything you need to build plugins for the [StarRupture ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) — without forking or building the modloader itself.
+A modular in-game cheat menu for [StarRupture](https://store.steampowered.com/app/1631270/StarRupture/), built on the StarRupture ModLoader. Provides a categorized ImGui panel for player, world, machine, and enemy cheats, with per-save persistence of your settings.
 
-## What's in this repo
+**Target:** Game client only
 
-| Path | Description |
-|---|---|
-| `include/plugin_interface.h` | The full plugin API — interfaces, callbacks, enums |
-| `include/plugin_network_helpers.h` | Typed helpers for sending and receiving network packets |
-| `ExamplePlugin/` | Minimal starter plugin — copy, rename, and go |
-| `StarRupture SDK/` | Dumper-7 generated UE5 SDK headers (Client + Server + Generic) |
-| `Shared.props` | MSBuild properties for SDK paths and build configs |
-| `PluginDevelopment.md` | Full API reference and developer guide |
+---
 
-## Quick start
+## What It Does
 
-1. **Download `dwmapi.dll`** from the [latest release](../../releases/latest) — pick Client or Server depending on your target
-2. **Clone this repo**
-3. **Copy `ExamplePlugin/` to a new folder**, rename it, and update the project name/GUID in the `.vcxproj`
-4. **Add your project to `StarRupture-Plugin-SDK.sln`** (or create your own `.sln`)
-5. **Build** using Visual Studio 2022 with the `Client Release` or `Server Release` configuration
-6. Drop your `.dll` into `Binaries\Win64\Plugins\` alongside `dwmapi.dll` and launch the game
+BetterCheats registers an in-game ImGui panel with a sidebar of cheat categories. The menu only appears during a single-player `ChimeraMain` world session -- it stays hidden on the main menu and other game modes.
 
-See [PluginDevelopment.md](PluginDevelopment.md) for the complete API reference, hook list, config system, pattern scanner, and ImGui integration.
-
-## Build configurations
-
-| Configuration | Target | Defines |
+| Category | Sub-tabs | Examples |
 |---|---|---|
-| `Client Debug` / `Client Release` | Game client | `MODLOADER_CLIENT_BUILD` |
-| `Server Debug` / `Server Release` | Dedicated server | `MODLOADER_SERVER_BUILD` |
-| `Debug` / `Release` | Generic (no SDK-specific APIs) | — |
+| World | Environment | World/environment manipulation, wave control |
+| Player | Self, Item Spawner, Weapon, Movement, Teleport, Building, Skills, Tools | God mode / attribute locks, spawn items, weapon tweaks, movement speed, teleport, free building, skill unlocks, tool tweaks |
+| Machinery | Crafters, Power, Logistic Drones, Rail Drones | Instant crafting, infinite machine power, drone control |
+| Enemies | Enemies | Enemy-related cheats |
+| Misc | -- | Miscellaneous cheats |
 
-Client builds have access to Input, UI panel, and HUD hooks. These interfaces are `nullptr` on server builds, so guard any client-only code with `#if defined(MODLOADER_CLIENT_BUILD)`.
+Continuous effects (e.g. attribute locks, power overrides, wave control) are enforced every engine tick via `OnEngineTick`, so they keep applying even while the menu is closed.
 
-Network channel (`hooks->Network`) is available on both client and server builds; it is `nullptr` on generic builds. Use `plugin_network_helpers.h` for typed packet send/receive rather than calling `IPluginNetworkChannel` directly.
+### Per-save settings
 
-## Runtime DLL
+Cheat toggles that should persist are saved to a JSON file per save session (`Plugins\BetterCheats\<SessionName>.json`). When a save finishes loading, BetterCheats reloads that session's config and re-applies any saved cheat states automatically -- including on plugin hot-reload into an already-active session.
 
-`dwmapi.dll` is the modloader itself. It is **not** built from this repo. Pre-built binaries are attached to each [release](../../releases/latest).
+---
 
-Do **not** fork or build the main modloader repo just to develop a plugin — this SDK repo is the intended starting point.
+## Configuration
 
-## Plugin structure (v19+)
+Config is stored in `Plugins\config\BetterCheats.ini` and is generated on first launch.
 
-`PluginInit` now receives a single `IPluginSelf*` instead of four separate pointers:
+| Section | Key | Default | Description |
+|---|---|---|---|
+| `General` | `Enabled` | `true` | `true` or `false` -- enables the plugin |
+| `Menu` | `ToggleKey` | `F10` | Key to open / close the BetterCheats menu |
 
-```cpp
-extern "C" __declspec(dllexport) bool PluginInit(IPluginSelf* self)
-{
-    g_self = self; // store — pointer is stable for the plugin's lifetime
+The toggle key can be rebound at runtime via the modloader's keybind settings -- BetterCheats picks up the change automatically.
 
-    self->logger->Info(self, "Hello from %s", self->name);
-    self->config->InitializeFromSchema(self, &MY_SCHEMA);
-    self->hooks->Engine->RegisterOnInit(OnEngineInit);
-    return true;
-}
+---
+
+## Installation
+
+1. Download the latest release ZIP from the [Releases](../../releases) page: `BetterCheats_Plugin-Client-*.zip`
+
+2. Extract into your game's `Binaries\Win64\` folder. The ZIP contains a `Plugins\` folder -- it will sit alongside your existing `dwmapi.dll`.
+
+3. Launch the game, then press **F10** (default) in-game to open the menu.
+
+> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)** to be installed first.
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| Menu doesn't appear | The menu only shows in a single-player world session. Confirm you're loaded into a save, and that `Enabled=true` in `BetterCheats.ini`. |
+| Toggle key does nothing | Check the keybind in the modloader settings -- it may have been rebound. |
+| Saved cheat settings not restored | Check `modloader.log` for errors loading `Plugins\BetterCheats\<SessionName>.json`. |
+| Plugin not loading | Check `modloader.log` in `Binaries\Win64\` for errors. |
+| Game updated, plugin broken | Some features use byte-pattern scanning. A game update may shift the patterns -- wait for a plugin update. |
+
+---
+
+## Building from Source
+
+Requires Visual Studio 2022 and the [StarRupture-Plugin-SDK](https://github.com/AlienXAXS/StarRupture-Plugin-SDK) and [StarRupture-Game-SDK](https://github.com/AlienXAXS/StarRupture-Game-SDK), checked out alongside this repo.
+
+Clone the repo, open `StarRupture-Plugin-BetterCheats.sln`, and build the `Client Release|x64` configuration:
+
+```
+msbuild StarRupture-Plugin-BetterCheats.sln /p:Configuration="Client Release" /p:Platform=x64
 ```
 
-`IPluginSelf` bundles everything your plugin needs:
+The output DLL is placed in `build\Client Release\Plugins\BetterCheats.dll`.
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | `const char*` | Plugin name from `PluginInfo` |
-| `version` | `const char*` | Plugin version from `PluginInfo` |
-| `logger` | `IPluginLogger*` | Logging interface |
-| `config` | `IPluginConfig*` | Config read/write interface |
-| `scanner` | `IPluginScanner*` | Memory pattern scanner |
-| `hooks` | `IPluginHooks*` | All hook and event sub-interfaces |
+---
 
-The `ExamplePlugin/` files demonstrate the full pattern.
+## Disclaimer
 
-## Interface versioning
-
-This SDK tracks the current `PLUGIN_INTERFACE_VERSION_MAX` from the modloader. The `PluginInfo` struct your plugin returns must set `interfaceVersion` to `PLUGIN_INTERFACE_VERSION` (defined in `plugin_interface.h`) or the modloader will refuse to load it.
-
-The SDK repo is updated alongside each modloader release.
+This is a single-player cheat menu intended for personal use. Use at your own risk -- the authors are not responsible for any damage caused by using this software, including loss of save data or issues caused by using cheats in multiplayer/server contexts.
