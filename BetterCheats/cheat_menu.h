@@ -43,6 +43,7 @@ namespace BetterCheats
 		static bool IsOpen() { return s_open; }
 
 	private:
+		static void OnPanelClosed(PanelHandle handle);
 		static void OnRender(IModLoaderImGui* imgui);
 		static void RenderSidebar(IModLoaderImGui* imgui);
 		static void RenderContent(IModLoaderImGui* imgui);

@@ -42,8 +42,23 @@ namespace BetterCheats
 	PanelHandle  CheatMenu::s_panelHandle    = nullptr;
 	bool         CheatMenu::s_open           = false;
 	MenuCategory CheatMenu::s_activeCategory = MenuCategory::World_Environment;
+	void* g_inputCaptureToken				 = nullptr;
 
 	// -------------------------------------------------------------------------
+
+
+	void CheatMenu::OnPanelClosed(PanelHandle handle)
+	{
+		if (handle == s_panelHandle)
+		{
+			s_open = false;
+			if (s_self && g_inputCaptureToken)
+			{
+				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+				g_inputCaptureToken = nullptr;
+			}
+		}
+	}
 
 	void CheatMenu::Initialize(IPluginSelf* self)
 	{
@@ -55,6 +70,7 @@ namespace BetterCheats
 		desc.renderFn    = &CheatMenu::OnRender;
 
 		s_panelHandle = self->hooks->UI->RegisterPanel(&desc);
+		s_self->hooks->UI->RegisterOnPanelWindowClosed(OnPanelClosed);
 	}
 
 	void CheatMenu::Shutdown()
@@ -62,6 +78,11 @@ namespace BetterCheats
 		if (s_panelHandle && s_self)
 		{
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
+
+			if (g_inputCaptureToken )
+				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+
+			s_self->hooks->UI->UnregisterOnPanelWindowClosed(OnPanelClosed);
 			s_self->hooks->UI->UnregisterPanel(s_panelHandle);
 			s_panelHandle = nullptr;
 		}
@@ -74,9 +95,15 @@ namespace BetterCheats
 
 		s_open = !s_open;
 		if (s_open)
+		{
 			s_self->hooks->UI->SetPanelOpen(s_panelHandle);
+			g_inputCaptureToken = s_self->hooks->UI->AcquireInputCapture();
+		}
 		else
+		{
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
+			s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+		}
 	}
 
 	// -------------------------------------------------------------------------
