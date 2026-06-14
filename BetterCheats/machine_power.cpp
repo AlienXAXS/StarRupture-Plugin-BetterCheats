@@ -313,6 +313,12 @@ namespace BetterCheats::Panels::Power
 			}
 		}
 
+		// Forward declarations - defined further below, but needed here so the
+		// reload-override path in ScanEntriesOnGameThread can patch already-placed
+		// buildings and rebuild the template, same as the Apply button does.
+		void RebuildEntityTemplate(SDK::UMassEntityConfigAsset* configAsset, const char* assetName);
+		void PatchExistingSharedFragment(const SDK::FCrElectricityParameters& oldParams, float newValue, const char* assetName);
+
 		// -------------------------------------------------------------------------
 		// Enumerates every MassEntityConfigAsset via the asset registry (mirrors
 		// UCrUW_CheatItemsTab-style force-loading) and records every config whose
@@ -399,7 +405,14 @@ namespace BetterCheats::Panels::Power
 								{
 									LOG_DEBUG("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
 										entry.name.c_str(), trait->Parameters.ElectricityValue, overrideValue);
+
+									const SDK::FCrElectricityParameters oldParams = trait->Parameters;
 									trait->Parameters.ElectricityValue = overrideValue;
+
+									// Patch buildings already placed by this save's data so they
+									// don't sit on the default value until Apply is hit again.
+									PatchExistingSharedFragment(oldParams, overrideValue, entry.assetName.c_str());
+									RebuildEntityTemplate(configAsset, entry.assetName.c_str());
 								}
 								entry.value = overrideValue;
 							}

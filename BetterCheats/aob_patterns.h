@@ -127,6 +127,19 @@ namespace BetterCheats::AOB
 	constexpr const char* FMassEntityManager_ConstSharedFragments_FindOrAdd =
 		"48 8B C4 48 89 58 ?? 48 89 68 ?? 89 50 ?? 56 57 41 54 41 56 41 57 48 83 EC ?? BD ?? ?? ?? ?? 45 33 F6";
 
+	// -------------------------------------------------------------------------
+	// Items
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UAuItemsComponent::AddNewItem
+	// Parameters       (UAuItemsComponent* this, TArray<FAuAddedItem>* result, const UAuItemDataBase* NewItem, uint32 Amount) -> TArray<FAuAddedItem>*
+	// The real server-authoritative "give item" path: performs the HaveSpace check,
+	// inserts into OwnedItems, marks the array dirty for replication, and broadcasts
+	// OnItemAdded/OnItemAddedEx. Returns an empty array when the add was rejected
+	// (e.g. not enough inventory space, or not authority).
+	constexpr const char* AddNewItem =
+		"44 89 4C 24 ?? 4C 89 44 24 ?? 53 56 57 41 55 41 56 48 81 EC ?? ?? ?? ??";
+
 	// Class::Function  UE::StructUtils::GetStructInstanceCrc32
 	// Parameters       (const UScriptStruct* ScriptStruct, const uint8* StructMemory, uint32 CRC) -> uint32
 	// Same hashing function UCrElectricityTrait::BuildTemplate uses to key the

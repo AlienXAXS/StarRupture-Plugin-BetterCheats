@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "aob_patterns.h"
 #include "Chimera_classes.hpp"
-#include "Chimera_parameters.hpp"
 #include "AuItems_classes.hpp"
 #include "Engine_classes.hpp"
 #include "AssetRegistry_classes.hpp"
@@ -29,6 +29,9 @@ namespace BetterCheats::Panels::Items
 		struct ItemEntry
 		{
 			SDK::UAuItemDataBase* item              = nullptr;
+			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — the cached
+			                                         // `item` CDO can be garbage-collected if its Blueprint
+			                                         // class/package gets unloaded before "Give Item" is clicked.
 			SDK::UTexture2D*      icon              = nullptr;  // UTexture2D from ItemIcon.ResourceObject
 			bool                  iconIsTexture2D   = false;    // cached IsA(UTexture2D) result
 			PluginTextureHandle   cachedTexHandle   = nullptr;  // persistent SRV wrapping engine GPU resource
@@ -150,31 +153,41 @@ namespace BetterCheats::Panels::Items
 			return static_cast<SDK::ACrPlayerControllerBase*>(pc);
 		}
 
-		// ACrPlayerControllerBase::ServerDebugAddItems is the RPC that actually works in
-		// single-player: it takes a plain name string (the item's UniqueItemName) and an
-		// amount, and the server-side handler inserts the item directly. This mirrors what
-		// other working cheat mods do — the inventory-component path (ServerDebugAddItem)
-		// does nothing observable in this build.
-		void CallServerDebugAddItems(SDK::ACrPlayerControllerBase* controller, const std::string& uniqueName, int32_t amount)
+		// UAuItemsComponent::AddNewItem is the real server-authoritative "give item" path
+		// (HaveSpace check, OwnedItems insertion, replication dirty-marking, OnItemAdded
+		// broadcasts) — found by tracing ServerDebugAddItems in IDA. Calling it directly
+		// avoids the RPC entirely and gives us the actual result: an empty array means
+		// the add was rejected (no space / not authority), a populated one lists what
+		// was actually added.
+		using AddNewItemFn = SDK::TArray<SDK::FAuAddedItem>*(__fastcall*)(
+			SDK::UAuItemsComponent* self, SDK::TArray<SDK::FAuAddedItem>* result, const SDK::UAuItemDataBase* newItem, uint32_t amount);
+
+		AddNewItemFn g_addNewItem            = nullptr;
+		bool         g_addNewItemResolveTried = false;
+
+		AddNewItemFn ResolveAddNewItem()
 		{
-			static SDK::UFunction* func = nullptr;
-			if (!func)
-				func = controller->Class->GetFunction("CrPlayerControllerBase", "ServerDebugAddItems");
-			if (!func)
+			if (g_addNewItemResolveTried)
+				return g_addNewItem;
+
+			g_addNewItemResolveTried = true;
+
+			IPluginScanner* scanner = GetScanner();
+			if (!scanner)
 			{
-				LOG_WARN("Item Spawner: could not resolve ACrPlayerControllerBase::ServerDebugAddItems.");
-				return;
+				LOG_WARN("Item Spawner: scanner unavailable — cannot resolve UAuItemsComponent::AddNewItem.");
+				return nullptr;
 			}
 
-			const std::wstring wname(uniqueName.begin(), uniqueName.end());
-			SDK::Params::CrPlayerControllerBase_ServerDebugAddItems parms{};
-			parms.Name_0 = SDK::FString(wname.c_str());
-			parms.Amount = amount;
+			uintptr_t address = scanner->FindPatternInMainModule(AOB::AddNewItem);
+			if (!address)
+			{
+				LOG_WARN("Item Spawner: UAuItemsComponent::AddNewItem pattern not found.");
+				return nullptr;
+			}
 
-			const auto flags = func->FunctionFlags;
-			func->FunctionFlags |= 0x400; // FUNC_NetServer — force the call through on a listen-server / SP host
-			controller->ProcessEvent(func, &parms);
-			func->FunctionFlags = flags;
+			g_addNewItem = reinterpret_cast<AddNewItemFn>(address);
+			return g_addNewItem;
 		}
 
 		// Returns the resource backing an item's icon brush — typically a UTexture2D —
@@ -444,6 +457,7 @@ namespace BetterCheats::Panels::Items
 
 						ItemEntry entry;
 						entry.item       = item;
+						entry.assetData  = assetData[i];
 						entry.icon       = GetItemIconResource(item);
 						if (entry.icon) { try { entry.iconIsTexture2D = entry.icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
 						entry.maxStack   = item->MaxStack > 0 ? item->MaxStack : 1;
@@ -454,6 +468,10 @@ namespace BetterCheats::Panels::Items
 
 						// Skip placeholder/stub items that have no real presence in the game.
 						if (entry.name == "None")
+							continue;
+						// Skip raw "...Blueprint" entries — these are the Blueprint assets
+						// themselves, not usable items.
+						if (entry.name.size() >= 9 && entry.name.compare(entry.name.size() - 9, 9, "Blueprint") == 0)
 							continue;
 						if (entry.icon)
 						{
@@ -557,11 +575,12 @@ namespace BetterCheats::Panels::Items
 		// -------------------------------------------------------------------------
 		struct GiveItemContext
 		{
-			std::string uniqueName;
-			int32_t     amount;
-			int         stacks;
-			int         maxStack;
-			std::string displayName;
+			std::string     uniqueName;
+			int32_t         amount;
+			int             stacks;
+			int             maxStack;
+			std::string     displayName;
+			SDK::FAssetData assetData;
 		};
 
 		void GiveItemOnGameThread(void* context)
@@ -570,16 +589,62 @@ namespace BetterCheats::Panels::Items
 
 			try
 			{
-				if (SDK::ACrPlayerControllerBase* controller = GetLocalController())
-				{
-					CallServerDebugAddItems(controller, ctx->uniqueName, ctx->amount);
-					LOG_INFO("Item Spawner: gave %d x \"%s\" [%s] (%d stack(s) of %d).",
-						ctx->amount, ctx->displayName.c_str(), ctx->uniqueName.c_str(), ctx->stacks, ctx->maxStack);
-				}
-				else
+				SDK::ACrPlayerControllerBase* controller = GetLocalController();
+				if (!controller)
 				{
 					LOG_WARN("Item Spawner: no local player controller found — cannot give item.");
+					return;
 				}
+				LOG_DEBUG("Item Spawner: controller=%p Pawn=%p", controller, controller->Pawn);
+
+				auto* character = static_cast<SDK::ACrCharacterPlayerBase*>(controller->Pawn);
+				if (!character || !character->InventoryComponent)
+				{
+					LOG_WARN("Item Spawner: no local inventory component found — cannot give item.");
+					return;
+				}
+				LOG_DEBUG("Item Spawner: character=%p InventoryComponent=%p", character, character->InventoryComponent);
+
+				// Re-resolve the item CDO fresh, on the game thread, right before use — the CDO cached
+				// at scan-time can be garbage-collected if its Blueprint class/package gets unloaded
+				// in the meantime, leaving a dangling pointer.
+				SDK::UAuItemDataBase* itemData = ResolveItemFromBlueprintAsset(ctx->assetData, false);
+				if (!itemData)
+				{
+					LOG_WARN("Item Spawner: could not re-resolve item data for \"%s\" — cannot give item.", ctx->uniqueName.c_str());
+					return;
+				}
+				LOG_DEBUG("Item Spawner: itemData=%p uniqueName=\"%s\" amount=%d", itemData, ctx->uniqueName.c_str(), ctx->amount);
+
+				AddNewItemFn addNewItem = ResolveAddNewItem();
+				if (!addNewItem)
+				{
+					LOG_WARN("Item Spawner: AddNewItem unavailable — cannot give item.");
+					return;
+				}
+				LOG_DEBUG("Item Spawner: addNewItem=%p", reinterpret_cast<void*>(addNewItem));
+
+				SDK::TArray<SDK::FAuAddedItem> added{};
+				LOG_DEBUG("Item Spawner: calling AddNewItem(self=%p, result=%p, item=%p, amount=%u)...",
+					character->InventoryComponent, &added, itemData, static_cast<uint32_t>(ctx->amount));
+				addNewItem(character->InventoryComponent, &added, itemData, static_cast<uint32_t>(ctx->amount));
+				LOG_DEBUG("Item Spawner: AddNewItem returned, added.Num()=%d", added.Num());
+
+				if (added.Num() == 0)
+				{
+					LOG_INFO("Item Spawner: failed to give %d x \"%s\" [%s] — AddNewItem returned no items "
+						"(not enough inventory space, or not authoritative).",
+						ctx->amount, ctx->displayName.c_str(), ctx->uniqueName.c_str());
+					return;
+				}
+
+				int32_t totalAdded = 0;
+				for (int32_t i = 0; i < added.Num(); ++i)
+					totalAdded += added[i].Amount;
+
+				LOG_INFO("Item Spawner: gave %d x \"%s\" [%s] (%d stack(s) of %d, %d entr%s added).",
+					totalAdded, ctx->displayName.c_str(), ctx->uniqueName.c_str(), ctx->stacks, ctx->maxStack,
+					added.Num(), added.Num() == 1 ? "y" : "ies");
 			}
 			catch (...)
 			{
@@ -587,18 +652,20 @@ namespace BetterCheats::Panels::Items
 			}
 		}
 
-		void RequestGiveItem(const std::string& uniqueName, int32_t amount, int stacks, int maxStack, const std::string& displayName)
+		void RequestGiveItem(const std::string& uniqueName, int32_t amount, int stacks, int maxStack, const std::string& displayName, const SDK::FAssetData& assetData)
 		{
 			IPluginHooks* hooks = GetHooks();
 			if (!hooks)
 				return;
 
-			hooks->Engine->PostToGameThread(&GiveItemOnGameThread, new GiveItemContext{ uniqueName, amount, stacks, maxStack, displayName });
+			hooks->Engine->PostToGameThread(&GiveItemOnGameThread, new GiveItemContext{ uniqueName, amount, stacks, maxStack, displayName, assetData });
 		}
 	}
 
 	void Initialize()
 	{
+		ResolveAddNewItem();
+
 		IPluginSelf* self = GetSelf();
 		IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
 		if (splash && splash->IsVisible())
@@ -613,12 +680,20 @@ namespace BetterCheats::Panels::Items
 
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
+		imgui->SeparatorText("Item Spawner");
+
+		if (!ResolveAddNewItem())
+		{
+			imgui->TextWrapped("Item Spawner is unavailable — UAuItemsComponent::AddNewItem could not be "
+				"located in this game build.");
+			return;
+		}
+
 		AdoptPendingItemsIfReady();
 
 		if (!g_itemsLoaded)
 			RequestRefreshItemList();
 
-		imgui->SeparatorText("Item Spawner");
 		imgui->TextWrapped("Pick an item and a number of stacks, then give it to your "
 			"local player. The total amount given is stacks \xC3\x97 the item's stack size.");
 		imgui->Spacing();
@@ -748,7 +823,7 @@ namespace BetterCheats::Panels::Items
 		else
 		{
 			if (imgui->Button("Give Item"))
-				RequestGiveItem(selected->uniqueName, totalAmount, g_stacks, maxStack, selected->name);
+				RequestGiveItem(selected->uniqueName, totalAmount, g_stacks, maxStack, selected->name, selected->assetData);
 			imgui->SameLine(0.0f, 6.0f);
 			char totalLabel[64];
 			snprintf(totalLabel, sizeof(totalLabel), "x%d  (stack %d)", totalAmount, maxStack);
