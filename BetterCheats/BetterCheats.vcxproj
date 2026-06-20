@@ -103,16 +103,21 @@
     <ClCompile Include="$(StarRuptureSDKSourceDir)Chimera_functions.cpp">
       <Visible>false</Visible>
     </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)MassActors_functions.cpp">
+      <Visible>false</Visible>
+    </ClCompile>
     <ClCompile Include="cheat_menu.cpp" />
     <ClCompile Include="game_context.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="panel_enemies.cpp" />
+    <ClCompile Include="enemies.cpp" />
     <ClCompile Include="panel_machines.cpp" />
     <ClCompile Include="machine_power.cpp" />
     <ClCompile Include="panel_misc.cpp" />
     <ClCompile Include="panel_player.cpp" />
     <ClCompile Include="panel_world.cpp" />
     <ClCompile Include="world_wave.cpp" />
+    <ClCompile Include="world_corporations.cpp" />
     <ClCompile Include="player_attributes.cpp" />
     <ClCompile Include="player_building.cpp" />
     <ClCompile Include="player_items.cpp" />
@@ -127,12 +132,14 @@
     <ClInclude Include="cheat_menu.h" />
     <ClInclude Include="game_context.h" />
     <ClInclude Include="panel_enemies.h" />
+    <ClInclude Include="enemies.h" />
     <ClInclude Include="panel_machines.h" />
     <ClInclude Include="machine_power.h" />
     <ClInclude Include="panel_misc.h" />
     <ClInclude Include="panel_player.h" />
     <ClInclude Include="panel_world.h" />
     <ClInclude Include="world_wave.h" />
+    <ClInclude Include="world_corporations.h" />
     <ClInclude Include="player_attributes.h" />
     <ClInclude Include="player_building.h" />
     <ClInclude Include="player_items.h" />

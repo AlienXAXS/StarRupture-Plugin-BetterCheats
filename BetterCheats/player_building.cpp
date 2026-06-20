@@ -34,85 +34,54 @@ namespace BetterCheats::Panels::Building
 		}
 
 		// -------------------------------------------------------------------------
-		// Unlimited Foundation Zoop
-		// UAuActorPlacementData::MaxMultiConfirmPoints (offset 0x0068) caps how many
-		// foundations can be chained in a single right-click drag. We write 9999
-		// every tick on the top-level data asset AND on all sub-variant pointers
-		// (FoundationData, TilesData, FoundationHelperVariant, ZOffsetVariantUp/Down,
-		// AdditionalHelper) because the multi-confirm system may read the limit from
-		// a sub-variant rather than the top-level object.
+		// No Stability Check
+		// ACrAPHelperActorBase::CheckStability / ACrAPHelperActorCustom::CheckStability
+		// are the native functions that actually decide whether a placement passes
+		// the stability graph — their bool return is the real gate. (The data-asset
+		// flags bCheckStability / RequirePlatformConnecting are never read on this
+		// path, which is why patching those did nothing.) We let the original run
+		// — so the HUD stability bar still reflects the real computed value — and
+		// just force the return to true while the cheat is active.
 		// -------------------------------------------------------------------------
 
-		constexpr ptrdiff_t kMaxMultiConfirmPointsOffset  = 0x0068;
-		constexpr ptrdiff_t kTilesDataOffset              = 0x0168;
-		constexpr ptrdiff_t kFoundationDataOffset         = 0x0170;
-		constexpr ptrdiff_t kFoundationHelperVariantOffset = 0x01A0;
-		constexpr ptrdiff_t kZOffsetVariantUpOffset       = 0x01A8;
-		constexpr ptrdiff_t kZOffsetVariantDownOffset     = 0x01B0;
-		constexpr ptrdiff_t kAdditionalHelperOffset       = 0x01B8;
-		constexpr int32_t   kZoopLimit                    = 9999;
+		using CheckStabilityFn = bool(__fastcall*)(void* self, const void* placementData);
 
-		bool                       g_unlimitedZoop        = false;
-		SDK::UAuActorPlacementData* g_lastZoopData        = nullptr;
-		int32_t                    g_originalMaxConfirm   = 0;
+		CheckStabilityFn g_originalCheckStabilityBase   = nullptr;
+		CheckStabilityFn g_originalCheckStabilityCustom = nullptr;
+		HookHandle       g_hookCheckStabilityBase       = nullptr;
+		HookHandle       g_hookCheckStabilityCustom     = nullptr;
+		bool             g_noStabilityCheck             = false;
 
-		void PatchZoopOnObject(SDK::UAuActorPlacementData* obj)
+		bool __fastcall Detour_CheckStabilityBase(void* self, const void* placementData)
 		{
-			if (!obj) return;
-			*reinterpret_cast<int32_t*>(reinterpret_cast<uint8_t*>(obj) + kMaxMultiConfirmPointsOffset) = kZoopLimit;
+			bool result = g_originalCheckStabilityBase(self, placementData);
+			return g_noStabilityCheck ? true : result;
 		}
 
-		void RestoreZoopData()
+		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
-			if (!g_lastZoopData)
-				return;
-
-			*reinterpret_cast<int32_t*>(
-				reinterpret_cast<uint8_t*>(g_lastZoopData) + kMaxMultiConfirmPointsOffset) = g_originalMaxConfirm;
-
-			g_lastZoopData      = nullptr;
-			g_originalMaxConfirm = 0;
+			bool result = g_originalCheckStabilityCustom(self, placementData);
+			return g_noStabilityCheck ? true : result;
 		}
 
-		SDK::UAuActorPlacementData* ReadSubVariant(SDK::UAuActorPlacementData* obj, ptrdiff_t offset)
+		// -------------------------------------------------------------------------
+		// No Stability Check — Multi-Point / Zoop
+		// ACrAPHelperActorCustom::CheckDynamicHelperStability is a separate gate used
+		// by the multi-point "dynamic helper" placement path (chained foundations) —
+		// it does not go through CheckStability at all, which is why zoop placements
+		// were still being blocked. Same approach: let the original run (it also
+		// updates the HUD strength value via SetStabilityStrength) and force true.
+		// -------------------------------------------------------------------------
+
+		using CheckDynamicHelperStabilityFn = bool(__fastcall*)(void* self);
+
+		CheckDynamicHelperStabilityFn g_originalCheckDynamicHelperStability = nullptr;
+		HookHandle                    g_hookCheckDynamicHelperStability     = nullptr;
+
+		bool __fastcall Detour_CheckDynamicHelperStability(void* self)
 		{
-			return *reinterpret_cast<SDK::UAuActorPlacementData**>(reinterpret_cast<uint8_t*>(obj) + offset);
-		}
-
-		void ApplyZoop(SDK::UCrBuildingComponent* bc)
-		{
-			try
-			{
-				const SDK::UAuActorPlacementData* data = bc->BP_GetPlacementData();
-				if (!data)
-				{
-					RestoreZoopData();
-					return;
-				}
-
-				auto* mutableData = const_cast<SDK::UAuActorPlacementData*>(data);
-				int32_t& maxPoints = *reinterpret_cast<int32_t*>(
-					reinterpret_cast<uint8_t*>(mutableData) + kMaxMultiConfirmPointsOffset);
-
-				if (mutableData != g_lastZoopData)
-				{
-					// Building type changed — restore old asset, cache new
-					RestoreZoopData();
-					g_lastZoopData       = mutableData;
-					g_originalMaxConfirm = maxPoints;
-				}
-
-				maxPoints = kZoopLimit;
-
-				// Patch sub-variants — the multi-confirm system may read from these
-				PatchZoopOnObject(ReadSubVariant(mutableData, kFoundationDataOffset));
-				PatchZoopOnObject(ReadSubVariant(mutableData, kTilesDataOffset));
-				PatchZoopOnObject(ReadSubVariant(mutableData, kFoundationHelperVariantOffset));
-				PatchZoopOnObject(ReadSubVariant(mutableData, kZOffsetVariantUpOffset));
-				PatchZoopOnObject(ReadSubVariant(mutableData, kZOffsetVariantDownOffset));
-				PatchZoopOnObject(ReadSubVariant(mutableData, kAdditionalHelperOffset));
-			}
-			catch (...) {}
+			bool result = g_originalCheckDynamicHelperStability(self);
+			return g_noStabilityCheck ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -245,6 +214,60 @@ namespace BetterCheats::Panels::Building
 			else
 				LOG_INFO("Building: IsRecipeUnlocked hook installed");
 		}
+
+		uintptr_t stabilityBaseAddr = scanner->FindPatternInMainModule(AOB::CheckStability_Base);
+		if (!stabilityBaseAddr)
+		{
+			LOG_WARN("Building: CheckStability_Base pattern not found");
+		}
+		else
+		{
+			g_hookCheckStabilityBase = hooks->Install(
+				stabilityBaseAddr,
+				reinterpret_cast<void*>(&Detour_CheckStabilityBase),
+				reinterpret_cast<void**>(&g_originalCheckStabilityBase));
+
+			if (!g_hookCheckStabilityBase)
+				LOG_WARN("Building: failed to install CheckStability_Base hook");
+			else
+				LOG_INFO("Building: CheckStability_Base hook installed");
+		}
+
+		uintptr_t stabilityCustomAddr = scanner->FindPatternInMainModule(AOB::CheckStability_Custom);
+		if (!stabilityCustomAddr)
+		{
+			LOG_WARN("Building: CheckStability_Custom pattern not found");
+		}
+		else
+		{
+			g_hookCheckStabilityCustom = hooks->Install(
+				stabilityCustomAddr,
+				reinterpret_cast<void*>(&Detour_CheckStabilityCustom),
+				reinterpret_cast<void**>(&g_originalCheckStabilityCustom));
+
+			if (!g_hookCheckStabilityCustom)
+				LOG_WARN("Building: failed to install CheckStability_Custom hook");
+			else
+				LOG_INFO("Building: CheckStability_Custom hook installed");
+		}
+
+		uintptr_t dynamicStabilityAddr = scanner->FindPatternInMainModule(AOB::CheckDynamicHelperStability);
+		if (!dynamicStabilityAddr)
+		{
+			LOG_WARN("Building: CheckDynamicHelperStability pattern not found");
+		}
+		else
+		{
+			g_hookCheckDynamicHelperStability = hooks->Install(
+				dynamicStabilityAddr,
+				reinterpret_cast<void*>(&Detour_CheckDynamicHelperStability),
+				reinterpret_cast<void**>(&g_originalCheckDynamicHelperStability));
+
+			if (!g_hookCheckDynamicHelperStability)
+				LOG_WARN("Building: failed to install CheckDynamicHelperStability hook");
+			else
+				LOG_INFO("Building: CheckDynamicHelperStability hook installed");
+		}
 	}
 
 	void Shutdown()
@@ -265,7 +288,27 @@ namespace BetterCheats::Panels::Building
 		}
 		g_unlockAllRecipes = false;
 
-		RestoreZoopData();
+		if (hooks && g_hookCheckStabilityBase)
+		{
+			hooks->Remove(g_hookCheckStabilityBase);
+			g_hookCheckStabilityBase     = nullptr;
+			g_originalCheckStabilityBase = nullptr;
+		}
+
+		if (hooks && g_hookCheckStabilityCustom)
+		{
+			hooks->Remove(g_hookCheckStabilityCustom);
+			g_hookCheckStabilityCustom     = nullptr;
+			g_originalCheckStabilityCustom = nullptr;
+		}
+
+		if (hooks && g_hookCheckDynamicHelperStability)
+		{
+			hooks->Remove(g_hookCheckDynamicHelperStability);
+			g_hookCheckDynamicHelperStability     = nullptr;
+			g_originalCheckDynamicHelperStability = nullptr;
+		}
+		g_noStabilityCheck = false;
 
 		if (g_unlockAllBuildings)
 		{
@@ -288,18 +331,9 @@ namespace BetterCheats::Panels::Building
 
 	void Tick(float /*deltaSeconds*/)
 	{
-		// Zoop — write on every tick while active so the limit stays overridden
-		// even if the player switches building types mid-session.
-		if (g_unlimitedZoop)
-		{
-			if (SDK::ACrPlayerControllerBase* pc = GetLocalController())
-				if (pc->BuildingComponent)
-					ApplyZoop(pc->BuildingComponent);
-		}
-		else if (g_lastZoopData)
-		{
-			RestoreZoopData();
-		}
+		// No Stability Check is purely hook-driven (see Detour_CheckStabilityBase /
+		// Detour_CheckStabilityCustom / Detour_CheckDynamicHelperStability above) —
+		// nothing to do here per-tick.
 
 		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
 		// Writing the flag alone is insufficient; the function must run to rebuild
@@ -338,10 +372,10 @@ namespace BetterCheats::Panels::Building
 		if (!SessionConfig::IsLoaded())
 			return;
 
-		g_noBuildCost      = SessionConfig::Get("playerBuilding.noBuildCost", false);
-		g_unlimitedZoop    = SessionConfig::Get("playerBuilding.unlimitedZoop", false);
+		g_noBuildCost        = SessionConfig::Get("playerBuilding.noBuildCost", false);
+		g_noStabilityCheck   = SessionConfig::Get("playerBuilding.noStabilityCheck", false);
 		g_unlockAllBuildings = SessionConfig::Get("playerBuilding.unlockAllBuildings", false);
-		g_unlockAllRecipes = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
+		g_unlockAllRecipes   = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
 
 		LOG_INFO("Building: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
@@ -350,15 +384,13 @@ namespace BetterCheats::Panels::Building
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags    = (1 << 6) | (1 << 9) | (3 << 13);
-		// ImGuiTableColumnFlags_WidthFixed
-		constexpr int kColumnFixed   = 1 << 4;
 
 		imgui->SeparatorText("Placement");
 
 		if (imgui->BeginTable("##building_placement_table", 2, kTableFlags))
 		{
-			imgui->TableSetupColumn("Option",  kColumnFixed, 500.0f);
-			imgui->TableSetupColumn("Enabled", 0,            0.0f);
+			imgui->TableSetupColumn("Option",  0, 0.85f);
+			imgui->TableSetupColumn("Enabled", 0, 0.15f);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
@@ -369,12 +401,10 @@ namespace BetterCheats::Panels::Building
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
-			imgui->Text("Unlimited Foundation Zoop (Not working in this build)");
+			imgui->Text("No Stability Check");
 			imgui->TableSetColumnIndex(1);
-			imgui->BeginDisabled(true);
-			if (imgui->Checkbox("##unlimited_zoop", &g_unlimitedZoop))
-				SessionConfig::Set("playerBuilding.unlimitedZoop", g_unlimitedZoop);
-			imgui->EndDisabled();
+			if (imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
+				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
 
 			imgui->EndTable();
 		}
@@ -387,8 +417,8 @@ namespace BetterCheats::Panels::Building
 
 		if (imgui->BeginTable("##building_research_table", 2, kTableFlags))
 		{
-			imgui->TableSetupColumn("Option",  kColumnFixed, 500.0f);
-			imgui->TableSetupColumn("Enabled", 0,            0.0f);
+			imgui->TableSetupColumn("Option",  0, 0.85f);
+			imgui->TableSetupColumn("Enabled", 0, 0.15f);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);

@@ -5,4 +5,5 @@
 namespace BetterCheats::Panels
 {
 	void RenderWorld_Environment(IModLoaderImGui* imgui);
+	void RenderWorld_Corporations(IModLoaderImGui* imgui);
 }

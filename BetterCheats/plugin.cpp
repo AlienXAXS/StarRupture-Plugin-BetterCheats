@@ -10,7 +10,9 @@
 #include "player_skills.h"
 #include "player_tools.h"
 #include "world_wave.h"
+#include "world_corporations.h"
 #include "machine_power.h"
+#include "enemies.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -49,6 +51,7 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Tools::ApplySavedConfig();
 	BetterCheats::Panels::Power::ApplySavedConfig();
 	BetterCheats::Panels::Wave::ApplySavedConfig();
+	BetterCheats::Panels::Enemies::ApplySavedConfig();
 }
 
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
@@ -63,6 +66,8 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 	BetterCheats::Panels::Tools::Tick(deltaSeconds);
 	BetterCheats::Panels::Wave::Tick(deltaSeconds);
+	BetterCheats::Panels::Corporations::Tick(deltaSeconds);
+	BetterCheats::Panels::Enemies::Tick(deltaSeconds);
 }
 
 extern "C" {
@@ -109,6 +114,12 @@ extern "C" {
 		LOG_INFO("Initializing Power panel...");
 		BetterCheats::Panels::Power::Initialize();
 
+		LOG_INFO("Initializing Corporations panel...");
+		BetterCheats::Panels::Corporations::Initialize();
+
+		LOG_INFO("Initializing Enemies panel...");
+		BetterCheats::Panels::Enemies::Initialize();
+
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
 
@@ -151,6 +162,8 @@ extern "C" {
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Wave::Shutdown();
+		BetterCheats::Panels::Corporations::Shutdown();
+		BetterCheats::Panels::Enemies::Shutdown();
 		BetterCheats::SessionConfig::Shutdown();
 
 		g_self = nullptr;

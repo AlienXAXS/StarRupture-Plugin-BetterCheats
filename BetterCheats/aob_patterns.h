@@ -22,14 +22,6 @@ namespace BetterCheats::AOB
 	// constexpr const char* ExampleFunction = "48 89 5C 24 ?? 57 48 83 EC 20 ?? ?? ?? ?? ?? ??";
 
 	// -------------------------------------------------------------------------
-	// TEMP — UCrMassBuildingStabilityRemoveProcessorBase
-	// -------------------------------------------------------------------------
-
-	// Class::Function  UCrMassBuildingStabilityRemoveProcessorBase::GatherNeihbours
-	// Parameters       (UCrMassBuildingStabilityRemoveProcessorBase* this, FCrMassPersistentEntityID* Entity, FCrBuildingGraphData* GraphData, FMassEntityManager* EntityManager)
-	constexpr const char* GatherNeihbours = "40 53 57 41 54 41 56 48 81 EC ?? ?? ?? ?? ?? ?? ?? 4D 8B E1";
-
-	// -------------------------------------------------------------------------
 	// HUD refresh
 	// -------------------------------------------------------------------------
 
@@ -64,6 +56,37 @@ namespace BetterCheats::AOB
 	// on the top-level UAuActorPlacementData and all its sub-variant pointers.
 	constexpr const char* AddPoint =
 		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 4C 89 74 24 ?? 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B D9";
+
+	// Class::Function  ACrAPHelperActorBase::CheckStability
+	// Parameters       (ACrAPHelperActorBase* this, const UAuActorPlacementData* PlacementData) -> bool
+	// Native stability gate for the base placement helper actor. Computes the
+	// stability graph result (or the simpler neighbour-trace result, depending on
+	// UAuActorPlacementComponent::NewStability) and returns whether the current
+	// placement is structurally valid. Hooked to force a `true` result — after
+	// letting the original run so the HUD stability bar still reflects the real
+	// computed value — when the No Stability Check cheat is active. Identical
+	// prologue to the Custom overload below except for the final instruction.
+	constexpr const char* CheckStability_Base =
+		"48 8B C4 48 89 58 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? 0F 29 78 ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? ?? 4C 8B E2";
+
+	// Class::Function  ACrAPHelperActorCustom::CheckStability
+	// Parameters       (ACrAPHelperActorCustom* this, const UAuActorPlacementData* PlacementData) -> bool
+	// Same role as ACrAPHelperActorBase::CheckStability above, for the "Custom"
+	// placement helper actor (foundations/buildings using snap sockets).
+	constexpr const char* CheckStability_Custom =
+		"48 8B C4 48 89 58 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? 0F 29 78 ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? ?? 4C 8B EA";
+
+	// Class::Function  ACrAPHelperActorCustom::CheckDynamicHelperStability
+	// Parameters       (ACrAPHelperActorCustom* this) -> bool
+	// Separate stability gate used by the multi-point/zoop "dynamic helper" placement
+	// path (chained foundations) — does not go through ACrAPHelperActorCustom::CheckStability
+	// at all. Builds a per-point connection graph and returns false if any connected
+	// point's stability strength would drop to/below zero. Still calls
+	// AAuAPHelperActor::SetStabilityStrength internally, so letting the original run
+	// before overriding the return keeps the HUD strength value honest, same as the
+	// two CheckStability hooks above.
+	constexpr const char* CheckDynamicHelperStability =
+		"40 55 41 54 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? ?? ?? ?? 4C 8B E1 48 89 4D";
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
 	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)
@@ -118,6 +141,57 @@ namespace BetterCheats::AOB
 	// Parameters       (UWorld* self) -> UMassEntitySubsystem*
 	constexpr const char* UWorld_GetMassEntitySubsystem =
 		"48 89 5C 24 ?? 57 48 83 EC ?? 48 8D B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? ?? 48 8B D8 74 ?? 48 85 C0 74 ?? 48 8B C8 E8 ?? ?? ?? ?? EB ?? 48 85 DB 74 ?? E8 ?? ?? ?? ?? 48 85 C0 74 ?? 48 8D 50 ?? 48 63 40 ?? 3B 43 ?? 7F ?? 48 8B C8 48 8B 43 ?? ?? ?? ?? ?? 74 ?? 33 DB 48 8B D3 48 8B CF 48 8B 5C 24 ?? 48 83 C4 ?? 5F E9 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 4C 89 4C 24 ?? 4C 89 44 24";
+
+	// Class::Function  FMassEntityManager::InternalGetFragmentDataPtr
+	// Parameters       (FMassEntityManager* this, FMassEntityHandle Entity, const UScriptStruct* FragmentType) -> void*
+	// The single real implementation behind every FMassEntityManager::GetFragmentDataPtr<T>
+	// template instantiation — hands back a pointer to the given entity's live fragment
+	// data of the requested type within its archetype chunk, or nullptr if that entity
+	// doesn't have a fragment of that type. Used to write directly into an enemy's
+	// FMassEnemyHealthFragment for One-Hit Kill, since Mass-simulated enemies
+	// don't respond to GAS attribute pinning the way the player does.
+	// Byte-for-byte near-identical to FMassEntityManager::InternalGetFragmentDataChecked
+	// (same assertion macro expansion) except for one literal: the "41 B8 14 07 00 00"
+	// immediate below is a compiler-embedded source line number for the second
+	// CheckVerifyFailedImpl2 call, which happens to differ between the two functions
+	// (Ptr=0x0714, Checked=0x070A) — pinned deliberately so this pattern can't match
+	// the Checked variant, which asserts/crashes on a missing fragment instead of
+	// returning nullptr.
+	constexpr const char* FMassEntityManager_InternalGetFragmentDataPtr =
+		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 54 24 ?? 57 48 83 EC 30 49 8B F0 48 8B DA 48 8B F9 E8 ?? ?? ?? ?? "
+		"84 C0 75 ?? 8B 44 24 ?? 4C 8D 0D ?? ?? ?? ?? 89 44 24 ?? 48 8D 15 ?? ?? ?? ?? 41 B8 4A 07 00 00 89 5C "
+		"24 ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 74 ?? 90 CC 0F B6 47 ?? 48 8D 57 ?? 4C 8D 05 ?? ?? ?? "
+		"?? C6 44 24 ?? ?? 48 8D 4C 24 ?? ?? ?? ?? ?? 41 FF D0 8B D3 ?? ?? ?? 4C 8B 41 ?? 48 8B C8 41 FF D0 48 "
+		"8B F8 48 85 C0 75 ?? 4C 8D 0D ?? ?? ?? ?? 41 B8 14 07 00 00";
+
+	// Class::Function  FWeakObjectPtr::operator=(FObjectPtr)
+	// Parameters       (FWeakObjectPtr* this, FObjectPtr* ObjectPtr) -> void
+	// Builds a weak/object-key handle (ObjectIndex + lazily-allocated
+	// ObjectSerialNumber) from a raw UObject*. The second parameter is passed by
+	// pointer, not by value — confirmed via raw disassembly: the function's first
+	// instruction is `mov rdx, [rdx]`, dereferencing it once to get the actual
+	// FObjectPtr (which, in this build, is a bit-identical wrapper around the raw
+	// pointer — no late-resolve indirection). So callers must pass the *address*
+	// of a variable holding the AActor*, not the AActor* value itself. Used to
+	// build the TObjectKey<const AActor> argument for
+	// UMassActorSubsystem::GetEntityHandleFromActor below, since
+	// UMassReplicationSubsystem::FindEntity (NetID-based) only finds entities that
+	// are actually being replicated to a remote client — useless in single-player,
+	// where the local instance is the authority and most enemies' NetID is never
+	// populated.
+	constexpr const char* FWeakObjectPtr_AssignFObjectPtr =
+		"40 53 48 83 EC 20 ?? ?? ?? 48 8B D9 48 85 D2 74 ?? 8B 52";
+
+	// Class::Function  UMassActorSubsystem::GetEntityHandleFromActor
+	// Parameters       (UMassActorSubsystem* this, FMassEntityHandle* result, TObjectKey<const AActor> Actor) -> FMassEntityHandle*
+	// The authority-side actor->entity lookup — works for every Mass actor
+	// regardless of whether it's being network-replicated, unlike
+	// UMassReplicationSubsystem::FindEntity. TObjectKey is built via
+	// FWeakObjectPtr_AssignFObjectPtr above; passed by value (8 bytes), same
+	// calling convention as the old NetID-based lookup.
+	constexpr const char* UMassActorSubsystem_GetEntityHandleFromActor =
+		"48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 48 83 79 ?? ?? 49 8B D8 48 8B FA 48 8B F1 75 ?? 4C 8D 0D ?? ?? ?? ?? "
+		"41 B8 ?? ?? ?? ?? 48 8D 15 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 74 ?? 90 ?? 48 8B 4E";
 
 	// Class::Function  FMassEntityManager::TSharedFragmentsContainer<FConstSharedStruct>::FindOrAdd
 	// Parameters       (TSharedFragmentsContainer<FConstSharedStruct>* self, uint32 Hash, const UScriptStruct* Type, const uint8* Data) -> FScriptContainerElement*

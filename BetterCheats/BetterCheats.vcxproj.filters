@@ -108,6 +108,9 @@
     <ClInclude Include="world_wave.h">
       <Filter>Cheats\World</Filter>
     </ClInclude>
+    <ClInclude Include="world_corporations.h">
+      <Filter>Cheats\World</Filter>
+    </ClInclude>
 
     <!-- Cheats\Player -->
     <ClInclude Include="panel_player.h">
@@ -139,6 +142,9 @@
 
     <!-- Cheats\Enemies -->
     <ClInclude Include="panel_enemies.h">
+      <Filter>Cheats\Enemies</Filter>
+    </ClInclude>
+    <ClInclude Include="enemies.h">
       <Filter>Cheats\Enemies</Filter>
     </ClInclude>
 
@@ -192,6 +198,9 @@
     <ClCompile Include="world_wave.cpp">
       <Filter>Cheats\World</Filter>
     </ClCompile>
+    <ClCompile Include="world_corporations.cpp">
+      <Filter>Cheats\World</Filter>
+    </ClCompile>
 
     <!-- Cheats\Player -->
     <ClCompile Include="panel_player.cpp">
@@ -225,6 +234,9 @@
     <ClCompile Include="panel_enemies.cpp">
       <Filter>Cheats\Enemies</Filter>
     </ClCompile>
+    <ClCompile Include="enemies.cpp">
+      <Filter>Cheats\Enemies</Filter>
+    </ClCompile>
 
     <!-- Cheats\Misc -->
     <ClCompile Include="panel_misc.cpp">
@@ -248,6 +260,9 @@
       <Filter>SDK</Filter>
     </ClCompile>
     <ClCompile Include="$(StarRuptureSDKSourceDir)Chimera_functions.cpp">
+      <Filter>SDK</Filter>
+    </ClCompile>
+    <ClCompile Include="$(StarRuptureSDKSourceDir)MassActors_functions.cpp">
       <Filter>SDK</Filter>
     </ClCompile>
 

@@ -208,6 +208,7 @@ namespace BetterCheats
 
 		NavGroup("WORLD");
 		NavItem(imgui, "  Environment",         MenuCategory::World_Environment);
+		NavItem(imgui, "  Corporations",        MenuCategory::World_Corporations);
 
 		NavGroup("PLAYER");
 		NavItem(imgui, "  Self",                MenuCategory::Player_Self);
@@ -243,6 +244,7 @@ namespace BetterCheats
 		switch (s_activeCategory)
 		{
 		case MenuCategory::World_Environment:      Panels::RenderWorld_Environment(imgui);       break;
+		case MenuCategory::World_Corporations:     Panels::RenderWorld_Corporations(imgui);      break;
 		case MenuCategory::Player_Self:            Panels::RenderPlayer_Self(imgui);             break;
 		case MenuCategory::Player_ItemSpawner:     Panels::RenderPlayer_ItemSpawner(imgui);      break;
 		case MenuCategory::Player_Weapon:          Panels::RenderPlayer_Weapon(imgui);           break;

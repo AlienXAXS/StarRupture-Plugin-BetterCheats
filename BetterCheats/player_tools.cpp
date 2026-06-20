@@ -13,8 +13,6 @@ namespace BetterCheats::Panels::Tools
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kToolsTableFlags = (1 << 6) | (1 << 9) | (3 << 13);
-		// ImGuiTableColumnFlags_WidthFixed
-		constexpr int kColumnWidthFixed = 1 << 4;
 
 		using GetMiningDamageFn            = float(__fastcall*)(void* self, bool isHittingWeakSpot);
 		using UpdateRepHarvesterHeatStackFn = void(__fastcall*)(void* self);
@@ -176,8 +174,8 @@ namespace BetterCheats::Panels::Tools
 
 		if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))
 		{
-			imgui->TableSetupColumn("Option", kColumnWidthFixed, 500.0f);
-			imgui->TableSetupColumn("Enabled", 0, 0.0f);
+			imgui->TableSetupColumn("Option", 0, 0.85f);
+			imgui->TableSetupColumn("Enabled", 0, 0.15f);
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);

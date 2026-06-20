@@ -8,6 +8,7 @@ namespace BetterCheats
 	{
 		// WORLD
 		World_Environment = 0,
+		World_Corporations,
 
 		// PLAYER
 		Player_Self,
