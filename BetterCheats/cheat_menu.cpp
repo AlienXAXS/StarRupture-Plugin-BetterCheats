@@ -1,5 +1,6 @@
 #include "cheat_menu.h"
 #include "game_context.h"
+#include "plugin_config.h"
 #include "plugin_helpers.h"
 #include "panel_world.h"
 #include "panel_player.h"
@@ -136,7 +137,7 @@ namespace BetterCheats
 			return;
 		}
 
-		if (!GameContext::IsSinglePlayer())
+		if (!GameContext::IsSinglePlayer() && !BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
 		{
 			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in single player");
 			return;

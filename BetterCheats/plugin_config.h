@@ -18,6 +18,13 @@ namespace BetterCheatsConfig
 			ConfigValueType::Keybind,
 			"F10",
 			"Key to open / close the BetterCheats menu"
+		},
+		{
+			"General",
+			"EnableCheatsInMultiplayer",
+			ConfigValueType::Boolean,
+			"false",
+			"Bypasses the single-player check so the menu opens in multiplayer. Cheats are NOT supported in multiplayer and may cause crashes or other undesired effects."
 		}
 	};
 
@@ -44,6 +51,12 @@ namespace BetterCheatsConfig
 		static bool IsEnabled()
 		{
 			return s_self ? s_self->config->ReadBool(s_self, "General", "Enabled", true) : true;
+		}
+
+		// Cheats are NOT supported in multiplayer and may cause crashes or other undesired effects when enabled.
+		static bool IsCheatsInMultiplayerEnabled()
+		{
+			return s_self ? s_self->config->ReadBool(s_self, "General", "EnableCheatsInMultiplayer", false) : false;
 		}
 
 		// Returns the current toggle keybind string (e.g. "F10", "Ctrl+F10").
