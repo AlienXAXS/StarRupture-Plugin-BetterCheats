@@ -13,18 +13,18 @@ namespace BetterCheatsConfig
 			"Enable or disable BetterCheats"
 		},
 		{
-			"Menu",
-			"ToggleKey",
-			ConfigValueType::Keybind,
-			"F10",
-			"Key to open / close the BetterCheats menu"
-		},
-		{
 			"General",
 			"EnableCheatsInMultiplayer",
 			ConfigValueType::Boolean,
 			"false",
 			"Bypasses the single-player check so the menu opens in multiplayer. Cheats are NOT supported in multiplayer and may cause crashes or other undesired effects."
+		},
+		{
+			"Menu",
+			"ToggleKey",
+			ConfigValueType::Keybind,
+			"F10",
+			"Key to open / close the BetterCheats menu"
 		}
 	};
 
