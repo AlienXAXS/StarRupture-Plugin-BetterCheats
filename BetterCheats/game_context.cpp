@@ -1,4 +1,5 @@
 #include "game_context.h"
+#include "plugin_config.h"
 
 #include "Chimera_classes.hpp"
 
@@ -60,5 +61,13 @@ namespace BetterCheats
 			return false;
 
 		return s_self->hooks->NetMode->GetNetMode() == EPluginNetMode::Standalone;
+	}
+
+	bool GameContext::AreCheatsAllowed()
+	{
+		if (BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
+			return true;
+
+		return IsSinglePlayer();
 	}
 }

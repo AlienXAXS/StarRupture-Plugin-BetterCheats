@@ -136,6 +136,13 @@ namespace BetterCheats::Panels::Building
 			if (!world) return nullptr;
 
 			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
+			if (!pc) return nullptr;
+
+			// See player_skills.cpp's GetLocalController — the controller isn't a
+			// Chimera one for the whole life of the world.
+			SDK::UClass* controllerClass = SDK::ACrPlayerControllerBase::StaticClass();
+			if (!controllerClass || !pc->IsA(controllerClass)) return nullptr;
+
 			return static_cast<SDK::ACrPlayerControllerBase*>(pc);
 		}
 

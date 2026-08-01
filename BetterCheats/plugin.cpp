@@ -41,6 +41,11 @@ static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 // JSON config and re-apply any persisted cheat settings.
 static void OnExperienceLoadComplete()
 {
+	if (!BetterCheats::GameContext::AreCheatsAllowed())
+	{
+		return;
+	}
+
 	if (!BetterCheats::SessionConfig::Reload())
 	{
 		return;
@@ -59,6 +64,12 @@ static void OnExperienceLoadComplete()
 static void OnEngineTick(float deltaSeconds)
 {
 	if (!BetterCheats::GameContext::IsInChimeraMain())
+		return;
+
+	// A connected client loads ChimeraMain too, so without this the whole fan-out
+	// below ran against server-replicated state on join — crashing the client even
+	// with the menu correctly refusing to open.
+	if (!BetterCheats::GameContext::AreCheatsAllowed())
 		return;
 
 	BetterCheats::Panels::Attributes::Tick(deltaSeconds);

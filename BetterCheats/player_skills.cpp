@@ -39,6 +39,14 @@ namespace BetterCheats::Panels::Skills
 			if (!world) return nullptr;
 
 			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
+			if (!pc) return nullptr;
+
+			// Not an ACrPlayerControllerBase until the Chimera controller is in place —
+			// on a multiplayer join PlayerSkills would otherwise be read from past the
+			// end of a plain APlayerController, yielding a garbage TArray.
+			SDK::UClass* controllerClass = SDK::ACrPlayerControllerBase::StaticClass();
+			if (!controllerClass || !pc->IsA(controllerClass)) return nullptr;
+
 			return static_cast<SDK::ACrPlayerControllerBase*>(pc);
 		}
 
@@ -159,7 +167,7 @@ namespace BetterCheats::Panels::Skills
 				SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
 				const SDK::FCrSkillData* data = skills.GetDataPtr();
 
-				const int rawCount = skills.Num();
+				const int rawCount = data ? skills.Num() : 0;
 				snapshot.count = rawCount < kMaxSkills ? rawCount : kMaxSkills;
 				for (int i = 0; i < snapshot.count; ++i)
 				{
@@ -180,8 +188,11 @@ namespace BetterCheats::Panels::Skills
 				return;
 
 			SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
-			const int count = skills.Num();
 			SDK::FCrSkillData* data = const_cast<SDK::FCrSkillData*>(skills.GetDataPtr());
+			if (!data)
+				return;
+
+			const int count = skills.Num();
 
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
 

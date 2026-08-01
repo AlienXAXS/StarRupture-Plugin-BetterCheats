@@ -31,6 +31,12 @@ namespace BetterCheats::Panels::Corporations
 				SDK::UWorld* world = SDK::UWorld::GetWorld();
 				if (!world || !world->GameState) return nullptr;
 
+				// GameState is replicated — on a client it is briefly a different class
+				// than ACrGameStateBase, so CorporationsOwner would be read at an offset
+				// the object doesn't have.
+				SDK::UClass* gameStateClass = SDK::ACrGameStateBase::StaticClass();
+				if (!gameStateClass || !world->GameState->IsA(gameStateClass)) return nullptr;
+
 				return static_cast<SDK::ACrGameStateBase*>(world->GameState)->CorporationsOwner;
 			}
 			catch (...)

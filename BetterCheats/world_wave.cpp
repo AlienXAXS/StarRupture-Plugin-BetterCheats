@@ -20,16 +20,35 @@ namespace BetterCheats::Panels::Wave
 		static SDK::UCrEnviroWaveTimerSubsystem* g_timerSubsys = nullptr;
 		static bool                              g_scanned     = false;
 
-		void RunObjectScan()
-		{
-			g_waveSubsys  = nullptr;
-			g_timerSubsys = nullptr;
-			g_scanned     = true;
+		// The subsystems don't necessarily exist on the first tick after world begin
+		// play, and giving up after a single miss left the panel dead for the rest of
+		// the session — retry on a slow cadence, then stop so a genuinely absent
+		// subsystem doesn't cost a GObjects sweep every second forever.
+		constexpr float kScanRetrySeconds = 1.0f;
+		constexpr int   kMaxScanAttempts  = 10;
 
+		static float g_scanRetryTimer = 0.0f;
+		static int   g_scanAttempts   = 0;
+
+		// Matches on cached UClass* pointers rather than obj->Class->GetName(). This
+		// scan runs while the async loading thread is still registering UObjects, so
+		// GObjects hands back entries whose Class pointer is garbage; comparing the
+		// pointer never dereferences it, whereas GetName() walked it into the FName
+		// pool and faulted. Same approach as enemies.cpp's RescanMassSubsystems.
+		void FindWaveSubsystems()
+		{
 			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
 			if (!arr)
 			{
 				LOG_WARN("Wave: GObjects array is null — scan aborted.");
+				return;
+			}
+
+			SDK::UClass* waveClass  = SDK::UCrEnviroWaveSubsystem::StaticClass();
+			SDK::UClass* timerClass = SDK::UCrEnviroWaveTimerSubsystem::StaticClass();
+			if (!waveClass || !timerClass)
+			{
+				LOG_WARN("Wave: wave subsystem UClass unavailable — scan aborted.");
 				return;
 			}
 
@@ -44,22 +63,41 @@ namespace BetterCheats::Panels::Wave
 				SDK::UObject* obj = arr->GetByIndex(i);
 				if (!obj || !obj->Class) continue;
 
-				if (!doneWave && obj != waveCDO && obj->Class->GetName() == "CrEnviroWaveSubsystem")
+				if (!doneWave && obj != waveCDO && obj->Class == waveClass)
 				{
 					g_waveSubsys = static_cast<SDK::UCrEnviroWaveSubsystem*>(obj);
 					doneWave = true;
 					continue;
 				}
-				if (!doneTimer && obj != timerCDO && obj->Class->GetName() == "CrEnviroWaveTimerSubsystem")
+				if (!doneTimer && obj != timerCDO && obj->Class == timerClass)
 				{
 					g_timerSubsys = static_cast<SDK::UCrEnviroWaveTimerSubsystem*>(obj);
 					doneTimer = true;
 					continue;
 				}
 			}
+		}
 
-			if (!g_waveSubsys)  LOG_WARN("Wave: UCrEnviroWaveSubsystem not found in GObjects.");
-			if (!g_timerSubsys) LOG_WARN("Wave: UCrEnviroWaveTimerSubsystem not found in GObjects.");
+		void RunObjectScan()
+		{
+			g_waveSubsys  = nullptr;
+			g_timerSubsys = nullptr;
+			++g_scanAttempts;
+
+			FindWaveSubsystems();
+
+			if (g_waveSubsys && g_timerSubsys)
+			{
+				g_scanned = true;
+				return;
+			}
+
+			if (g_scanAttempts >= kMaxScanAttempts)
+			{
+				g_scanned = true;
+				if (!g_waveSubsys)  LOG_WARN("Wave: UCrEnviroWaveSubsystem not found in GObjects.");
+				if (!g_timerSubsys) LOG_WARN("Wave: UCrEnviroWaveTimerSubsystem not found in GObjects.");
+			}
 		}
 
 		// -------------------------------------------------------------------------
@@ -197,12 +235,19 @@ namespace BetterCheats::Panels::Wave
 
 	namespace
 	{
-		void OnWorldBeginPlay(SDK::UWorld* /*world*/) { g_scanned = false; }
+		void OnWorldBeginPlay(SDK::UWorld* /*world*/)
+		{
+			g_scanned        = false;
+			g_scanRetryTimer = 0.0f;
+			g_scanAttempts   = 0;
+		}
 		void OnWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
 		{
-			g_waveSubsys  = nullptr;
-			g_timerSubsys = nullptr;
-			g_scanned     = false;
+			g_waveSubsys     = nullptr;
+			g_timerSubsys    = nullptr;
+			g_scanned        = false;
+			g_scanRetryTimer = 0.0f;
+			g_scanAttempts   = 0;
 		}
 	}
 
@@ -222,15 +267,24 @@ namespace BetterCheats::Panels::Wave
 			self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 			self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnWorldEndPlay);
 		}
-		g_waveSubsys  = nullptr;
-		g_timerSubsys = nullptr;
-		g_scanned     = false;
+		g_waveSubsys     = nullptr;
+		g_timerSubsys    = nullptr;
+		g_scanned        = false;
+		g_scanRetryTimer = 0.0f;
+		g_scanAttempts   = 0;
 	}
 
-	void Tick(float /*deltaSeconds*/)
+	void Tick(float deltaSeconds)
 	{
 		if (!g_scanned)
-			RunObjectScan();
+		{
+			g_scanRetryTimer -= deltaSeconds;
+			if (g_scanRetryTimer <= 0.0f)
+			{
+				g_scanRetryTimer = kScanRetrySeconds;
+				RunObjectScan();
+			}
+		}
 
 		ApplyPendingAction();
 		EnforceWavePause();

@@ -125,6 +125,13 @@ namespace BetterCheats::Panels::Attributes
 			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
 			if (!pc || !pc->Pawn) return nullptr;
 
+			// The local pawn is only an ACrCharacterPlayerBase once the real character
+			// has been possessed. During a level transition or a multiplayer join it can
+			// still be some other pawn class, and the attribute-set pointers below then
+			// come from past the end of the object.
+			SDK::UClass* characterClass = SDK::ACrCharacterPlayerBase::StaticClass();
+			if (!characterClass || !pc->Pawn->IsA(characterClass)) return nullptr;
+
 			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
 		}
 

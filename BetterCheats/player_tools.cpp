@@ -83,8 +83,13 @@ namespace BetterCheats::Panels::Tools
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
-			SDK::ACrPlayerControllerBase* pc = reinterpret_cast<SDK::ACrPlayerControllerBase*>(SDK::UGameplayStatics::GetPlayerController(world, 0));
+			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
 			if (!pc || !pc->Pawn) return nullptr;
+
+			// See player_attributes.cpp's GetLocalCharacter — the pawn isn't a Chimera
+			// character until it's actually possessed.
+			SDK::UClass* characterClass = SDK::ACrCharacterPlayerBase::StaticClass();
+			if (!characterClass || !pc->Pawn->IsA(characterClass)) return nullptr;
 
 			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
 		}
