@@ -44,6 +44,9 @@
     <Filter Include="Cheats\Misc">
       <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000007}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Cheats\Dev">
+      <UniqueIdentifier>{a1b2c3d4-0003-0003-0003-000000000008}</UniqueIdentifier>
+    </Filter>
 
     <!-- Single AOB pattern registry -->
     <Filter Include="Patterns">
@@ -153,6 +156,14 @@
       <Filter>Cheats\Misc</Filter>
     </ClInclude>
 
+    <!-- Cheats\Dev -->
+    <ClInclude Include="panel_dev.h">
+      <Filter>Cheats\Dev</Filter>
+    </ClInclude>
+    <ClInclude Include="dev_menus.h">
+      <Filter>Cheats\Dev</Filter>
+    </ClInclude>
+
     <!-- Patterns -->
     <ClInclude Include="aob_patterns.h">
       <Filter>Patterns</Filter>
@@ -241,6 +252,14 @@
     <!-- Cheats\Misc -->
     <ClCompile Include="panel_misc.cpp">
       <Filter>Cheats\Misc</Filter>
+    </ClCompile>
+
+    <!-- Cheats\Dev -->
+    <ClCompile Include="panel_dev.cpp">
+      <Filter>Cheats\Dev</Filter>
+    </ClCompile>
+    <ClCompile Include="dev_menus.cpp">
+      <Filter>Cheats\Dev</Filter>
     </ClCompile>
 
     <!-- SDK source files (hidden, auto-included via props) -->

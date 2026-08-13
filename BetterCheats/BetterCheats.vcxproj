@@ -114,6 +114,8 @@
     <ClCompile Include="panel_machines.cpp" />
     <ClCompile Include="machine_power.cpp" />
     <ClCompile Include="panel_misc.cpp" />
+    <ClCompile Include="panel_dev.cpp" />
+    <ClCompile Include="dev_menus.cpp" />
     <ClCompile Include="panel_player.cpp" />
     <ClCompile Include="panel_world.cpp" />
     <ClCompile Include="world_wave.cpp" />
@@ -136,6 +138,8 @@
     <ClInclude Include="panel_machines.h" />
     <ClInclude Include="machine_power.h" />
     <ClInclude Include="panel_misc.h" />
+    <ClInclude Include="panel_dev.h" />
+    <ClInclude Include="dev_menus.h" />
     <ClInclude Include="panel_player.h" />
     <ClInclude Include="panel_world.h" />
     <ClInclude Include="world_wave.h" />

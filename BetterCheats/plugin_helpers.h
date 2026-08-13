@@ -2,6 +2,15 @@
 
 #include "plugin_interface.h"
 
+// Gates the developer-only cheat panel. Set by the "Client Debug" configuration
+// (which defines _DEBUG); "Client Release" defines NDEBUG and leaves it off, so
+// nothing under this macro reaches a shipped build.
+#if defined(_DEBUG)
+	#define BETTERCHEATS_DEV_BUILD 1
+#else
+	#define BETTERCHEATS_DEV_BUILD 0
+#endif
+
 // Forward declaration to access the global plugin self pointer
 IPluginSelf* GetSelf();
 

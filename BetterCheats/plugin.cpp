@@ -13,6 +13,7 @@
 #include "world_corporations.h"
 #include "machine_power.h"
 #include "enemies.h"
+#include "dev_menus.h"
 
 static IPluginSelf* g_self = nullptr;
 
@@ -79,6 +80,10 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::Panels::Wave::Tick(deltaSeconds);
 	BetterCheats::Panels::Corporations::Tick(deltaSeconds);
 	BetterCheats::Panels::Enemies::Tick(deltaSeconds);
+
+#if BETTERCHEATS_DEV_BUILD
+	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
+#endif
 }
 
 extern "C" {
@@ -131,6 +136,11 @@ extern "C" {
 		LOG_INFO("Initializing Enemies panel...");
 		BetterCheats::Panels::Enemies::Initialize();
 
+#if BETTERCHEATS_DEV_BUILD
+		LOG_INFO("Initializing Dev Cheat Manager panel (debug build)...");
+		BetterCheats::Panels::DevMenus::Initialize();
+#endif
+
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
 
@@ -175,6 +185,9 @@ extern "C" {
 		BetterCheats::Panels::Wave::Shutdown();
 		BetterCheats::Panels::Corporations::Shutdown();
 		BetterCheats::Panels::Enemies::Shutdown();
+#if BETTERCHEATS_DEV_BUILD
+		BetterCheats::Panels::DevMenus::Shutdown();
+#endif
 		BetterCheats::SessionConfig::Shutdown();
 
 		g_self = nullptr;

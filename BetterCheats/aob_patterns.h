@@ -222,4 +222,23 @@ namespace BetterCheats::AOB
 	constexpr const char* StructUtils_GetStructInstanceCrc32 =
 		"48 89 5C 24 ?? 57 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 ?? ?? ?? ?? 48 8B D9 48 8B FA 48 C1 E9";
 
+	// -------------------------------------------------------------------------
+	// Cheat manager (developer menus, debug builds only)
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UCheatManager::InitCheatManager
+	// Parameters       (UCheatManager* self)
+	// APlayerController::AddCheats calls this immediately after constructing the
+	// manager. It dispatches the ReceiveInitCheatManager blueprint event and then
+	// broadcasts the static UCheatManager::OnCheatManagerCreatedDelegate, which is
+	// how the rest of the game learns a cheat manager exists and binds to its
+	// per-instance delegates (OnCheatMenuDelegate and friends). It is a plain C++
+	// method rather than a UFunction, so ProcessEvent cannot reach it.
+	//
+	// This prologue is not especially distinctive, so the call site resolves it
+	// with FindAllPatternsInMainModule and refuses to use an ambiguous match -
+	// invoking the wrong function with a UCheatManager* in RCX would crash.
+	constexpr const char* CheatManager_InitCheatManager =
+		"48 89 5C 24 ?? 48 89 6C 24 ?? 56 57 41 56 48 83 EC ?? 48 8B 15";
+
 } // namespace BetterCheats::AOB

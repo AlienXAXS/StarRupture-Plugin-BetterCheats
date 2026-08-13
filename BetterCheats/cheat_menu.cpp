@@ -6,6 +6,7 @@
 #include "panel_machines.h"
 #include "panel_enemies.h"
 #include "panel_misc.h"
+#include "panel_dev.h"
 
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
@@ -231,6 +232,11 @@ namespace BetterCheats
 
 		NavGroup("MISC");
 		NavItem(imgui, "  Misc",                MenuCategory::Misc);
+
+#if BETTERCHEATS_DEV_BUILD
+		NavGroup("DEV");
+		NavItem(imgui, "  Cheat Manager",       MenuCategory::Dev_CheatManager);
+#endif
 	}
 
 	// -------------------------------------------------------------------------
@@ -259,6 +265,9 @@ namespace BetterCheats
 		case MenuCategory::Machinery_LogisticDrones: Panels::RenderMachines_LogisticDrones(imgui); break;
 		case MenuCategory::Machinery_RailDrones:   Panels::RenderMachines_RailDrones(imgui);     break;
 		case MenuCategory::Misc:                   Panels::RenderMisc(imgui);                    break;
+#if BETTERCHEATS_DEV_BUILD
+		case MenuCategory::Dev_CheatManager:       Panels::RenderDev_CheatManager(imgui);        break;
+#endif
 		default: break;
 		}
 	}

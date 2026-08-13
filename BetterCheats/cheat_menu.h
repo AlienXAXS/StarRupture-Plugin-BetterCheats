@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin_interface.h"
+#include "plugin_helpers.h"
 
 namespace BetterCheats
 {
@@ -31,6 +32,11 @@ namespace BetterCheats
 
 		// MISC
 		Misc,
+
+#if BETTERCHEATS_DEV_BUILD
+		// DEV — the game's own cheat manager, debug builds only
+		Dev_CheatManager,
+#endif
 
 		COUNT
 	};
