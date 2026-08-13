@@ -14,7 +14,9 @@
 #include <atomic>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -31,6 +33,7 @@ namespace BetterCheats::Panels::Power
 			std::string                      name;
 			SDK::ECrMassElectricityAgentType type;
 			float                             value;
+			float                             defaultValue;
 		};
 
 		// g_entries is only ever touched from RenderImGui() (the render thread).
@@ -38,6 +41,12 @@ namespace BetterCheats::Panels::Power
 		// for AdoptPendingIfReady() to pick up.
 		std::vector<PowerEntry> g_entries;
 		bool                    g_loaded = false;
+
+		// Pristine (unmodified) ElectricityValue per asset, captured the first time
+		// a config asset is seen — i.e. before any override from this session has
+		// been written into it. A later rescan reads back whatever we last applied,
+		// so the default has to be remembered rather than re-read. Game thread only.
+		std::unordered_map<std::string, float> g_defaults;
 
 		std::mutex              g_pendingMutex;
 		std::vector<PowerEntry> g_pendingEntries;
@@ -394,6 +403,21 @@ namespace BetterCheats::Panels::Power
 							entry.type  = trait->Parameters.Type;
 							entry.value = trait->Parameters.ElectricityValue;
 
+							auto defaultIt = g_defaults.find(entry.assetName);
+							if (defaultIt == g_defaults.end())
+								defaultIt = g_defaults.emplace(entry.assetName, trait->Parameters.ElectricityValue).first;
+							entry.defaultValue = defaultIt->second;
+
+							// A building whose authored value is zero neither produces nor
+							// draws power, so there is nothing meaningful to override - keep
+							// it out of the list entirely rather than showing a dead row.
+							if (entry.defaultValue == 0.0f)
+							{
+								LOG_DEBUG("Power:   [%s] skipping - authored ElectricityValue is zero (type=%s).",
+									entry.name.c_str(), AgentTypeName(entry.type));
+								continue;
+							}
+
 							// Reloading a save reloads this asset from disk, discarding any
 							// in-memory edit from a previous session — re-apply any
 							// persisted override now so newly-spawned entities pick it up.
@@ -745,54 +769,60 @@ namespace BetterCheats::Panels::Power
 		// thread — the trait pointer is only ever dereferenced there. The render
 		// thread only edits the local snapshot value in g_entries.
 		// -------------------------------------------------------------------------
-		struct ApplyValueContext
+		struct ApplyItem
 		{
 			std::string packageName;
 			std::string assetName;
 			float       value;
+			// Set when this write restores the asset's pristine value, in which case
+			// the persisted override is cleared instead of updated.
+			bool        clearOverride;
 		};
 
-		void ApplyValueOnGameThread(void* context)
+		void ApplyItemOnGameThread(const ApplyItem& item)
 		{
-			std::unique_ptr<ApplyValueContext> ctx(static_cast<ApplyValueContext*>(context));
-
 			try
 			{
 				// Cached pointers from a previous scan can go stale (the engine
 				// reloads/reconstructs these assets, e.g. when "unlock all
 				// buildings" rescans available buildings) - re-resolve fresh
 				// before mutating anything or calling native template functions.
-				SDK::UMassEntityConfigAsset* configAsset = ResolveConfigAsset(ctx->packageName, ctx->assetName);
+				SDK::UMassEntityConfigAsset* configAsset = ResolveConfigAsset(item.packageName, item.assetName);
 				SDK::UCrElectricityTrait*    trait        = configAsset ? FindElectricityTrait(configAsset) : nullptr;
 
 				if (trait)
 				{
 					const SDK::FCrElectricityParameters oldParams = trait->Parameters;
 
-					trait->Parameters.ElectricityValue = ctx->value;
-					LOG_INFO("Power: set ElectricityValue %.2f -> %.2f on trait %p ('%s').",
-						oldParams.ElectricityValue, ctx->value, static_cast<void*>(trait), ctx->assetName.c_str());
+					trait->Parameters.ElectricityValue = item.value;
+					LOG_INFO("Power: set ElectricityValue %.2f -> %.2f on trait %p ('%s')%s.",
+						oldParams.ElectricityValue, item.value, static_cast<void*>(trait), item.assetName.c_str(),
+						item.clearOverride ? " [reset to default]" : "");
 
 					// Update buildings of this type already placed in the world -
 					// they reference the old shared FCrElectricityParameters block
 					// directly and won't pick up a template rebuild.
-					PatchExistingSharedFragment(oldParams, ctx->value, ctx->assetName.c_str());
+					PatchExistingSharedFragment(oldParams, item.value, item.assetName.c_str());
 				}
 				else
 				{
-					LOG_WARN("Power: ApplyValueOnGameThread could not re-resolve trait for '%s' (configAsset=%p).",
-						ctx->assetName.c_str(), static_cast<void*>(configAsset));
+					LOG_WARN("Power: ApplyItemOnGameThread could not re-resolve trait for '%s' (configAsset=%p).",
+						item.assetName.c_str(), static_cast<void*>(configAsset));
 				}
 
 				// Persist the override so it can be re-applied after a save reload
-				// reloads the asset from disk and discards this in-memory edit.
-				SessionConfig::Set("power." + ctx->assetName, ctx->value);
+				// reloads the asset from disk and discards this in-memory edit. A
+				// reset writes null instead, so the scan stops re-applying it.
+				if (item.clearOverride)
+					SessionConfig::Set("power." + item.assetName, nullptr);
+				else
+					SessionConfig::Set("power." + item.assetName, item.value);
 
 				// Force the cached Mass entity template to rebuild from the trait's
 				// new value, so newly-spawned buildings of this type pick it up
 				// immediately instead of the stale baked value.
 				if (trait)
-					RebuildEntityTemplate(configAsset, ctx->assetName.c_str());
+					RebuildEntityTemplate(configAsset, item.assetName.c_str());
 			}
 			catch (...)
 			{
@@ -800,17 +830,37 @@ namespace BetterCheats::Panels::Power
 			}
 		}
 
-		void RequestApplyValue(const std::string& packageName, const std::string& assetName, float value)
+		void ApplyOnGameThread(void* context)
 		{
+			std::unique_ptr<std::vector<ApplyItem>> items(static_cast<std::vector<ApplyItem>*>(context));
+			for (const ApplyItem& item : *items)
+				ApplyItemOnGameThread(item);
+		}
+
+		void RequestApply(std::vector<ApplyItem> items)
+		{
+			if (items.empty())
+				return;
+
 			IPluginHooks* hooks = GetHooks();
 			if (!hooks)
 			{
-				LOG_WARN("Power: RequestApplyValue skipped (hooks unavailable).");
+				LOG_WARN("Power: RequestApply skipped (hooks unavailable).");
 				return;
 			}
 
-			LOG_DEBUG("{POSTING_TO_GAME_THREAD} Power: posting ElectricityValue=%.2f write for '%s'.", value, assetName.c_str());
-			hooks->Engine->PostToGameThread(&ApplyValueOnGameThread, new ApplyValueContext{ packageName, assetName, value });
+			LOG_DEBUG("{POSTING_TO_GAME_THREAD} Power: posting %zu ElectricityValue write(s).", items.size());
+			hooks->Engine->PostToGameThread(&ApplyOnGameThread, new std::vector<ApplyItem>(std::move(items)));
+		}
+
+		void RequestApplyValue(const std::string& packageName, const std::string& assetName, float value)
+		{
+			RequestApply({ ApplyItem{ packageName, assetName, value, false } });
+		}
+
+		void RequestResetValue(const std::string& packageName, const std::string& assetName, float defaultValue)
+		{
+			RequestApply({ ApplyItem{ packageName, assetName, defaultValue, true } });
 		}
 	}
 
@@ -844,10 +894,24 @@ namespace BetterCheats::Panels::Power
 		if (imgui->Button("Rescan"))
 			RequestRescan();
 
+		imgui->SameLine(0.0f, 8.0f);
+		if (imgui->Button("Reset All"))
+		{
+			std::vector<ApplyItem> items;
+			items.reserve(g_entries.size());
+			for (auto& entry : g_entries)
+			{
+				entry.value = entry.defaultValue;
+				items.push_back(ApplyItem{ entry.packageName, entry.assetName, entry.defaultValue, true });
+			}
+			RequestApply(std::move(items));
+		}
+
 		imgui->TextWrapped(
 			"Enter a value and click Apply to commit it. Applied edits update the "
 			"building's template for newly-placed buildings, and also patch "
-			"buildings already placed in the world.");
+			"buildings already placed in the world. [R] restores that building's "
+			"default value.");
 
 		if (g_entries.empty())
 		{
@@ -869,7 +933,7 @@ namespace BetterCheats::Panels::Power
 				imgui->TableSetupColumn("Building", 0, 0.0f);
 				imgui->TableSetupColumn("Type",     kColumnWidthFixed, 90.0f);
 				imgui->TableSetupColumn("Output",   kColumnWidthFixed, 140.0f);
-				imgui->TableSetupColumn("",         kColumnWidthFixed, 60.0f);
+				imgui->TableSetupColumn("",         kColumnWidthFixed, 90.0f);
 
 				bool any = false;
 				for (auto& entry : g_entries)
@@ -896,6 +960,19 @@ namespace BetterCheats::Panels::Power
 					imgui->TableSetColumnIndex(3);
 					if (imgui->Button("Apply"))
 						RequestApplyValue(entry.packageName, entry.assetName, entry.value);
+
+					imgui->SameLine(0.0f, 4.0f);
+					if (imgui->Button("R"))
+					{
+						entry.value = entry.defaultValue;
+						RequestResetValue(entry.packageName, entry.assetName, entry.defaultValue);
+					}
+					if (imgui->IsItemHovered())
+					{
+						char tooltip[64];
+						std::snprintf(tooltip, sizeof(tooltip), "Reset to default (%.2f)", entry.defaultValue);
+						imgui->SetTooltip(tooltip);
+					}
 
 					imgui->PopID();
 				}
