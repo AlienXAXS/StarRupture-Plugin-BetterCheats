@@ -73,7 +73,7 @@ namespace BetterCheats::AOB
 	// cheat is active. The multi-point/zoop path needs CheckStability_DynamicPillar
 	// below as well.
 	constexpr const char* CheckStability_Custom =
-		"48 8B C4 48 89 58 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? 0F 29 78 ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? ?? 4C 8B EA";
+		"40 53 57 48 83 EC ?? 48 8B FA 48 8B D9 48 85 D2 75 ?? 32 C0 48 83 C4 ?? 5F 5B C3 48 83 B9";
 
 	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
 	// Parameters       (ACrAPHelperDynamicPillar* this, const UCrBuildingData* PlacementData) -> bool
