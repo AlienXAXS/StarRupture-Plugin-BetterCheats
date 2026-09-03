@@ -1,6 +1,6 @@
 #include "enemies.h"
 #include "plugin_helpers.h"
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "session_config.h"
 
 #include "Chimera_classes.hpp"
@@ -369,24 +369,22 @@ namespace BetterCheats::Panels::Enemies
 
 	void Initialize()
 	{
-		IPluginScanner* scanner = GetScanner();
-		if (scanner)
-		{
-			if (uintptr_t addr = scanner->FindPatternInMainModule(AOB::FWeakObjectPtr_AssignFObjectPtr))
-				g_buildActorKey = reinterpret_cast<WeakObjectPtrAssignFn>(addr);
-			else
-				LOG_WARN("Enemies: failed to resolve FWeakObjectPtr::operator=(FObjectPtr) — One-Hit Kill will fall back to KillEntity only.");
+		const AOB::ResolvedAddresses& aob = AOB::Resolved();
 
-			if (uintptr_t addr = scanner->FindPatternInMainModule(AOB::UMassActorSubsystem_GetEntityHandleFromActor))
-				g_getEntityHandle = reinterpret_cast<GetEntityHandleFromActorFn>(addr);
-			else
-				LOG_WARN("Enemies: failed to resolve UMassActorSubsystem::GetEntityHandleFromActor — One-Hit Kill will fall back to KillEntity only.");
+		if (uintptr_t addr = aob.FWeakObjectPtr_AssignFObjectPtr)
+			g_buildActorKey = reinterpret_cast<WeakObjectPtrAssignFn>(addr);
+		else
+			LOG_WARN("Enemies: FWeakObjectPtr::operator=(FObjectPtr) unresolved — One-Hit Kill will fall back to KillEntity only.");
 
-			if (uintptr_t addr = scanner->FindPatternInMainModule(AOB::FMassEntityManager_InternalGetFragmentDataPtr))
-				g_getFragmentDataPtr = reinterpret_cast<InternalGetFragmentDataPtrFn>(addr);
-			else
-				LOG_WARN("Enemies: failed to resolve FMassEntityManager::InternalGetFragmentDataPtr — One-Hit Kill will fall back to KillEntity only.");
-		}
+		if (uintptr_t addr = aob.UMassActorSubsystem_GetEntityHandleFromActor)
+			g_getEntityHandle = reinterpret_cast<GetEntityHandleFromActorFn>(addr);
+		else
+			LOG_WARN("Enemies: UMassActorSubsystem::GetEntityHandleFromActor unresolved — One-Hit Kill will fall back to KillEntity only.");
+
+		if (uintptr_t addr = aob.FMassEntityManager_InternalGetFragmentDataPtr)
+			g_getFragmentDataPtr = reinterpret_cast<InternalGetFragmentDataPtrFn>(addr);
+		else
+			LOG_WARN("Enemies: FMassEntityManager::InternalGetFragmentDataPtr unresolved — One-Hit Kill will fall back to KillEntity only.");
 
 		try
 		{

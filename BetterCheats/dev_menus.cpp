@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "Chimera_classes.hpp"
 
 namespace BetterCheats::Panels::DevMenus
@@ -641,40 +641,10 @@ namespace BetterCheats::Panels::DevMenus
 
 	void Initialize()
 	{
-		IPluginScanner* scanner = GetScanner();
-		if (!scanner)
-		{
-			LOG_WARN("DevMenus: scanner unavailable - InitCheatManager will not be resolved.");
-			return;
-		}
-
-		// The prologue is generic enough to appear elsewhere in the image, so take
-		// every match and only accept an unambiguous one.
-		uintptr_t matches[8] = {};
-		const int count = scanner->FindAllPatternsInMainModule(
-			AOB::CheatManager_InitCheatManager, matches, 8);
-
-		const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-
-		if (count <= 0)
-		{
-			LOG_WARN("DevMenus: UCheatManager::InitCheatManager pattern not found - "
-				"falling back to ReceiveInitCheatManager only.");
-			return;
-		}
-
-		if (count > 1)
-		{
-			LOG_WARN("DevMenus: UCheatManager::InitCheatManager pattern is ambiguous (%d matches) - "
-				"refusing to call it. Narrow the pattern in aob_patterns.h.", count);
-			for (int i = 0; i < count && i < 8; ++i)
-				LOG_WARN("DevMenus:   candidate %d at RVA 0x%llX.", i, static_cast<unsigned long long>(matches[i] - base));
-			return;
-		}
-
-		g_initCheatManager = reinterpret_cast<InitCheatManagerFn>(matches[0]);
-		LOG_INFO("DevMenus: resolved UCheatManager::InitCheatManager at RVA 0x%llX (expected 0x47BA90 for the dumped build).",
-			static_cast<unsigned long long>(matches[0] - base));
+		// Resolved (and ambiguity-checked) in the load-hooks event; unresolved means
+		// the panel falls back to ReceiveInitCheatManager only.
+		if (uintptr_t address = AOB::Resolved().CheatManager_InitCheatManager)
+			g_initCheatManager = reinterpret_cast<InitCheatManagerFn>(address);
 	}
 
 	void Shutdown()

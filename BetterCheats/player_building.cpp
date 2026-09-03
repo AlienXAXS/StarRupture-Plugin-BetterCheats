@@ -1,6 +1,6 @@
 #include "player_building.h"
 #include "plugin_helpers.h"
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "session_config.h"
 
 #include "AuActorPlacement_classes.hpp"
@@ -35,28 +35,26 @@ namespace BetterCheats::Panels::Building
 
 		// -------------------------------------------------------------------------
 		// No Stability Check
-		// ACrAPHelperActorBase::CheckStability / ACrAPHelperActorCustom::CheckStability
-		// are the native functions that actually decide whether a placement passes
-		// the stability graph — their bool return is the real gate. (The data-asset
-		// flags bCheckStability / RequirePlatformConnecting are never read on this
-		// path, which is why patching those did nothing.) We let the original run
-		// — so the HUD stability bar still reflects the real computed value — and
-		// just force the return to true while the cheat is active.
+		// ACrAPHelperActorCustom::CheckStability is the native function that actually
+		// decides whether a placement passes the stability graph — its bool return is
+		// the real gate. (The data-asset flags bCheckStability /
+		// RequirePlatformConnecting are never read on this path, which is why patching
+		// those did nothing.) We let the original run — so the HUD stability bar still
+		// reflects the real computed value — and just force the return to true while
+		// the cheat is active.
+		//
+		// ACrAPHelperDynamicPillar::CheckStability is the equivalent gate for the
+		// multi-point/zoop path (chained foundations), which does not go through the
+		// Custom overload — it needs its own hook or zoop placements stay blocked.
 		// -------------------------------------------------------------------------
 
 		using CheckStabilityFn = bool(__fastcall*)(void* self, const void* placementData);
 
-		CheckStabilityFn g_originalCheckStabilityBase   = nullptr;
-		CheckStabilityFn g_originalCheckStabilityCustom = nullptr;
-		HookHandle       g_hookCheckStabilityBase       = nullptr;
-		HookHandle       g_hookCheckStabilityCustom     = nullptr;
-		bool             g_noStabilityCheck             = false;
-
-		bool __fastcall Detour_CheckStabilityBase(void* self, const void* placementData)
-		{
-			bool result = g_originalCheckStabilityBase(self, placementData);
-			return g_noStabilityCheck ? true : result;
-		}
+		CheckStabilityFn g_originalCheckStabilityCustom        = nullptr;
+		CheckStabilityFn g_originalCheckStabilityDynamicPillar = nullptr;
+		HookHandle       g_hookCheckStabilityCustom            = nullptr;
+		HookHandle       g_hookCheckStabilityDynamicPillar     = nullptr;
+		bool             g_noStabilityCheck                    = false;
 
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
@@ -64,23 +62,9 @@ namespace BetterCheats::Panels::Building
 			return g_noStabilityCheck ? true : result;
 		}
 
-		// -------------------------------------------------------------------------
-		// No Stability Check — Multi-Point / Zoop
-		// ACrAPHelperActorCustom::CheckDynamicHelperStability is a separate gate used
-		// by the multi-point "dynamic helper" placement path (chained foundations) —
-		// it does not go through CheckStability at all, which is why zoop placements
-		// were still being blocked. Same approach: let the original run (it also
-		// updates the HUD strength value via SetStabilityStrength) and force true.
-		// -------------------------------------------------------------------------
-
-		using CheckDynamicHelperStabilityFn = bool(__fastcall*)(void* self);
-
-		CheckDynamicHelperStabilityFn g_originalCheckDynamicHelperStability = nullptr;
-		HookHandle                    g_hookCheckDynamicHelperStability     = nullptr;
-
-		bool __fastcall Detour_CheckDynamicHelperStability(void* self)
+		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
-			bool result = g_originalCheckDynamicHelperStability(self);
+			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
 			return g_noStabilityCheck ? true : result;
 		}
 
@@ -162,19 +146,20 @@ namespace BetterCheats::Panels::Building
 
 	void Initialize()
 	{
-		IPluginScanner*  scanner = GetScanner();
-		IPluginHookUtils* hooks  = GetHooks() ? GetHooks()->Hooks : nullptr;
+		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;
 
-		if (!scanner || !hooks)
+		if (!hooks)
 		{
-			LOG_WARN("Building: scanner or hook utils unavailable, no-build-cost hook skipped");
+			LOG_WARN("Building: hook utils unavailable, no-build-cost hook skipped");
 			return;
 		}
 
-		uintptr_t addr = scanner->FindPatternInMainModule(AOB::GetResourceConditionResult);
+		const AOB::ResolvedAddresses& aob = AOB::Resolved();
+
+		uintptr_t addr = aob.GetResourceConditionResult;
 		if (!addr)
 		{
-			LOG_WARN("Building: GetResourceConditionResult pattern not found");
+			LOG_WARN("Building: GetResourceConditionResult unresolved");
 		}
 		else
 		{
@@ -193,10 +178,10 @@ namespace BetterCheats::Panels::Building
 			}
 		}
 
-		uintptr_t checkAddr = scanner->FindPatternInMainModule(AOB::CheckAvailableBuildings);
+		uintptr_t checkAddr = aob.CheckAvailableBuildings;
 		if (!checkAddr)
 		{
-			LOG_WARN("Building: CheckAvailableBuildings pattern not found — unlock all buildings will not refresh the menu");
+			LOG_WARN("Building: CheckAvailableBuildings unresolved — unlock all buildings will not refresh the menu");
 		}
 		else
 		{
@@ -204,10 +189,10 @@ namespace BetterCheats::Panels::Building
 			LOG_INFO("Building: CheckAvailableBuildings resolved");
 		}
 
-		uintptr_t recipeAddr = scanner->FindPatternInMainModule(AOB::IsRecipeUnlocked);
+		uintptr_t recipeAddr = aob.IsRecipeUnlocked;
 		if (!recipeAddr)
 		{
-			LOG_WARN("Building: IsRecipeUnlocked pattern not found");
+			LOG_WARN("Building: IsRecipeUnlocked unresolved");
 		}
 		else
 		{
@@ -222,28 +207,10 @@ namespace BetterCheats::Panels::Building
 				LOG_INFO("Building: IsRecipeUnlocked hook installed");
 		}
 
-		uintptr_t stabilityBaseAddr = scanner->FindPatternInMainModule(AOB::CheckStability_Base);
-		if (!stabilityBaseAddr)
-		{
-			LOG_WARN("Building: CheckStability_Base pattern not found");
-		}
-		else
-		{
-			g_hookCheckStabilityBase = hooks->Install(
-				stabilityBaseAddr,
-				reinterpret_cast<void*>(&Detour_CheckStabilityBase),
-				reinterpret_cast<void**>(&g_originalCheckStabilityBase));
-
-			if (!g_hookCheckStabilityBase)
-				LOG_WARN("Building: failed to install CheckStability_Base hook");
-			else
-				LOG_INFO("Building: CheckStability_Base hook installed");
-		}
-
-		uintptr_t stabilityCustomAddr = scanner->FindPatternInMainModule(AOB::CheckStability_Custom);
+		uintptr_t stabilityCustomAddr = aob.CheckStability_Custom;
 		if (!stabilityCustomAddr)
 		{
-			LOG_WARN("Building: CheckStability_Custom pattern not found");
+			LOG_WARN("Building: CheckStability_Custom unresolved");
 		}
 		else
 		{
@@ -258,22 +225,22 @@ namespace BetterCheats::Panels::Building
 				LOG_INFO("Building: CheckStability_Custom hook installed");
 		}
 
-		uintptr_t dynamicStabilityAddr = scanner->FindPatternInMainModule(AOB::CheckDynamicHelperStability);
-		if (!dynamicStabilityAddr)
+		uintptr_t stabilityPillarAddr = aob.CheckStability_DynamicPillar;
+		if (!stabilityPillarAddr)
 		{
-			LOG_WARN("Building: CheckDynamicHelperStability pattern not found");
+			LOG_WARN("Building: CheckStability_DynamicPillar unresolved — zoop placements will still be stability-checked");
 		}
 		else
 		{
-			g_hookCheckDynamicHelperStability = hooks->Install(
-				dynamicStabilityAddr,
-				reinterpret_cast<void*>(&Detour_CheckDynamicHelperStability),
-				reinterpret_cast<void**>(&g_originalCheckDynamicHelperStability));
+			g_hookCheckStabilityDynamicPillar = hooks->Install(
+				stabilityPillarAddr,
+				reinterpret_cast<void*>(&Detour_CheckStabilityDynamicPillar),
+				reinterpret_cast<void**>(&g_originalCheckStabilityDynamicPillar));
 
-			if (!g_hookCheckDynamicHelperStability)
-				LOG_WARN("Building: failed to install CheckDynamicHelperStability hook");
+			if (!g_hookCheckStabilityDynamicPillar)
+				LOG_WARN("Building: failed to install CheckStability_DynamicPillar hook");
 			else
-				LOG_INFO("Building: CheckDynamicHelperStability hook installed");
+				LOG_INFO("Building: CheckStability_DynamicPillar hook installed");
 		}
 	}
 
@@ -295,13 +262,6 @@ namespace BetterCheats::Panels::Building
 		}
 		g_unlockAllRecipes = false;
 
-		if (hooks && g_hookCheckStabilityBase)
-		{
-			hooks->Remove(g_hookCheckStabilityBase);
-			g_hookCheckStabilityBase     = nullptr;
-			g_originalCheckStabilityBase = nullptr;
-		}
-
 		if (hooks && g_hookCheckStabilityCustom)
 		{
 			hooks->Remove(g_hookCheckStabilityCustom);
@@ -309,11 +269,11 @@ namespace BetterCheats::Panels::Building
 			g_originalCheckStabilityCustom = nullptr;
 		}
 
-		if (hooks && g_hookCheckDynamicHelperStability)
+		if (hooks && g_hookCheckStabilityDynamicPillar)
 		{
-			hooks->Remove(g_hookCheckDynamicHelperStability);
-			g_hookCheckDynamicHelperStability     = nullptr;
-			g_originalCheckDynamicHelperStability = nullptr;
+			hooks->Remove(g_hookCheckStabilityDynamicPillar);
+			g_hookCheckStabilityDynamicPillar     = nullptr;
+			g_originalCheckStabilityDynamicPillar = nullptr;
 		}
 		g_noStabilityCheck = false;
 
@@ -338,9 +298,8 @@ namespace BetterCheats::Panels::Building
 
 	void Tick(float /*deltaSeconds*/)
 	{
-		// No Stability Check is purely hook-driven (see Detour_CheckStabilityBase /
-		// Detour_CheckStabilityCustom / Detour_CheckDynamicHelperStability above) —
-		// nothing to do here per-tick.
+		// No Stability Check is purely hook-driven (see Detour_CheckStabilityCustom /
+		// Detour_CheckStabilityDynamicPillar above) — nothing to do here per-tick.
 
 		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
 		// Writing the flag alone is insufficient; the function must run to rebuild

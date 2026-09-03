@@ -168,6 +168,9 @@
     <ClInclude Include="aob_patterns.h">
       <Filter>Patterns</Filter>
     </ClInclude>
+    <ClInclude Include="aob_resolver.h">
+      <Filter>Patterns</Filter>
+    </ClInclude>
 
   </ItemGroup>
 
@@ -182,6 +185,11 @@
     </ClCompile>
     <ClCompile Include="plugin.cpp">
       <Filter>Plugin Core</Filter>
+    </ClCompile>
+
+    <!-- Patterns -->
+    <ClCompile Include="aob_resolver.cpp">
+      <Filter>Patterns</Filter>
     </ClCompile>
 
     <!-- Plugin Core\Config -->

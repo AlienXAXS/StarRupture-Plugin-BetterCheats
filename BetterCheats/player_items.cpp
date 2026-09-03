@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "Chimera_classes.hpp"
 #include "AuItems_classes.hpp"
 #include "Engine_classes.hpp"
@@ -179,17 +179,10 @@ namespace BetterCheats::Panels::Items
 
 			g_addNewItemResolveTried = true;
 
-			IPluginScanner* scanner = GetScanner();
-			if (!scanner)
-			{
-				LOG_WARN("Item Spawner: scanner unavailable — cannot resolve UAuItemsComponent::AddNewItem.");
-				return nullptr;
-			}
-
-			uintptr_t address = scanner->FindPatternInMainModule(AOB::AddNewItem);
+			uintptr_t address = AOB::Resolved().AddNewItem;
 			if (!address)
 			{
-				LOG_WARN("Item Spawner: UAuItemsComponent::AddNewItem pattern not found.");
+				LOG_WARN("Item Spawner: UAuItemsComponent::AddNewItem unresolved.");
 				return nullptr;
 			}
 

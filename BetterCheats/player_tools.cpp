@@ -1,6 +1,6 @@
 #include "player_tools.h"
 #include "plugin_helpers.h"
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "session_config.h"
 
 #include "Chimera_classes.hpp"
@@ -43,13 +43,9 @@ namespace BetterCheats::Panels::Tools
 			g_originalUpdateRepHarvesterHeatStack(self);
 		}
 
-		void InstallHook(const char* pattern, void* detour, void** original, HookHandle* outHandle, const char* name)
+		void InstallHook(uintptr_t addr, void* detour, void** original, HookHandle* outHandle, const char* name)
 		{
-			IPluginScanner* scanner = GetScanner();
-			if (!scanner) { LOG_WARN("Tools: scanner unavailable, %s hook skipped", name); return; }
-
-			uintptr_t addr = scanner->FindPatternInMainModule(pattern);
-			if (!addr) { LOG_WARN("Tools: %s pattern not found", name); return; }
+			if (!addr) { LOG_WARN("Tools: %s unresolved, hook skipped", name); return; }
 
 			IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;
 			if (!hooks) { LOG_WARN("Tools: hook utils unavailable, %s hook skipped", name); return; }
@@ -98,14 +94,14 @@ namespace BetterCheats::Panels::Tools
 	void Initialize()
 	{
 		InstallHook(
-			AOB::GetMiningDamage,
+			AOB::Resolved().GetMiningDamage,
 			reinterpret_cast<void*>(&Detour_GetMiningDamage),
 			reinterpret_cast<void**>(&g_originalGetMiningDamage),
 			&g_hookGetMiningDamage,
 			"GetMiningDamage");
 
 		InstallHook(
-			AOB::UpdateRepHarvesterHeatStack,
+			AOB::Resolved().UpdateRepHarvesterHeatStack,
 			reinterpret_cast<void*>(&Detour_UpdateRepHarvesterHeatStack),
 			reinterpret_cast<void**>(&g_originalUpdateRepHarvesterHeatStack),
 			&g_hookUpdateRepHarvesterHeatStack,

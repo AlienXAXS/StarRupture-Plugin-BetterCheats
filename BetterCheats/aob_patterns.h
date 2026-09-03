@@ -8,8 +8,11 @@
 //   Class::Function — fully qualified name of the function being located
 //   Parameters      — function signature for reference
 //
-// All patterns are passed to IPluginScanner::FindPatternInMainModule.
-// Add new patterns here; never scatter raw byte strings across feature files.
+// Patterns are resolved exclusively by aob_resolver.cpp, from the plugin's
+// OnPluginLoadHooks event — the only window in which the loader lets a plugin
+// pattern scan. Add new patterns here, add a matching field and Resolve* call
+// in aob_resolver.h/.cpp, and read the address back through AOB::Resolved().
+// Never scatter raw byte strings, or scan, from a feature file.
 // ---------------------------------------------------------------------------
 
 namespace BetterCheats::AOB
@@ -47,7 +50,7 @@ namespace BetterCheats::AOB
 	// Parameters       (UCrBuildingComponent* this) -> EAuAPlacementConditionResult
 	// Hooked to return Valid (1) when no-build-cost cheat is active.
 	constexpr const char* GetResourceConditionResult =
-		"48 8B C4 53 57 48 83 EC ?? 48 89 68 ?? 48 8B D9 48 89 70 ?? 4C 89 70";
+		"48 8B C4 53 57 48 83 EC ?? 48 89 68 ?? 48 8B D9 48 8B 89";
 
 	// Class::Function  UAuActorPlacementComponent::AddPoint
 	// Parameters       (UAuActorPlacementComponent* this) -> FScriptContainerElement*
@@ -57,36 +60,31 @@ namespace BetterCheats::AOB
 	constexpr const char* AddPoint =
 		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 4C 89 74 24 ?? 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B D9";
 
-	// Class::Function  ACrAPHelperActorBase::CheckStability
-	// Parameters       (ACrAPHelperActorBase* this, const UAuActorPlacementData* PlacementData) -> bool
-	// Native stability gate for the base placement helper actor. Computes the
-	// stability graph result (or the simpler neighbour-trace result, depending on
-	// UAuActorPlacementComponent::NewStability) and returns whether the current
-	// placement is structurally valid. Hooked to force a `true` result — after
-	// letting the original run so the HUD stability bar still reflects the real
-	// computed value — when the No Stability Check cheat is active. Identical
-	// prologue to the Custom overload below except for the final instruction.
-	constexpr const char* CheckStability_Base =
-		"48 8B C4 48 89 58 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? 0F 29 78 ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? ?? 4C 8B E2";
-
 	// Class::Function  ACrAPHelperActorCustom::CheckStability
 	// Parameters       (ACrAPHelperActorCustom* this, const UAuActorPlacementData* PlacementData) -> bool
-	// Same role as ACrAPHelperActorBase::CheckStability above, for the "Custom"
-	// placement helper actor (foundations/buildings using snap sockets).
+	// Native stability gate for the "Custom" placement helper actor
+	// (foundations/buildings using snap sockets). Computes the stability graph
+	// result (or the simpler neighbour-trace result, depending on
+	// UAuActorPlacementComponent::NewStability) and returns whether the current
+	// placement is structurally valid; it is also the only caller of
+	// ACrAPHelper::CheckStability, so hooking here covers that path too. Hooked to
+	// force a `true` result — after letting the original run so the HUD stability
+	// bar still reflects the real computed value — when the No Stability Check
+	// cheat is active. The multi-point/zoop path needs CheckStability_DynamicPillar
+	// below as well.
 	constexpr const char* CheckStability_Custom =
 		"48 8B C4 48 89 58 ?? 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? 0F 29 78 ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? ?? 4C 8B EA";
 
-	// Class::Function  ACrAPHelperActorCustom::CheckDynamicHelperStability
-	// Parameters       (ACrAPHelperActorCustom* this) -> bool
-	// Separate stability gate used by the multi-point/zoop "dynamic helper" placement
-	// path (chained foundations) — does not go through ACrAPHelperActorCustom::CheckStability
-	// at all. Builds a per-point connection graph and returns false if any connected
-	// point's stability strength would drop to/below zero. Still calls
-	// AAuAPHelperActor::SetStabilityStrength internally, so letting the original run
-	// before overriding the return keeps the HUD strength value honest, same as the
-	// two CheckStability hooks above.
-	constexpr const char* CheckDynamicHelperStability =
-		"40 55 41 54 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? ?? ?? ?? 4C 8B E1 48 89 4D";
+	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
+	// Parameters       (ACrAPHelperDynamicPillar* this, const UCrBuildingData* PlacementData) -> bool
+	// Stability gate for the dynamic pillar helper used by the multi-point/zoop
+	// placement path (chained foundations) — it does not go through
+	// ACrAPHelperActorCustom::CheckStability, which is why zoop placements are
+	// still blocked with only that hook installed. Hooked the same way: let the
+	// original run so the HUD strength value stays honest, then force the return
+	// to true while the No Stability Check cheat is active.
+	constexpr const char* CheckStability_DynamicPillar =
+		"40 53 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B D9 75 ?? 32 C0 48 83 C4 ?? 5B C3 48 89 6C 24";
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
 	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)
@@ -100,7 +98,7 @@ namespace BetterCheats::AOB
 	// Returns true if the given recipe has been unlocked for crafting.
 	// Hooked to always return true when unlock all recipes cheat is active.
 	constexpr const char* IsRecipeUnlocked =
-		"48 89 5C 24 ?? 57 48 83 EC ?? 48 8B DA 48 8B F9 E8 ?? ?? ?? ?? 84 C0 75 ?? 48 8B D3";
+		"48 89 5C 24 ?? 57 48 83 EC ?? 80 B9 ?? ?? ?? ?? ?? 48 8B DA 48 8B F9 75 ?? 48 85 D2 0F 84";
 
 	// -------------------------------------------------------------------------
 	// Mining

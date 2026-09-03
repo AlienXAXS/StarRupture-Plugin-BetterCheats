@@ -1,6 +1,6 @@
 #include "player_attributes.h"
 #include "plugin_helpers.h"
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "session_config.h"
 
 #include "Chimera_classes.hpp"
@@ -474,14 +474,10 @@ namespace BetterCheats::Panels::Attributes
 			catch (...) {}
 		}
 
-		IPluginScanner* scanner = GetScanner();
-		if (!scanner)
-			return;
-
-		if (uintptr_t address = scanner->FindPatternInMainModule(AOB::HealthHud_SetupProgressBar))
+		if (uintptr_t address = AOB::Resolved().HealthHud_SetupProgressBar)
 			g_setupProgressBar = reinterpret_cast<HealthHud_SetupProgressBarFn>(address);
 		else
-			LOG_WARN("Failed to resolve UCrUW_HealthHud::SetupProgressBar pattern — HUD will not refresh immediately.");
+			LOG_WARN("UCrUW_HealthHud::SetupProgressBar unresolved — HUD will not refresh immediately.");
 	}
 
 	void Shutdown()

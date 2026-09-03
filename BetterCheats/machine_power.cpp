@@ -1,5 +1,5 @@
 #include "machine_power.h"
-#include "aob_patterns.h"
+#include "aob_resolver.h"
 #include "plugin_helpers.h"
 #include "session_config.h"
 
@@ -531,22 +531,17 @@ namespace BetterCheats::Panels::Power
 
 			g_templateFnsResolveTried = true;
 
-			IPluginScanner* scanner = GetScanner();
-			if (!scanner)
-			{
-				LOG_WARN("Power: scanner unavailable - cannot resolve Mass entity template functions.");
-				return false;
-			}
+			const AOB::ResolvedAddresses& aob = AOB::Resolved();
 
-			if (uintptr_t address = scanner->FindPatternInMainModule(AOB::FMassEntityConfig_DestroyEntityTemplate))
+			if (uintptr_t address = aob.FMassEntityConfig_DestroyEntityTemplate)
 				g_destroyEntityTemplate = reinterpret_cast<DestroyEntityTemplateFn>(address);
 			else
-				LOG_WARN("Power: FMassEntityConfig::DestroyEntityTemplate pattern not found.");
+				LOG_WARN("Power: FMassEntityConfig::DestroyEntityTemplate unresolved.");
 
-			if (uintptr_t address = scanner->FindPatternInMainModule(AOB::FMassEntityConfig_GetOrCreateEntityTemplate))
+			if (uintptr_t address = aob.FMassEntityConfig_GetOrCreateEntityTemplate)
 				g_getOrCreateEntityTemplate = reinterpret_cast<GetOrCreateEntityTemplateFn>(address);
 			else
-				LOG_WARN("Power: FMassEntityConfig::GetOrCreateEntityTemplate pattern not found.");
+				LOG_WARN("Power: FMassEntityConfig::GetOrCreateEntityTemplate unresolved.");
 
 			return g_destroyEntityTemplate && g_getOrCreateEntityTemplate;
 		}
@@ -633,27 +628,22 @@ namespace BetterCheats::Panels::Power
 
 			g_sharedFragmentFnsResolveTried = true;
 
-			IPluginScanner* scanner = GetScanner();
-			if (!scanner)
-			{
-				LOG_WARN("Power: scanner unavailable - cannot resolve shared-fragment functions.");
-				return false;
-			}
+			const AOB::ResolvedAddresses& aob = AOB::Resolved();
 
-			if (uintptr_t address = scanner->FindPatternInMainModule(AOB::UWorld_GetMassEntitySubsystem))
+			if (uintptr_t address = aob.UWorld_GetMassEntitySubsystem)
 				g_getMassEntitySubsystem = reinterpret_cast<GetMassEntitySubsystemFn>(address);
 			else
-				LOG_WARN("Power: UWorld::GetSubsystem<UMassEntitySubsystem> pattern not found.");
+				LOG_WARN("Power: UWorld::GetSubsystem<UMassEntitySubsystem> unresolved.");
 
-			if (uintptr_t address = scanner->FindPatternInMainModule(AOB::FMassEntityManager_ConstSharedFragments_FindOrAdd))
+			if (uintptr_t address = aob.FMassEntityManager_ConstSharedFragments_FindOrAdd)
 				g_findOrAddConstShared = reinterpret_cast<FindOrAddConstSharedFn>(address);
 			else
-				LOG_WARN("Power: TSharedFragmentsContainer<FConstSharedStruct>::FindOrAdd pattern not found.");
+				LOG_WARN("Power: TSharedFragmentsContainer<FConstSharedStruct>::FindOrAdd unresolved.");
 
-			if (uintptr_t address = scanner->FindPatternInMainModule(AOB::StructUtils_GetStructInstanceCrc32))
+			if (uintptr_t address = aob.StructUtils_GetStructInstanceCrc32)
 				g_getStructInstanceCrc32 = reinterpret_cast<GetStructInstanceCrc32Fn>(address);
 			else
-				LOG_WARN("Power: UE::StructUtils::GetStructInstanceCrc32 pattern not found.");
+				LOG_WARN("Power: UE::StructUtils::GetStructInstanceCrc32 unresolved.");
 
 			return g_getMassEntitySubsystem && g_findOrAddConstShared && g_getStructInstanceCrc32;
 		}

@@ -1,6 +1,7 @@
 #include "plugin.h"
 #include "plugin_helpers.h"
 #include "plugin_config.h"
+#include "aob_resolver.h"
 #include "session_config.h"
 #include "game_context.h"
 #include "cheat_menu.h"
@@ -91,6 +92,19 @@ extern "C" {
 	__declspec(dllexport) PluginInfo* GetPluginInfo()
 	{
 		return &s_pluginInfo;
+	}
+
+	// Runs after GetPluginInfo and before PluginInit — the only window in which the
+	// loader lets a plugin pattern scan. Resolve every AOB here and install nothing:
+	// self->hooks is null for the duration, and a plugin that misses a required
+	// pattern is unloaded before PluginInit ever runs.
+	__declspec(dllexport) void OnPluginLoadHooks(IPluginSelf* self, IPluginHookScanner* scanner)
+	{
+		// Publish self early so the logging macros work inside the resolver; the
+		// loader hands PluginInit the same pointer.
+		g_self = self;
+
+		BetterCheats::AOB::ResolveAll(self, scanner);
 	}
 
 	__declspec(dllexport) bool PluginInit(IPluginSelf* self)

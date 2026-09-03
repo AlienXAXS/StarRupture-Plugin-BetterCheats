@@ -23,7 +23,7 @@ This is a Visual Studio 2022 C++ project (no CLI build/test/lint tooling — bui
 
 BetterCheats is a plugin for the **StarRupture ModLoader** (see `plugin_interface.h`, the SDK contract — never edit it). The plugin is a single DLL that the modloader loads, and which registers an ImGui panel, hooks, and a keybind through `IPluginSelf`.
 
-**Entry point & lifecycle** (`plugin.cpp`): exports `GetPluginInfo`, `PluginInit`, `PluginShutdown`. `PluginInit` stores the global `IPluginSelf*` (accessed elsewhere via `GetSelf()`/`GetHooks()`/`GetConfig()`/`GetScanner()` in `plugin_helpers.h`), initializes config, registers the cheat menu panel, registers the menu toggle keybind, and subscribes to the engine tick (`OnEngineTick` drives continuous effects like attribute locks regardless of whether the menu UI is open).
+**Entry point & lifecycle** (`plugin.cpp`): exports `GetPluginInfo`, `OnPluginLoadHooks`, `PluginInit`, `PluginShutdown`. `OnPluginLoadHooks` runs first and is the only window in which the modloader lets the plugin pattern scan — it stores the global `IPluginSelf*` and hands the `IPluginHookScanner*` to `BetterCheats::AOB::ResolveAll` (see rule 3); it installs nothing, because `self->hooks` is null for its duration and a plugin that misses a required pattern is unloaded before `PluginInit`. `PluginInit` (accessed elsewhere via `GetSelf()`/`GetHooks()`/`GetConfig()` in `plugin_helpers.h`) initializes config, registers the cheat menu panel, registers the menu toggle keybind, and subscribes to the engine tick (`OnEngineTick` drives continuous effects like attribute locks regardless of whether the menu UI is open).
 
 **Menu shell** (`cheat_menu.h/.cpp`): `CheatMenu` owns the ImGui panel registration, sidebar navigation, and dispatches rendering to category panels based on the `MenuCategory` enum. It also gates menu visibility to single-player `ChimeraMain` world sessions via `World->RegisterOnWorldBeginPlay`/`RegisterOnAfterWorldEndPlay` hooks (see `ShouldShowMenu`/`s_inChimeraMain`) — the menu hides itself outside that world, including correctly picking up an in-progress session on hot reload by probing `SDK::UWorld::GetWorld()` directly.
 
@@ -58,6 +58,7 @@ Cheat categories are self-contained. Each category lives in its own pair of file
 | `plugin_helpers.h` | `Plugin Core\Helpers` | Logging macros, convenience wrappers |
 | `plugin_interface.h` | `SDK` | Modloader SDK (do not edit) |
 | `aob_patterns.h` | `Patterns` | All AOB byte patterns (see rule 3) |
+| `aob_resolver.h/.cpp` | `Patterns` | Resolves every pattern during `OnPluginLoadHooks` (see rule 3) |
 
 When adding a **new category** (e.g. Vehicles):
 - Create `panel_vehicles.h` + `panel_vehicles.cpp`
@@ -81,8 +82,25 @@ as comments immediately above the constant:
 constexpr const char* DoThing = "48 89 5C 24 ?? 57 48 83 EC 20 ?? ?? ?? ??";
 ```
 
-Use `IPluginScanner::FindPatternInMainModule` (via `GetScanner()`) to
-resolve patterns at runtime.
+### Resolving — `aob_resolver.h/.cpp`
+
+The modloader no longer lets a plugin scan whenever it likes. `IPluginHookScanner`
+is handed to the `OnPluginLoadHooks` export only, and refuses calls made outside
+that event — stashing the table pointer does not work. So **all** scanning lives
+in `aob_resolver.cpp`:
+
+- Add the pattern to `aob_patterns.h`.
+- Add a matching `uintptr_t` field to `AOB::ResolvedAddresses` in `aob_resolver.h`.
+- Add a `Resolve*` call for it in `AOB::ResolveAll`, named after the thing being
+  hooked (`"UCrCraftingComponent::FinishCrafting"`) — that name is what the user
+  sees in the loader's startup failure report.
+- Read the address back from `AOB::Resolved()` in the feature module, null-check
+  it, and install the hook from `Initialize()` (i.e. from `PluginInit`).
+
+Every pattern is resolved with `ResolveOptional`, not `ResolveRequired`: each one
+backs a single cheat that degrades on its own, and a required miss would refuse
+the whole plugin. A miss is still recorded and surfaced to the user. Never
+install a hook or detour from `OnPluginLoadHooks`.
 
 ## 4. General Coding Conventions
 

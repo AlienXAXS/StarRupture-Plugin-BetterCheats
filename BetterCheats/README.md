@@ -31,13 +31,14 @@ This plugin demonstrates:
 
 ### Required Exports
 
-Every plugin **must** export these three functions:
+Every plugin **must** export these three functions, plus `OnPluginLoadHooks` if
+it pattern scans:
 
 ```cpp
 extern "C" {
     __declspec(dllexport) PluginInfo* GetPluginInfo();
-    __declspec(dllexport) bool PluginInit(IPluginLogger* logger, IPluginConfig* config, 
-        IPluginScanner* scanner, IPluginHooks* hooks);
+    __declspec(dllexport) void OnPluginLoadHooks(IPluginSelf* self, IPluginHookScanner* scanner);
+    __declspec(dllexport) bool PluginInit(IPluginSelf* self);
     __declspec(dllexport) void PluginShutdown();
 }
 ```
@@ -123,9 +124,18 @@ int value = GetConfig()->ReadInt("ExamplePlugin", "Section", "Key", defaultValue
 GetConfig()->WriteString("ExamplePlugin", "Section", "Key", "value");
 ```
 
-### IPluginScanner
+### IPluginHookScanner
+
+Pattern scanning is only legal inside `OnPluginLoadHooks`, which runs before
+`PluginInit`. Resolve addresses there, store them, and install from `PluginInit`
+— `self->hooks` is null during the event, and a missed *required* pattern makes
+the loader refuse the plugin outright.
+
 ```cpp
-uintptr_t address = GetScanner()->FindPatternInMainModule("48 89 5C 24 ?? 57");
+void OnPluginLoadHooks(IPluginSelf* self, IPluginHookScanner* scan)
+{
+    g_address = scan->ResolveOptional(self, "AMyClass::DoThing", "48 89 5C 24 ?? 57");
+}
 ```
 
 ### IPluginHooks
