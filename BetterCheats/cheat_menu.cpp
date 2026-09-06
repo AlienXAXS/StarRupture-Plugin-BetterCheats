@@ -7,6 +7,7 @@
 #include "panel_enemies.h"
 #include "panel_misc.h"
 #include "panel_dev.h"
+#include "keybind_picker.h"
 
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
@@ -53,6 +54,7 @@ namespace BetterCheats
 		if (handle == s_panelHandle)
 		{
 			s_open = false;
+			Keybind::CancelCapture();
 			if (s_self && g_inputCaptureToken)
 			{
 				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
@@ -102,6 +104,7 @@ namespace BetterCheats
 		}
 		else
 		{
+			Keybind::CancelCapture();
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
 			s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
 		}
@@ -186,7 +189,14 @@ namespace BetterCheats
 
 		imgui->PushIDStr(label);
 		if (imgui->SelectableFull(label, active, 0, kNavWidth, 0.0f))
+		{
+			// A rebind picker left waiting on the panel we are navigating away
+			// from would never get the chance to finish.
+			if (!active)
+				Keybind::CancelCapture();
+
 			s_activeCategory = cat;
+		}
 		imgui->PopID();
 
 		if (active)
@@ -214,6 +224,7 @@ namespace BetterCheats
 		NavGroup("PLAYER");
 		NavItem(imgui, "  Self",                MenuCategory::Player_Self);
 		NavItem(imgui, "  Item Spawner",        MenuCategory::Player_ItemSpawner);
+		NavItem(imgui, "  Inventory",           MenuCategory::Player_Inventory);
 		NavItem(imgui, "  Weapon",              MenuCategory::Player_Weapon);
 		NavItem(imgui, "  Movement",            MenuCategory::Player_Movement);
 		NavItem(imgui, "  Teleport",            MenuCategory::Player_Teleport);
@@ -253,6 +264,7 @@ namespace BetterCheats
 		case MenuCategory::World_Corporations:     Panels::RenderWorld_Corporations(imgui);      break;
 		case MenuCategory::Player_Self:            Panels::RenderPlayer_Self(imgui);             break;
 		case MenuCategory::Player_ItemSpawner:     Panels::RenderPlayer_ItemSpawner(imgui);      break;
+		case MenuCategory::Player_Inventory:       Panels::RenderPlayer_Inventory(imgui);        break;
 		case MenuCategory::Player_Weapon:          Panels::RenderPlayer_Weapon(imgui);           break;
 		case MenuCategory::Player_Movement:        Panels::RenderPlayer_Movement(imgui);         break;
 		case MenuCategory::Player_Teleport:        Panels::RenderPlayer_Teleport(imgui);         break;

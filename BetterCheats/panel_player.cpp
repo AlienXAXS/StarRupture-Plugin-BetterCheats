@@ -1,7 +1,9 @@
 #include "panel_player.h"
 #include "player_attributes.h"
 #include "player_building.h"
+#include "player_inventory.h"
 #include "player_items.h"
+#include "player_movement.h"
 #include "player_skills.h"
 #include "player_tools.h"
 
@@ -17,6 +19,11 @@ namespace BetterCheats::Panels
 		Items::RenderImGui(imgui);
 	}
 
+	void RenderPlayer_Inventory(IModLoaderImGui* imgui)
+	{
+		Inventory::RenderImGui(imgui);
+	}
+
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)
 	{
 		static bool infiniteAmmo    = false;
@@ -29,11 +36,7 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_Movement(IModLoaderImGui* imgui)
 	{
-		static bool  noClip     = false;
-		static float speedMul   = 1.0f;
-
-		imgui->SeparatorText("Movement");
-		imgui->TextDisabled("No options yet.");
+		Movement::RenderImGui(imgui);
 	}
 
 	void RenderPlayer_Teleport(IModLoaderImGui* imgui)

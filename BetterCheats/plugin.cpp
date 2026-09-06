@@ -7,7 +7,9 @@
 #include "cheat_menu.h"
 #include "player_attributes.h"
 #include "player_building.h"
+#include "player_inventory.h"
 #include "player_items.h"
+#include "player_movement.h"
 #include "player_skills.h"
 #include "player_tools.h"
 #include "world_wave.h"
@@ -55,6 +57,8 @@ static void OnExperienceLoadComplete()
 
 	BetterCheats::Panels::Attributes::ApplySavedConfig();
 	BetterCheats::Panels::Building::ApplySavedConfig();
+	BetterCheats::Panels::Inventory::ApplySavedConfig();
+	BetterCheats::Panels::Movement::ApplySavedConfig();
 	BetterCheats::Panels::Tools::ApplySavedConfig();
 	BetterCheats::Panels::Power::ApplySavedConfig();
 	BetterCheats::Panels::Wave::ApplySavedConfig();
@@ -76,6 +80,8 @@ static void OnEngineTick(float deltaSeconds)
 
 	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
 	BetterCheats::Panels::Building::Tick(deltaSeconds);
+	BetterCheats::Panels::Inventory::Tick(deltaSeconds);
+	BetterCheats::Panels::Movement::Tick(deltaSeconds);
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 	BetterCheats::Panels::Tools::Tick(deltaSeconds);
 	BetterCheats::Panels::Wave::Tick(deltaSeconds);
@@ -135,6 +141,12 @@ extern "C" {
 		LOG_INFO("Initializing Item Spawner panel...");
 		BetterCheats::Panels::Items::Initialize();
 
+		LOG_INFO("Initializing Inventory panel...");
+		BetterCheats::Panels::Inventory::Initialize();
+
+		LOG_INFO("Initializing Movement panel...");
+		BetterCheats::Panels::Movement::Initialize();
+
 		LOG_INFO("Initializing Tools panel...");
 		BetterCheats::Panels::Tools::Initialize();
 
@@ -190,12 +202,24 @@ extern "C" {
 			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 		}
 
+		// Detours come out FIRST, before anything that touches game objects.
+		//
+		// The loader wraps PluginShutdown in SEH: a fault anywhere in here is
+		// swallowed, the remaining shutdowns are skipped, and the DLL is freed
+		// regardless. With hook removal at the end of the list that turned any
+		// shutdown fault into a guaranteed second crash — the game kept calling
+		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
+		// two of them (UpdateRepHarvesterHeatStack, GetMiningDamage) every frame.
+		// Detached first, a fault below is survivable.
+		BetterCheats::Panels::Tools::Shutdown();
+		BetterCheats::Panels::Building::Shutdown();
+
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
 		BetterCheats::Panels::Attributes::Shutdown();
-		BetterCheats::Panels::Building::Shutdown();
 		BetterCheats::Panels::Items::Shutdown();
-		BetterCheats::Panels::Tools::Shutdown();
+		BetterCheats::Panels::Inventory::Shutdown();
+		BetterCheats::Panels::Movement::Shutdown();
 		BetterCheats::Panels::Wave::Shutdown();
 		BetterCheats::Panels::Corporations::Shutdown();
 		BetterCheats::Panels::Enemies::Shutdown();

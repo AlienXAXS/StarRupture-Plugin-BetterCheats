@@ -85,6 +85,9 @@
     <ClInclude Include="session_config.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="keybind_picker.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
 
     <!-- ThirdParty -->
     <ClInclude Include="json.hpp">
@@ -125,7 +128,13 @@
     <ClInclude Include="player_building.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
+    <ClInclude Include="player_inventory.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
     <ClInclude Include="player_items.h">
+      <Filter>Cheats\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="player_movement.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
     <ClInclude Include="player_skills.h">
@@ -204,6 +213,9 @@
     <ClCompile Include="session_config.cpp">
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
+    <ClCompile Include="keybind_picker.cpp">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClCompile>
 
     <!-- Cheats\Menu -->
     <ClCompile Include="cheat_menu.cpp">
@@ -231,7 +243,13 @@
     <ClCompile Include="player_building.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
+    <ClCompile Include="player_inventory.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
     <ClCompile Include="player_items.cpp">
+      <Filter>Cheats\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="player_movement.cpp">
       <Filter>Cheats\Player</Filter>
     </ClCompile>
     <ClCompile Include="player_skills.cpp">

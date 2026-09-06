@@ -14,6 +14,7 @@ namespace BetterCheats
 		// PLAYER
 		Player_Self,
 		Player_ItemSpawner,
+		Player_Inventory,
 		Player_Weapon,
 		Player_Movement,
 		Player_Teleport,
