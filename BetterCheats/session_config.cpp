@@ -1,5 +1,6 @@
 #include "session_config.h"
 #include "plugin_helpers.h"
+#include "aob_patterns.h"
 
 #include "Chimera_classes.hpp"
 #include "Engine_classes.hpp"
@@ -16,12 +17,8 @@ namespace BetterCheats::SessionConfig
 {
 	namespace
 	{
-		// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
-		// not exposed by the generated SDK (folded into trailing padding bytes).
-		constexpr std::ptrdiff_t kServerSessionNameOffset = 0x290;
-
 		std::mutex     g_mutex;
-		std::string    g_configDir;   // <Plugins>\<pluginName>
+		std::string    g_configDir;
 		std::string    g_sessionName;
 		nlohmann::json g_data;
 		bool           g_loaded = false;
@@ -92,7 +89,7 @@ namespace BetterCheats::SessionConfig
 				// (folded into the trailing padding bytes), but populated on load even
 				// for single-player sessions. Read directly via its known offset.
 				auto* serverSessionName = reinterpret_cast<SDK::FString*>(
-					reinterpret_cast<std::uint8_t*>(gameInstance) + kServerSessionNameOffset);
+					reinterpret_cast<std::uint8_t*>(gameInstance) + BetterCheats::AOB::kServerSessionNameOffset);
 
 				std::string sessionName = serverSessionName->ToString();
 				LOG_DEBUG("SessionConfig: ResolveSessionName resolved '%s'.", sessionName.c_str());

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 
 // ---------------------------------------------------------------------------
 // AOB Pattern Registry
@@ -17,6 +18,12 @@
 
 namespace BetterCheats::AOB
 {
+
+	// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
+		// not exposed by the generated SDK (folded into trailing padding bytes).
+	constexpr const std::ptrdiff_t kServerSessionNameOffset = 0x290;
+
+
 	// -------------------------------------------------------------------------
 	// Example / template (remove when first real pattern is added)
 	// -------------------------------------------------------------------------
