@@ -18,7 +18,7 @@ namespace BetterCheats::SessionConfig
 	{
 		// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
 		// not exposed by the generated SDK (folded into trailing padding bytes).
-		constexpr std::ptrdiff_t kServerSessionNameOffset = 0x250;
+		constexpr std::ptrdiff_t kServerSessionNameOffset = 0x290;
 
 		std::mutex     g_mutex;
 		std::string    g_configDir;   // <Plugins>\<pluginName>
