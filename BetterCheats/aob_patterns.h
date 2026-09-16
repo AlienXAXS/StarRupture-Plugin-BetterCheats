@@ -73,7 +73,7 @@ namespace BetterCheats::AOB
 	// cheat is active. The multi-point/zoop path needs CheckStability_DynamicPillar
 	// below as well.
 	constexpr const char* CheckStability_Custom =
-		"40 53 57 48 83 EC ?? 48 8B FA 48 8B D9 48 85 D2 75 ?? 32 C0 48 83 C4 ?? 5F 5B C3 48 83 B9";
+		"40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0";
 
 	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
 	// Parameters       (ACrAPHelperDynamicPillar* this, const UCrBuildingData* PlacementData) -> bool
@@ -84,7 +84,7 @@ namespace BetterCheats::AOB
 	// original run so the HUD strength value stays honest, then force the return
 	// to true while the No Stability Check cheat is active.
 	constexpr const char* CheckStability_DynamicPillar =
-		"40 53 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B D9 75 ?? 32 C0 48 83 C4 ?? 5B C3 48 89 6C 24";
+		"40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0";
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
 	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)
