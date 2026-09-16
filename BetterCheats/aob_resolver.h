@@ -17,10 +17,14 @@
 // misses a required pattern is unloaded, so nothing may be detoured until
 // PluginInit. Resolve here, install there.
 //
-// Every pattern is resolved as OPTIONAL. Each one backs a single cheat that
-// already degrades on its own when unresolved, and none is load-bearing enough
-// that the whole menu should be refused over it — a miss is still recorded and
-// surfaced to the user in the loader's startup failure report.
+// Every pattern is resolved as OPTIONAL, but that word only decides how the
+// failure line reads. The loader refuses a plugin that missed anything at all —
+// required or optional, one is enough — skips PluginInit and frees the DLL, so a
+// pattern that stops matching after a game update takes the whole menu down, not
+// just the cheat behind it. The per-address null checks in the feature modules
+// still earn their keep (a hook can fail to install, and a hot reload can land
+// mid-session), but a miss in the loader's startup failure report is a
+// build-breaking bug to fix here, not something the menu degrades around.
 // ---------------------------------------------------------------------------
 
 namespace BetterCheats::AOB
