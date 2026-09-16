@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 
 // ---------------------------------------------------------------------------
 // AOB Pattern Registry
@@ -17,6 +18,12 @@
 
 namespace BetterCheats::AOB
 {
+
+	// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
+		// not exposed by the generated SDK (folded into trailing padding bytes).
+	constexpr const std::ptrdiff_t kServerSessionNameOffset = 0x290;
+
+
 	// -------------------------------------------------------------------------
 	// Example / template (remove when first real pattern is added)
 	// -------------------------------------------------------------------------
@@ -80,7 +87,8 @@ namespace BetterCheats::AOB
 	// which is why it stopped matching. Register bytes and the frame size are
 	// wildcarded now so the next re-allocation does not break it again.
 	constexpr const char* CheckStability_Custom =
-		"40 53 57 48 81 EC ?? ?? ?? ?? 48 8B ?? 48 8B ?? 48 85 D2 75 ?? 32 C0 48 81 C4 ?? ?? ?? ?? 5F 5B C3";
+		"40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0";
+
 
 	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
 	// Parameters       (ACrAPHelperDynamicPillar* this, const UCrBuildingData* PlacementData) -> bool
@@ -96,7 +104,8 @@ namespace BetterCheats::AOB
 	// all changed bytes. The register bytes and the member offset are wildcarded;
 	// the two register saves after the early-out keep the match unique.
 	constexpr const char* CheckStability_DynamicPillar =
-		"40 ?? 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? 00 48 8B ?? 75 ?? 32 C0 48 83 C4 ?? ?? C3 48 89 5C 24 ?? 48 89 6C 24";
+		"40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0";
+
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
 	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)

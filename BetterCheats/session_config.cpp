@@ -1,5 +1,6 @@
 #include "session_config.h"
 #include "plugin_helpers.h"
+#include "aob_patterns.h"
 
 #include "Chimera_classes.hpp"
 #include "Engine_classes.hpp"
@@ -16,18 +17,8 @@ namespace BetterCheats::SessionConfig
 {
 	namespace
 	{
-		// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
-		// not exposed by the generated SDK (folded into trailing padding bytes), so
-		// it has to be re-checked against every game build: a stale offset reads an
-		// FString out of unrelated bytes, which is a bad pointer and a bad length.
-		// 0x290 is confirmed for CL-125897 from UCrGameInstance::GetSessionName,
-		// whose whole body is `lea rdx, [rcx+0x290]` before the FString copy (the
-		// setter does `add rcx, 0x290`). The plugin carried 0x250 before this, which
-		// does not match CL-125897 at all.
-		constexpr std::ptrdiff_t kServerSessionNameOffset = 0x290;
-
 		std::mutex     g_mutex;
-		std::string    g_configDir;   // <Plugins>\<pluginName>
+		std::string    g_configDir;
 		std::string    g_sessionName;
 		nlohmann::json g_data;
 		bool           g_loaded = false;
@@ -98,7 +89,7 @@ namespace BetterCheats::SessionConfig
 				// (folded into the trailing padding bytes), but populated on load even
 				// for single-player sessions. Read directly via its known offset.
 				auto* serverSessionName = reinterpret_cast<SDK::FString*>(
-					reinterpret_cast<std::uint8_t*>(gameInstance) + kServerSessionNameOffset);
+					reinterpret_cast<std::uint8_t*>(gameInstance) + BetterCheats::AOB::kServerSessionNameOffset);
 
 				std::string sessionName = serverSessionName->ToString();
 				LOG_DEBUG("SessionConfig: ResolveSessionName resolved '%s'.", sessionName.c_str());
