@@ -97,10 +97,17 @@ in `aob_resolver.cpp`:
 - Read the address back from `AOB::Resolved()` in the feature module, null-check
   it, and install the hook from `Initialize()` (i.e. from `PluginInit`).
 
-Every pattern is resolved with `ResolveOptional`, not `ResolveRequired`: each one
-backs a single cheat that degrades on its own, and a required miss would refuse
-the whole plugin. A miss is still recorded and surfaced to the user. Never
-install a hook or detour from `OnPluginLoadHooks`.
+Every pattern is resolved with `ResolveOptional`, not `ResolveRequired` — but
+that only changes how the failure line reads. The loader refuses **any** plugin
+that missed a pattern, optional included, and never calls its `PluginInit`, so a
+stale pattern disables the whole menu rather than the one cheat behind it. Treat
+anything in the loader's startup failure report as build-breaking. Never install
+a hook or detour from `OnPluginLoadHooks`.
+
+After a game update, re-check every pattern against the new build before
+shipping: the loader pins one game version (`version_check.cpp`), so patterns
+only ever need to match the current one, and a re-compiled function that merely
+swapped registers or grew its stack frame is the usual cause of a miss.
 
 ## 4. General Coding Conventions
 

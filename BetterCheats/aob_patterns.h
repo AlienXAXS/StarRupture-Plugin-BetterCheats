@@ -68,7 +68,7 @@ namespace BetterCheats::AOB
 		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 4C 89 74 24 ?? 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B D9";
 
 	// Class::Function  ACrAPHelperActorCustom::CheckStability
-	// Parameters       (ACrAPHelperActorCustom* this, const UAuActorPlacementData* PlacementData) -> bool
+	// Parameters       (ACrAPHelperActorCustom* this, const UCrBuildingData* PlacementData) -> bool
 	// Native stability gate for the "Custom" placement helper actor
 	// (foundations/buildings using snap sockets). Computes the stability graph
 	// result (or the simpler neighbour-trace result, depending on
@@ -79,8 +79,16 @@ namespace BetterCheats::AOB
 	// bar still reflects the real computed value — when the No Stability Check
 	// cheat is active. The multi-point/zoop path needs CheckStability_DynamicPillar
 	// below as well.
+	//
+	// Re-derived for CL-125897. The function did not move or change shape, it was
+	// just re-compiled: the frame grew past 0x80, so `sub rsp, imm8` became
+	// `sub rsp, imm32`, and the two argument moves swapped registers. The old
+	// pattern pinned both the imm8 encoding and the modrm bytes of those moves,
+	// which is why it stopped matching. Register bytes and the frame size are
+	// wildcarded now so the next re-allocation does not break it again.
 	constexpr const char* CheckStability_Custom =
 		"40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0";
+
 
 	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
 	// Parameters       (ACrAPHelperDynamicPillar* this, const UCrBuildingData* PlacementData) -> bool
@@ -90,8 +98,14 @@ namespace BetterCheats::AOB
 	// still blocked with only that hook installed. Hooked the same way: let the
 	// original run so the HUD strength value stays honest, then force the return
 	// to true while the No Stability Check cheat is active.
+	//
+	// Re-derived for CL-125897, same story as the Custom helper above: identical
+	// code, but rbx was re-allocated to rsi, so the push/pop and the `this` move
+	// all changed bytes. The register bytes and the member offset are wildcarded;
+	// the two register saves after the early-out keep the match unique.
 	constexpr const char* CheckStability_DynamicPillar =
 		"40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0";
+
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
 	// Parameters       (ACrTechnologyKeeper* this, UCrCorporationData* Corporation, int64_t Reputation)
