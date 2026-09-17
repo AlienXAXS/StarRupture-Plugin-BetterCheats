@@ -1,10 +1,13 @@
 #include "world_wave.h"
 #include "plugin_helpers.h"
 #include "session_config.h"
+#include "aob_patterns.h"
 
 #include "Chimera_classes.hpp"
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
 
 namespace BetterCheats::Panels::Wave
@@ -112,7 +115,32 @@ namespace BetterCheats::Panels::Wave
 			SDK::EEnviroWave      waveType  = SDK::EEnviroWave::None;
 			SDK::EEnviroWaveStage waveStage = SDK::EEnviroWaveStage::None;
 			float                 progress  = 0.0f;
+
+			// Countdown state from UCrEnviroWaveTimerSubsystem (see aob_patterns.h).
+			bool  timerFound         = false;
+			bool  waitingForNextWave = false;
+			bool  timerPaused        = false;
+			bool  stopWaves          = false;
+			float secondsRemaining   = 0.0f;
 		};
+
+		// The fields that drive the countdown sit inside the SDK's Pad_30 on the
+		// timer subsystem, so they are addressed by offset (see aob_patterns.h).
+		template <typename T>
+		T& TimerField(std::ptrdiff_t offset)
+		{
+			return *reinterpret_cast<T*>(reinterpret_cast<std::uint8_t*>(g_timerSubsys) + offset);
+		}
+
+		// The game pushes the subsystem's bPause to the actor via
+		// NativeOnPauseChanged (not a UFunction); mirror it by hand so the HUD
+		// view model, which reads the actor, agrees with the real state.
+		void WriteTimerPause(bool paused)
+		{
+			TimerField<bool>(AOB::kWaveTimerPauseOffset) = paused;
+			if (g_timerSubsys->TimerActor)
+				g_timerSubsys->TimerActor->bPause = paused;
+		}
 
 		std::mutex   g_snapshotMutex;
 		WaveSnapshot g_snapshot;
@@ -130,11 +158,25 @@ namespace BetterCheats::Panels::Wave
 					snap.waveType   = g_waveSubsys->GetCurrentType();
 					snap.waveStage  = g_waveSubsys->GetCurrentStage();
 					snap.progress   = g_waveSubsys->GetCurrentStageProgress();
-
 				}
 				catch (...)
 				{
 					LOG_WARN("Wave: exception reading wave subsystem state.");
+				}
+			}
+			if (g_timerSubsys)
+			{
+				snap.timerFound = true;
+				try
+				{
+					snap.waitingForNextWave = TimerField<bool>(AOB::kWaveTimerWaitingForNextWaveOffset);
+					snap.timerPaused        = TimerField<bool>(AOB::kWaveTimerPauseOffset);
+					snap.stopWaves          = TimerField<bool>(AOB::kWaveTimerStopWavesOffset);
+					snap.secondsRemaining   = TimerField<float>(AOB::kWaveTimerNextWaveTimerOffset);
+				}
+				catch (...)
+				{
+					LOG_WARN("Wave: exception reading wave timer state.");
 				}
 			}
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
@@ -145,28 +187,59 @@ namespace BetterCheats::Panels::Wave
 		// Pending action — queued from the ImGui render thread, applied on the
 		// game thread in Tick(). Last write wins within a single frame.
 		// -------------------------------------------------------------------------
-		enum class PendingAction : int { None, Pause, Resume, Cancel, SkipSegment, WavesOn, WavesOff, StartHeat };
+		enum class PendingAction : int { None, Pause, Resume, Cancel, SkipSegment, WavesOn, WavesOff, StartHeat, RestartTimer };
 
 		std::atomic<int> g_pendingAction{ static_cast<int>(PendingAction::None) };
 
 		// -------------------------------------------------------------------------
-		// "Pause Waves Entirely" — pins ACrWaveTimerActor::bPause so the timer's
-		// countdown never advances (the next wave is marked as never to arrive),
-		// even with no wave currently active. Persisted per-session.
+		// "Pause Waves Entirely" — pins UCrEnviroWaveTimerSubsystem::bPause so the
+		// countdown never advances, even with no wave currently active. The game
+		// persists that flag into the save, so it's only written while the cheat
+		// is on and cleared once on toggle-off — writing it every tick regardless
+		// would silently override the game's own pause state.
 		// -------------------------------------------------------------------------
 		std::atomic<bool> g_pauseWavesEnabled{ false };
+		static bool       g_pauseWritten = false;
 
 		void EnforceWavePause()
 		{
+			if (!g_timerSubsys)
+				return;
+
 			try
 			{
-				if (g_timerSubsys && g_timerSubsys->TimerActor)
-					g_timerSubsys->TimerActor->bPause = g_pauseWavesEnabled.load();
+				if (g_pauseWavesEnabled.load())
+				{
+					WriteTimerPause(true);
+					g_pauseWritten = true;
+				}
+				else if (g_pauseWritten)
+				{
+					WriteTimerPause(false);
+					g_pauseWritten = false;
+				}
 			}
 			catch (...)
 			{
 				LOG_WARN("Wave: exception enforcing wave pause.");
 			}
+		}
+
+		// Puts the countdown back into its between-waves state. The game only
+		// re-arms it from OnWaveFinished, which CancelCurrentWave never reaches,
+		// and WavesActive(false) / a stale bPause are both written into the save —
+		// so a broken cycle stays broken across reloads unless something does this.
+		void RearmTimer()
+		{
+			if (!g_timerSubsys)
+				return;
+
+			TimerField<float>(AOB::kWaveTimerNextWaveTimerOffset) = TimerField<float>(AOB::kWaveTimerWaitingDurationOffset);
+			// Sets bWaitingForNextWave, clears bStopWaves and re-arms the HUD's NextTime.
+			g_timerSubsys->WavesActive(true);
+			const bool paused = g_pauseWavesEnabled.load();
+			WriteTimerPause(paused);
+			g_pauseWritten = paused;
 		}
 
 		void ApplyPendingAction()
@@ -183,7 +256,14 @@ namespace BetterCheats::Panels::Wave
 				{
 					case PendingAction::Pause:        if (g_waveSubsys)  g_waveSubsys->PauseCurrentWave();                       break;
 					case PendingAction::Resume:       if (g_waveSubsys)  g_waveSubsys->ResumeCurrentWave();                      break;
-					case PendingAction::Cancel:       if (g_waveSubsys)  g_waveSubsys->CancelCurrentWave();                      break;
+					case PendingAction::Cancel:
+						if (g_waveSubsys)
+						{
+							g_waveSubsys->CancelCurrentWave();
+							RearmTimer();
+						}
+						break;
+					case PendingAction::RestartTimer: RearmTimer();                                                         break;
 					case PendingAction::SkipSegment:  if (g_waveSubsys)  g_waveSubsys->ForceWaveStageProgress(1.0f);             break;
 					case PendingAction::WavesOn:      if (g_timerSubsys) g_timerSubsys->WavesActive(true);                       break;
 					case PendingAction::WavesOff:     if (g_timerSubsys) g_timerSubsys->WavesActive(false);                      break;
@@ -245,6 +325,7 @@ namespace BetterCheats::Panels::Wave
 		{
 			g_waveSubsys     = nullptr;
 			g_timerSubsys    = nullptr;
+			g_pauseWritten   = false;
 			g_scanned        = false;
 			g_scanRetryTimer = 0.0f;
 			g_scanAttempts   = 0;
@@ -269,6 +350,7 @@ namespace BetterCheats::Panels::Wave
 		}
 		g_waveSubsys     = nullptr;
 		g_timerSubsys    = nullptr;
+		g_pauseWritten   = false;
 		g_scanned        = false;
 		g_scanRetryTimer = 0.0f;
 		g_scanAttempts   = 0;
@@ -407,7 +489,7 @@ namespace BetterCheats::Panels::Wave
 				const bool pauseWaves = g_pauseWavesEnabled.load();
 				imgui->TableNextRow(0, 0.0f);
 				imgui->TableSetColumnIndex(0); imgui->Text("Pause Waves");
-				imgui->TableSetColumnIndex(1); imgui->Text(pauseWaves ? "Paused" : "Planet Stable");
+				imgui->TableSetColumnIndex(1); imgui->Text(pauseWaves ? "Paused" : "Running");
 				imgui->TableSetColumnIndex(2);
 				if (imgui->SmallButton(pauseWaves ? "Unpause##wave_timer" : "Pause##wave_timer"))
 				{
@@ -425,13 +507,40 @@ namespace BetterCheats::Panels::Wave
 		imgui->Spacing();
 		imgui->SeparatorText("Wave Spawning Timer");
 
-		if (!snap.subsysFound)
+		if (!snap.timerFound)
 		{
 			imgui->TextDisabled("Timer subsystem not found.");
 		}
 		else if (imgui->BeginTable("##wave_timer", 3, kTableFlags))
 		{
 			SetupWaveTableColumns(imgui);
+
+			// A countdown that is neither running nor deliberately stopped is
+			// the "rupture never comes" state — and it lands in the save file,
+			// so surface it with the repair right next to it.
+			const bool stalled = !snap.inProgress && !snap.waitingForNextWave && !snap.stopWaves;
+
+			imgui->TableNextRow(0, 0.0f);
+			imgui->TableSetColumnIndex(0); imgui->Text("Next Wave");
+			imgui->TableSetColumnIndex(1);
+			if (snap.inProgress)
+				imgui->TextDisabled("Wave in progress");
+			else if (snap.stopWaves)
+				imgui->Text("Waves disabled");
+			else if (stalled)
+				imgui->Text("Not scheduled (timer stalled)");
+			else
+			{
+				const int total = static_cast<int>(snap.secondsRemaining > 0.0f ? snap.secondsRemaining : 0.0f);
+				char buf[32];
+				snprintf(buf, sizeof(buf), "%d:%02d%s", total / 60, total % 60, snap.timerPaused ? " (paused)" : "");
+				imgui->Text(buf);
+			}
+			imgui->TableSetColumnIndex(2);
+			if (imgui->SmallButton("Restart##wave_timer_restart"))
+				g_pendingAction.store(static_cast<int>(PendingAction::RestartTimer));
+			imgui->SetItemTooltip("Re-arms the countdown to a full waiting period and re-enables waves. "
+				"Use this if the rupture never arrives after loading a save.");
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Enable Waves");
@@ -442,7 +551,7 @@ namespace BetterCheats::Panels::Wave
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Disable Waves");
-			imgui->TableSetColumnIndex(1); imgui->TextDisabled("Stops new waves from spawning");
+			imgui->TableSetColumnIndex(1); imgui->TextDisabled("Stops new waves from spawning (saved with the game)");
 			imgui->TableSetColumnIndex(2);
 			if (imgui->SmallButton("Disable"))
 				g_pendingAction.store(static_cast<int>(PendingAction::WavesOff));

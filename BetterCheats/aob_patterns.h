@@ -23,6 +23,18 @@ namespace BetterCheats::AOB
 		// not exposed by the generated SDK (folded into trailing padding bytes).
 	constexpr const std::ptrdiff_t kServerSessionNameOffset = 0x290;
 
+	// UCrEnviroWaveTimerSubsystem — the countdown to the next rupture. The
+	// generated SDK folds everything before TimerActor into Pad_30, but these
+	// are what actually gate the cycle: Tick() only decrements NextWaveTimer
+	// while !bPause && bWaitingForNextWave, and the whole block is persisted
+	// into the save (FCrEnviroWaveTimerSaveData) so a bad value survives a
+	// reload. ACrWaveTimerActor::bPause is only a replicated HUD mirror.
+	constexpr const std::ptrdiff_t kWaveTimerWaitingDurationOffset    = 0x78; // float
+	constexpr const std::ptrdiff_t kWaveTimerNextWaveTimerOffset      = 0x7C; // float, seconds remaining
+	constexpr const std::ptrdiff_t kWaveTimerWaitingForNextWaveOffset = 0x80; // bool
+	constexpr const std::ptrdiff_t kWaveTimerPauseOffset              = 0x81; // bool
+	constexpr const std::ptrdiff_t kWaveTimerStopWavesOffset          = 0x83; // bool
+
 
 	// -------------------------------------------------------------------------
 	// Example / template (remove when first real pattern is added)
