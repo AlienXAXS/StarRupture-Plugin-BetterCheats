@@ -133,6 +133,7 @@
     <ClCompile Include="player_movement.cpp" />
     <ClCompile Include="player_skills.cpp" />
     <ClCompile Include="player_tools.cpp" />
+    <ClCompile Include="player_weapons.cpp" />
     <ClCompile Include="plugin.cpp" />
     <ClCompile Include="plugin_config.cpp" />
     <ClCompile Include="session_config.cpp" />
@@ -167,6 +168,7 @@
     <ClInclude Include="player_skills.h" />
     <ClInclude Include="player_lookup.h" />
     <ClInclude Include="player_tools.h" />
+    <ClInclude Include="player_weapons.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />
     <ClInclude Include="plugin_helpers.h" />

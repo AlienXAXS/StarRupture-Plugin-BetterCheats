@@ -13,6 +13,7 @@
 #include "player_movement.h"
 #include "player_skills.h"
 #include "player_tools.h"
+#include "player_weapons.h"
 #include "world_wave.h"
 #include "world_corporations.h"
 #include "machine_power.h"
@@ -98,6 +99,7 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Inventory::ApplySavedConfig();
 	BetterCheats::Panels::Movement::ApplySavedConfig();
 	BetterCheats::Panels::Tools::ApplySavedConfig();
+	BetterCheats::Panels::Weapons::ApplySavedConfig();
 	BetterCheats::Panels::Power::ApplySavedConfig();
 	BetterCheats::Panels::Wave::ApplySavedConfig();
 	BetterCheats::Panels::Enemies::ApplySavedConfig();
@@ -135,6 +137,7 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::Panels::Movement::Tick(deltaSeconds);
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 	BetterCheats::Panels::Tools::Tick(deltaSeconds);
+	BetterCheats::Panels::Weapons::Tick(deltaSeconds);
 	BetterCheats::Panels::Wave::Tick(deltaSeconds);
 	BetterCheats::Panels::Corporations::Tick(deltaSeconds);
 	BetterCheats::Panels::Enemies::Tick(deltaSeconds);
@@ -288,6 +291,7 @@ extern "C" {
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Inventory::Shutdown();
 		BetterCheats::Panels::Movement::Shutdown();
+		BetterCheats::Panels::Weapons::Shutdown();
 		BetterCheats::Panels::Wave::Shutdown();
 		BetterCheats::Panels::Corporations::Shutdown();
 		BetterCheats::Panels::Enemies::Shutdown();

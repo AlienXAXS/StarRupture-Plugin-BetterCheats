@@ -6,6 +6,7 @@
 #include "player_movement.h"
 #include "player_skills.h"
 #include "player_tools.h"
+#include "player_weapons.h"
 
 namespace BetterCheats::Panels
 {
@@ -26,12 +27,7 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)
 	{
-		static bool infiniteAmmo    = false;
-		static bool noReload        = false;
-		static bool instantCooldown = false;
-
-		imgui->SeparatorText("Weapons");
-		imgui->TextDisabled("No options yet.");
+		Weapons::RenderImGui(imgui);
 	}
 
 	void RenderPlayer_Movement(IModLoaderImGui* imgui)
