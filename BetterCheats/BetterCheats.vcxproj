@@ -113,6 +113,7 @@
     <ClCompile Include="game_context.cpp" />
     <ClCompile Include="attribute_compose.cpp" />
     <ClCompile Include="preset_store.cpp" />
+    <ClCompile Include="item_registry.cpp" />
     <ClCompile Include="keybind_picker.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="panel_enemies.cpp" />
@@ -145,6 +146,7 @@
     <ClInclude Include="game_context.h" />
     <ClInclude Include="attribute_compose.h" />
     <ClInclude Include="preset_store.h" />
+    <ClInclude Include="item_registry.h" />
     <ClInclude Include="ui_widgets.h" />
     <ClInclude Include="cheat_math.h" />
     <ClInclude Include="game_thread.h" />
