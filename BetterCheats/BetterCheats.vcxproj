@@ -51,6 +51,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(StarRuptureSDKConfigDir);$(PluginSDKInclude);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -72,6 +73,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(StarRuptureSDKConfigDir);$(PluginSDKInclude);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -138,6 +140,8 @@
     <ClInclude Include="aob_resolver.h" />
     <ClInclude Include="cheat_menu.h" />
     <ClInclude Include="game_context.h" />
+    <ClInclude Include="cheat_math.h" />
+    <ClInclude Include="game_thread.h" />
     <ClInclude Include="keybind_picker.h" />
     <ClInclude Include="panel_enemies.h" />
     <ClInclude Include="enemies.h" />
@@ -156,6 +160,7 @@
     <ClInclude Include="player_items.h" />
     <ClInclude Include="player_movement.h" />
     <ClInclude Include="player_skills.h" />
+    <ClInclude Include="player_lookup.h" />
     <ClInclude Include="player_tools.h" />
     <ClInclude Include="plugin.h" />
     <ClInclude Include="plugin_config.h" />

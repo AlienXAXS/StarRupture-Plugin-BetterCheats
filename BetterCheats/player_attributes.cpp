@@ -2,6 +2,7 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "player_lookup.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
@@ -111,29 +112,10 @@ namespace BetterCheats::Panels::Attributes
 			imgui->SetItemTooltip(kLockTooltip);
 		}
 
-		// Only ever called from Tick() (the engine-tick callback, which runs on the
-		// game thread) — never from RenderImGui(), which runs on a different thread
-		// where UWorld::GetWorld() and UObject access intermittently crash inside the
+		// GetLocalCharacter (player_lookup.h) is game-thread only — never call it
+		// from RenderImGui(), which runs on a different thread where
+		// UWorld::GetWorld() and UObject access intermittently crash inside the
 		// renderer (FD3D12DynamicRHI::HandleFailedD3D12Result, no useful callstack).
-		SDK::ACrCharacterPlayerBase* GetLocalCharacter()
-		{
-			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
-			catch (...) { return nullptr; }
-			if (!world) return nullptr;
-
-			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
-			if (!pc || !pc->Pawn) return nullptr;
-
-			// The local pawn is only an ACrCharacterPlayerBase once the real character
-			// has been possessed. During a level transition or a multiplayer join it can
-			// still be some other pawn class, and the attribute-set pointers below then
-			// come from past the end of the object.
-			SDK::UClass* characterClass = SDK::ACrCharacterPlayerBase::StaticClass();
-			if (!characterClass || !pc->Pawn->IsA(characterClass)) return nullptr;
-
-			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
-		}
 
 		// Sets both BaseValue and CurrentValue so the change survives gameplay-effect
 		// re-evaluation (e.g. survival ticks reapplying from the base attribute).

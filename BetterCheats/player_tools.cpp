@@ -2,6 +2,7 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "player_lookup.h"
 
 #include "Chimera_classes.hpp"
 
@@ -72,23 +73,6 @@ namespace BetterCheats::Panels::Tools
 			}
 		}
 
-		SDK::ACrCharacterPlayerBase* GetLocalCharacter()
-		{
-			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
-			catch (...) { return nullptr; }
-			if (!world) return nullptr;
-
-			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
-			if (!pc || !pc->Pawn) return nullptr;
-
-			// See player_attributes.cpp's GetLocalCharacter — the pawn isn't a Chimera
-			// character until it's actually possessed.
-			SDK::UClass* characterClass = SDK::ACrCharacterPlayerBase::StaticClass();
-			if (!characterClass || !pc->Pawn->IsA(characterClass)) return nullptr;
-
-			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
-		}
 	}
 
 	void Initialize()

@@ -5,9 +5,6 @@ namespace BetterCheats::Panels
 {
 	void RenderMachines_Crafters(IModLoaderImGui* imgui)
 	{
-		static bool instantBuild   = false;
-		static bool noResourceCost = false;
-
 		imgui->SeparatorText("Crafters");
 		imgui->TextDisabled("No options yet.");
 	}
@@ -19,8 +16,8 @@ namespace BetterCheats::Panels
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)
 	{
-		imgui->SeparatorText("Logistic Flight Drones");
-		imgui->TextDisabled("No options yet.");
+		imgui->SeparatorText("Logistic Drones");
+		imgui->TextDisabled("Drone audio and movement settings are configured in BetterDrone.ini");
 	}
 
 	void RenderMachines_RailDrones(IModLoaderImGui* imgui)

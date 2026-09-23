@@ -88,6 +88,15 @@
     <ClInclude Include="keybind_picker.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="cheat_math.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="game_thread.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="player_lookup.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
 
     <!-- ThirdParty -->
     <ClInclude Include="json.hpp">
