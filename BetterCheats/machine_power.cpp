@@ -2,6 +2,7 @@
 #include "aob_resolver.h"
 #include "plugin_helpers.h"
 #include "session_config.h"
+#include "ui_widgets.h"
 
 #include "Chimera_classes.hpp"
 #include "Chimera_parameters.hpp"
@@ -875,6 +876,45 @@ namespace BetterCheats::Panels::Power
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		AdoptPendingIfReady();
+
+		// No built-in presets here, so saved presets sit at the very top -- same
+		// "above every control" position every group uses. g_entries is a
+		// runtime-discovered, unbounded list, so the field array is sized to it
+		// each frame rather than a fixed cap; fields are keyed by
+		// "package.asset" (stable across a rescan) rather than table position.
+		{
+			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+
+			std::vector<std::string> keyStorage;
+			keyStorage.reserve(g_entries.size());
+			for (const auto& entry : g_entries)
+				keyStorage.push_back(entry.packageName + "." + entry.assetName);
+
+			std::vector<BetterCheats::PresetStore::Field> fields(g_entries.size());
+
+			auto getLive = [&](BetterCheats::PresetStore::Field* out)
+			{
+				for (size_t i = 0; i < g_entries.size(); ++i)
+					out[i] = { keyStorage[i].c_str(), g_entries[i].value };
+			};
+			auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+			{
+				std::vector<ApplyItem> items;
+				items.reserve(g_entries.size());
+				for (size_t i = 0; i < g_entries.size() && static_cast<int>(i) < count; ++i)
+				{
+					g_entries[i].value = f[i].value;
+					items.push_back(ApplyItem{ g_entries[i].packageName, g_entries[i].assetName, f[i].value, false });
+				}
+				RequestApply(std::move(items));
+			};
+			auto isBuiltin      = [](const char*) { return false; };
+			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+
+			BetterCheats::UI::RenderSavedPresetsRow(imgui, "power_saved_presets", "Power",
+				fields.data(), static_cast<int>(fields.size()), getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+		}
+		imgui->Spacing();
 
 		imgui->SeparatorText("Power Output / Consumption");
 
