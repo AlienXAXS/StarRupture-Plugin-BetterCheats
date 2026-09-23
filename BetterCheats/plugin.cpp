@@ -3,6 +3,7 @@
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "preset_store.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -18,9 +19,35 @@
 #include "enemies.h"
 #include "dev_menus.h"
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <cstdio>
+#include <cstring>
+
 static IPluginSelf* g_self = nullptr;
 
 IPluginSelf* GetSelf() { return g_self; }
+
+// Mirrors BetterDrone's own GetPresetsFilePath (drone_ui.cpp) -- resolves
+// this DLL's own directory (not the working directory, which the loader
+// doesn't guarantee) and appends config\BetterCheats-Presets.ini, matching
+// the sibling BetterDrone-Presets.ini path convention.
+static void GetPresetsFilePath(char* outPath, size_t outSize)
+{
+	HMODULE module = nullptr;
+	GetModuleHandleExA(
+		GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		reinterpret_cast<LPCSTR>(&GetPresetsFilePath), &module);
+
+	char path[MAX_PATH] = {};
+	GetModuleFileNameA(module, path, MAX_PATH);
+
+	char* lastSlash = strrchr(path, '\\');
+	if (lastSlash)
+		*lastSlash = '\0';
+
+	snprintf(outPath, outSize, "%s\\config\\BetterCheats-Presets.ini", path);
+}
 
 #ifndef MODLOADER_BUILD_TAG
 #define MODLOADER_BUILD_TAG "dev"
@@ -166,6 +193,11 @@ extern "C" {
 		LOG_INFO("Initializing Dev Cheat Manager panel (debug build)...");
 		BetterCheats::Panels::DevMenus::Initialize();
 #endif
+
+		LOG_INFO("Initializing saved presets store...");
+		char presetsPath[MAX_PATH] = {};
+		GetPresetsFilePath(presetsPath, sizeof(presetsPath));
+		BetterCheats::PresetStore::Init(presetsPath);
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);

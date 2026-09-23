@@ -91,6 +91,12 @@
     <ClInclude Include="attribute_compose.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="preset_store.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="ui_widgets.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
     <ClInclude Include="cheat_math.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
@@ -229,6 +235,9 @@
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
     <ClCompile Include="attribute_compose.cpp">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="preset_store.cpp">
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
 
