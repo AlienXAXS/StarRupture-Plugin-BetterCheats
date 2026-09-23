@@ -88,6 +88,9 @@
     <ClInclude Include="keybind_picker.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="attribute_compose.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
     <ClInclude Include="cheat_math.h">
       <Filter>Plugin Core\Helpers</Filter>
     </ClInclude>
@@ -223,6 +226,9 @@
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
     <ClCompile Include="keybind_picker.cpp">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="attribute_compose.cpp">
       <Filter>Plugin Core\Helpers</Filter>
     </ClCompile>
 
