@@ -8,6 +8,7 @@
 #include "panel_misc.h"
 #include "panel_dev.h"
 #include "keybind_picker.h"
+#include "ui_widgets.h"
 
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
@@ -26,7 +27,6 @@ namespace
 	constexpr int Var_ItemSpacing   = 14; // vec2
 
 	// Layout
-	constexpr float kNavWidth     = 160.0f;
 	constexpr float kSepWidth     =   1.0f;
 	constexpr float kContentPadX  =  14.0f;
 	constexpr float kContentPadY  =  10.0f;
@@ -36,31 +36,48 @@ namespace
 	constexpr float kNavBgR = 0.10f, kNavBgG = 0.10f, kNavBgB = 0.13f; // sidebar bg
 	constexpr float kSepR = 0.22f,  kSepG = 0.22f,   kSepB = 0.28f;   // separator
 	constexpr float kGrpR = 0.48f,  kGrpG = 0.52f,   kGrpB = 0.62f;   // group header
+
+	// Every nav item and group header, so the sidebar's width (computed in
+	// OnRender, see PrescanLabelWidth) fits the widest one of either kind --
+	// group headers ("MACHINERY") can be as wide as an item label. A fixed
+	// 160px clipped "Logistic Drones"/"MACHINERY" once FontScale went much
+	// past 1.0.
+	const char* kSidebarLabels[] = {
+		"WORLD", "  Environment", "  Corporations",
+		"PLAYER", "  Self", "  Item Spawner", "  Inventory", "  Weapon",
+		"  Movement", "  Teleport", "  Building", "  Skills", "  Tools",
+		"ENEMIES", "  Enemies",
+		"MACHINERY", "  Crafters", "  Power", "  Logistic Drones", "  Rail Drones",
+		"MISC", "  Misc",
+#if BETTERCHEATS_DEV_BUILD
+		"DEV", "  Cheat Manager",
+#endif
+	};
+	constexpr int kSidebarLabelCount = static_cast<int>(sizeof(kSidebarLabels) / sizeof(kSidebarLabels[0]));
 }
 
 namespace BetterCheats
 {
-	IPluginSelf* CheatMenu::s_self           = nullptr;
-	PanelHandle  CheatMenu::s_panelHandle    = nullptr;
-	bool         CheatMenu::s_open           = false;
-	MenuCategory CheatMenu::s_activeCategory = MenuCategory::World_Environment;
+	IPluginSelf*      CheatMenu::s_self           = nullptr;
+	PanelHandle       CheatMenu::s_panelHandle    = nullptr;
+	std::atomic<bool> CheatMenu::s_open           { false };
+	MenuCategory      CheatMenu::s_activeCategory = MenuCategory::World_Environment;
+	std::atomic<bool> CheatMenu::s_closeRequested { false };
 	void* g_inputCaptureToken				 = nullptr;
 
 	// -------------------------------------------------------------------------
 
 
+	// The loader's own notification that our panel closed -- its titlebar X,
+	// or (redundantly, harmlessly) our own SetPanelClose call cascading back
+	// here. Never touches the registry itself; only reconciles our side.
 	void CheatMenu::OnPanelClosed(PanelHandle handle)
 	{
-		if (handle == s_panelHandle)
-		{
-			s_open = false;
-			Keybind::CancelCapture();
-			if (s_self && g_inputCaptureToken)
-			{
-				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
-				g_inputCaptureToken = nullptr;
-			}
-		}
+		if (handle != s_panelHandle)
+			return;
+
+		LOG_DEBUG("CheatMenu::OnPanelClosed: loader reports the panel closed");
+		ApplyMenuClosed("OnPanelClosed");
 	}
 
 	void CheatMenu::Initialize(IPluginSelf* self)
@@ -81,9 +98,7 @@ namespace BetterCheats
 		if (s_panelHandle && s_self)
 		{
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
-
-			if (g_inputCaptureToken )
-				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+			ApplyMenuClosed("Shutdown");
 
 			s_self->hooks->UI->UnregisterOnPanelWindowClosed(OnPanelClosed);
 			s_self->hooks->UI->UnregisterPanel(s_panelHandle);
@@ -92,21 +107,100 @@ namespace BetterCheats
 		s_self = nullptr;
 	}
 
-	void CheatMenu::Toggle()
+	// Idempotent: no-op if already open. Never call this from a close path.
+	void CheatMenu::OpenMenu()
 	{
 		if (!s_panelHandle || !s_self) return;
 
-		s_open = !s_open;
-		if (s_open)
+		if (s_open.exchange(true))
 		{
-			s_self->hooks->UI->SetPanelOpen(s_panelHandle);
-			g_inputCaptureToken = s_self->hooks->UI->AcquireInputCapture();
+			LOG_DEBUG("CheatMenu::OpenMenu: already open, ignoring");
+			return;
 		}
-		else
+
+		// Drop any close request left over from before the menu opened, so it
+		// can't be consumed on the very first frame it's visible.
+		s_closeRequested.store(false);
+		s_self->hooks->UI->SetPanelOpen(s_panelHandle);
+		g_inputCaptureToken = s_self->hooks->UI->AcquireInputCapture();
+		LOG_DEBUG("CheatMenu::OpenMenu: opened, capture token %p", g_inputCaptureToken);
+	}
+
+	// Idempotent: no-op if already closed (ApplyMenuClosed's own guard). Tells
+	// the loader first -- SetPanelClose synchronously cascades into
+	// OnPanelClosed/ApplyMenuClosed when the registry agrees the panel was
+	// open, but calling ApplyMenuClosed here too covers the panel already
+	// having gone stale in the registry for any reason.
+	void CheatMenu::CloseMenu()
+	{
+		if (!s_panelHandle || !s_self) return;
+		if (!s_open.load()) return;
+
+		LOG_DEBUG("CheatMenu::CloseMenu: requesting SetPanelClose");
+		s_self->hooks->UI->SetPanelClose(s_panelHandle);
+		ApplyMenuClosed("CloseMenu");
+	}
+
+	void CheatMenu::ApplyMenuClosed(const char* reason)
+	{
+		if (!s_open.exchange(false))
 		{
-			Keybind::CancelCapture();
-			s_self->hooks->UI->SetPanelClose(s_panelHandle);
-			s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+			LOG_DEBUG("CheatMenu::ApplyMenuClosed(%s): already closed, ignoring", reason);
+			return;
+		}
+
+		LOG_DEBUG("CheatMenu::ApplyMenuClosed(%s): closing", reason);
+
+		// A rebind picker left waiting on a panel that is closing would never
+		// get the chance to finish.
+		Keybind::CancelCapture();
+
+		if (g_inputCaptureToken)
+		{
+			LOG_DEBUG("CheatMenu::ApplyMenuClosed(%s): releasing capture token %p", reason, g_inputCaptureToken);
+			if (s_self && s_self->hooks && s_self->hooks->UI)
+				s_self->hooks->UI->ReleaseInputCapture(g_inputCaptureToken);
+			g_inputCaptureToken = nullptr;
+		}
+	}
+
+	void CheatMenu::Toggle()
+	{
+		if (s_open.load())
+			CloseMenu();
+		else
+			OpenMenu();
+	}
+
+	void CheatMenu::RequestClose()
+	{
+		// Runs on whatever thread fires the Escape/Q keybind — no ImGui/SDK calls
+		// here, just flag the request for TickPendingClose to act on the next
+		// game tick.
+		LOG_DEBUG("CheatMenu::RequestClose: close key received (open: %s)", s_open.load() ? "yes" : "no");
+		if (s_open)
+			s_closeRequested.store(true);
+	}
+
+	// Applies a pending Escape/Q close request. Called from the game tick
+	// (OnEngineTick, plugin.cpp) rather than from OnRender: the loader's
+	// RenderPanelWindows snapshots each panel's isOpen into a local bool
+	// BEFORE calling our render function and writes that same stale local
+	// back to the registry AFTER it returns -- so a SetPanelClose called from
+	// inside our own render callback closes the panel for an instant and the
+	// loader's own snapshot silently reopens it one statement later. That's
+	// the flicker: the window closing and immediately springing back open,
+	// left with a released capture token but a panel the registry still
+	// considers open, which is what stopped Escape/Q from working again
+	// afterwards. Applying the close from the tick instead means it lands on
+	// a call stack RenderPanelWindows is never nested inside, so there is
+	// nothing left for it to stomp.
+	void CheatMenu::TickPendingClose()
+	{
+		if (s_closeRequested.exchange(false))
+		{
+			LOG_DEBUG("CheatMenu::TickPendingClose: applying a pending close request");
+			CloseMenu();
 		}
 	}
 
@@ -131,6 +225,13 @@ namespace BetterCheats
 
 	void CheatMenu::OnRender(IModLoaderImGui* imgui)
 	{
+		// A pending Escape/Q close is applied from TickPendingClose (the game
+		// tick), not here -- see its comment for why closing from inside this
+		// render callback caused the close to silently undo itself one frame
+		// later (the loader's RenderPanelWindows snapshots isOpen before this
+		// call and writes that stale snapshot back after it returns). By the
+		// time this runs, the loader will simply not have called it at all for
+		// a frame where the close already landed.
 		float avail_x, avail_y;
 		imgui->GetContentRegionAvail(&avail_x, &avail_y);
 
@@ -147,11 +248,14 @@ namespace BetterCheats
 		}
 
 		// Sidebar
+		const float navWidth = BetterCheats::UI::PrescanLabelWidth(imgui, kSidebarLabelCount,
+			[](int i) { return kSidebarLabels[i]; });
+
 		imgui->PushStyleColor(Col_ChildBg, kNavBgR, kNavBgG, kNavBgB, 1.0f);
 		imgui->PushStyleVarVec2(Var_WindowPadding, 0.0f, 6.0f);
 		imgui->PushStyleVarVec2(Var_ItemSpacing,   0.0f, 1.0f);
-		if (imgui->BeginChild("##nav", kNavWidth, avail_y, false))
-			RenderSidebar(imgui);
+		if (imgui->BeginChild("##nav", navWidth, avail_y, false))
+			RenderSidebar(imgui, navWidth);
 		imgui->EndChild();
 		imgui->PopStyleVar(2);
 		imgui->PopStyleColor(1);
@@ -176,7 +280,7 @@ namespace BetterCheats
 	// Sidebar
 	// -------------------------------------------------------------------------
 
-	void CheatMenu::NavItem(IModLoaderImGui* imgui, const char* label, MenuCategory cat)
+	void CheatMenu::NavItem(IModLoaderImGui* imgui, const char* label, MenuCategory cat, float navWidth)
 	{
 		const bool active = (s_activeCategory == cat);
 
@@ -188,7 +292,7 @@ namespace BetterCheats
 		}
 
 		imgui->PushIDStr(label);
-		if (imgui->SelectableFull(label, active, 0, kNavWidth, 0.0f))
+		if (imgui->SelectableFull(label, active, 0, navWidth, 0.0f))
 		{
 			// A rebind picker left waiting on the panel we are navigating away
 			// from would never get the chance to finish.
@@ -203,7 +307,7 @@ namespace BetterCheats
 			imgui->PopStyleColor(3);
 	}
 
-	void CheatMenu::RenderSidebar(IModLoaderImGui* imgui)
+	void CheatMenu::RenderSidebar(IModLoaderImGui* imgui, float navWidth)
 	{
 		auto NavGroup = [&](const char* label)
 		{
@@ -218,35 +322,35 @@ namespace BetterCheats
 		};
 
 		NavGroup("WORLD");
-		NavItem(imgui, "  Environment",         MenuCategory::World_Environment);
-		NavItem(imgui, "  Corporations",        MenuCategory::World_Corporations);
+		NavItem(imgui, "  Environment",         MenuCategory::World_Environment,      navWidth);
+		NavItem(imgui, "  Corporations",        MenuCategory::World_Corporations,     navWidth);
 
 		NavGroup("PLAYER");
-		NavItem(imgui, "  Self",                MenuCategory::Player_Self);
-		NavItem(imgui, "  Item Spawner",        MenuCategory::Player_ItemSpawner);
-		NavItem(imgui, "  Inventory",           MenuCategory::Player_Inventory);
-		NavItem(imgui, "  Weapon",              MenuCategory::Player_Weapon);
-		NavItem(imgui, "  Movement",            MenuCategory::Player_Movement);
-		NavItem(imgui, "  Teleport",            MenuCategory::Player_Teleport);
-		NavItem(imgui, "  Building",            MenuCategory::Player_Building);
-		NavItem(imgui, "  Skills",              MenuCategory::Player_Skills);
-		NavItem(imgui, "  Tools",               MenuCategory::Player_Tools);
+		NavItem(imgui, "  Self",                MenuCategory::Player_Self,            navWidth);
+		NavItem(imgui, "  Item Spawner",        MenuCategory::Player_ItemSpawner,     navWidth);
+		NavItem(imgui, "  Inventory",           MenuCategory::Player_Inventory,       navWidth);
+		NavItem(imgui, "  Weapon",              MenuCategory::Player_Weapon,          navWidth);
+		NavItem(imgui, "  Movement",            MenuCategory::Player_Movement,        navWidth);
+		NavItem(imgui, "  Teleport",            MenuCategory::Player_Teleport,        navWidth);
+		NavItem(imgui, "  Building",            MenuCategory::Player_Building,        navWidth);
+		NavItem(imgui, "  Skills",              MenuCategory::Player_Skills,          navWidth);
+		NavItem(imgui, "  Tools",               MenuCategory::Player_Tools,           navWidth);
 
 		NavGroup("ENEMIES");
-		NavItem(imgui, "  Enemies",             MenuCategory::Enemies_Enemies);
+		NavItem(imgui, "  Enemies",             MenuCategory::Enemies_Enemies,        navWidth);
 
 		NavGroup("MACHINERY");
-		NavItem(imgui, "  Crafters",            MenuCategory::Machinery_Crafters);
-		NavItem(imgui, "  Power",               MenuCategory::Machinery_Power);
-		NavItem(imgui, "  Logistic Drones",     MenuCategory::Machinery_LogisticDrones);
-		NavItem(imgui, "  Rail Drones",         MenuCategory::Machinery_RailDrones);
+		NavItem(imgui, "  Crafters",            MenuCategory::Machinery_Crafters,     navWidth);
+		NavItem(imgui, "  Power",               MenuCategory::Machinery_Power,        navWidth);
+		NavItem(imgui, "  Logistic Drones",     MenuCategory::Machinery_LogisticDrones, navWidth);
+		NavItem(imgui, "  Rail Drones",         MenuCategory::Machinery_RailDrones,   navWidth);
 
 		NavGroup("MISC");
-		NavItem(imgui, "  Misc",                MenuCategory::Misc);
+		NavItem(imgui, "  Misc",                MenuCategory::Misc,                   navWidth);
 
 #if BETTERCHEATS_DEV_BUILD
 		NavGroup("DEV");
-		NavItem(imgui, "  Cheat Manager",       MenuCategory::Dev_CheatManager);
+		NavItem(imgui, "  Cheat Manager",       MenuCategory::Dev_CheatManager,       navWidth);
 #endif
 	}
 

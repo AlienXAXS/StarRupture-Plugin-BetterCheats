@@ -68,6 +68,17 @@ static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 	BetterCheats::CheatMenu::Toggle();
 }
 
+// Escape and Q (the game's own close/cancel key) both close the menu like any
+// other overlay's dismiss keys. Registered by enum, not RegisterKeybindByName:
+// they're a universal convention, not a user rebind, so neither should show up
+// as a setting on the loader's config page. Plain RegisterKeybind is
+// non-blocking by default (see keybind_registry.cpp's blocking map), so Q still
+// reaches the game whenever the panel is closed.
+static void OnCloseKeyPressed(EModKey /*key*/, EModKeyEvent /*event*/)
+{
+	BetterCheats::CheatMenu::RequestClose();
+}
+
 // Fires once a save is fully loaded into the world — reload this session's
 // JSON config and re-apply any persisted cheat settings.
 static void OnExperienceLoadComplete()
@@ -92,10 +103,23 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Enemies::ApplySavedConfig();
 }
 
+// PluginGameThreadCallback wrapper for the hot-reload path above.
+static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
+{
+	OnExperienceLoadComplete();
+}
+
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
 {
+	// Applies a pending Escape/Q close request. Must run here, on the game
+	// tick, never from inside the panel's own render callback -- see
+	// CheatMenu::TickPendingClose for why. Runs before the ChimeraMain/cheats
+	// gate below: closing the menu must still work even if the player left
+	// single-player or the world unloaded out from under an open panel.
+	BetterCheats::CheatMenu::TickPendingClose();
+
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
 
@@ -205,16 +229,26 @@ extern "C" {
 		// Register the toggle keybind — modloader tracks rebinds automatically
 		const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 		self->hooks->Input->RegisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+		self->hooks->Input->RegisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
+		self->hooks->Input->RegisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
 		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 
 		// Hot-reload: experience-load-complete may have already fired before we
 		// registered, so if a session is already in progress, run the same setup now.
+		//
+		// It has to go through the game thread. SessionConfig::Reload() resolves the
+		// save name via UCrSaveSubsystem, which only works there -- called inline from
+		// PluginInit it returns false, OnExperienceLoadComplete() bails, and every
+		// panel's ApplySavedConfig is skipped. The failure is silent, and because
+		// SessionConfig::Set() no-ops while unloaded, NOTHING persists for the rest of
+		// the session. Same PostToGameThread pattern used by machine_power.cpp,
+		// player_attributes.cpp and player_items.cpp.
 		if (BetterCheats::GameContext::IsInChimeraMain())
 		{
-			LOG_INFO("BetterCheats: hot-reloaded into an active session — running experience-load setup now.");
-			OnExperienceLoadComplete();
+			LOG_INFO("BetterCheats: hot-reloaded into an active session — posting experience-load setup to the game thread.");
+			self->hooks->Engine->PostToGameThread(&OnExperienceLoadCompleteOnGameThread, nullptr);
 		}
 
 		LOG_INFO("BetterCheats initialized — toggle key: %s", toggleKey);
@@ -230,6 +264,8 @@ extern "C" {
 		{
 			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 			g_self->hooks->Input->UnregisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+			g_self->hooks->Input->UnregisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
+			g_self->hooks->Input->UnregisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
 			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 		}
