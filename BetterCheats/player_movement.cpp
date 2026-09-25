@@ -308,7 +308,7 @@ namespace BetterCheats::Panels::Movement
 		const AttrDef kAttrs[kAttrCount] = {
 			{ "Move Speed",           "moveSpeed",         1.0f, 0.10f, 10.0f, 0.05f, "%.2fx",
 			  "CurrentMovementSpeedMultiplier -- this is what walking/running actually reads.\n"
-			  "Multiplies the game's own value, so a movement LEM bonus is kept, not overwritten." },
+			  "Multiplies the base value. A movement LEM bonus still adds on top." },
 			{ "Move Speed Cap",       "moveSpeedMax",      1.0f, 0.10f, 10.0f, 0.05f, "%.2fx",
 			  "Ceiling Move Speed is clamped to -- set directly, not multiplied. Raise this\n"
 			  "alongside Move Speed or a high override gets clamped back down." },
@@ -316,19 +316,20 @@ namespace BetterCheats::Panels::Movement
 			  "Floor Move Speed is clamped to -- set directly, not multiplied. Raise this so\n"
 			  "slows and debuffs can never drop you below it." },
 			{ "Sprint Speed",         "sprintSpeed",       1.0f, 0.10f,  5.0f, 0.05f, "%.2fx",
-			  "Multiplies sprint speed on top of Move Speed and any LEM bonus already on it." },
+			  "Multiplies the base value. Move Speed and any LEM bonus still add on top." },
 			{ "Jump Height",          "jumpHeight",        1.0f, 0.10f,  8.0f, 0.05f, "%.2fx",
-			  "Multiplies jump height/impulse, LEM bonuses included." },
+			  "Multiplies the base jump height/impulse. LEM bonuses still add on top." },
 			{ "Double Jump Cost",     "doubleJumpCost",    1.0f, 0.00f,  3.0f, 0.05f, "%.2fx",
-			  "Stamina cost multiplier for double jump, on top of any LEM discount (e.g.\n"
-			  "Airjumper). 0 makes it free." },
+			  "Multiplies the base stamina cost for double jump. Any LEM discount (e.g.\n"
+			  "Airjumper) still applies on top. 0 makes it free." },
 			{ "Dodge Cost",           "dodgeCost",         1.0f, 0.00f,  3.0f, 0.05f, "%.2fx",
 			  "Stamina cost multiplier for dodge/dash. 0 makes it free." },
 			{ "Stamina Regen",        "staminaRegen",      1.0f, 0.10f, 10.0f, 0.05f, "%.2fx",
-			  "Stamina regeneration rate, on top of any LEM bonus (e.g. Runner)." },
+			  "Multiplies the base stamina regeneration rate. Any LEM bonus (e.g. Runner)\n"
+			  "still adds on top." },
 			{ "Slide Stamina Regen",  "slideStaminaRegen", 1.0f, 0.10f, 10.0f, 0.05f, "%.2fx",
-			  "Stamina regeneration rate while sliding, on top of any LEM bonus\n"
-			  "(e.g. Slidegiver)." },
+			  "Multiplies the base regeneration rate while sliding. Any LEM bonus (e.g.\n"
+			  "Slidegiver) still adds on top." },
 			{ "Fall Damage",          "fallDamage",        1.0f, 0.00f,  3.0f, 0.05f, "%.2fx",
 			  "Fall damage taken multiplier. 0 removes fall damage entirely." },
 			{ "Zipline Speed",        "ziplineSpeed",      1.0f, 0.10f,  5.0f, 0.05f, "%.2fx",
@@ -489,8 +490,8 @@ namespace BetterCheats::Panels::Movement
 
 			bool active = IsAttrActive(attrIndex);
 			if (active)
-				g_composedAttrs[attrIndex].Apply(set, attr.CurrentValue, SafeAttrValue(attrIndex), kAttrModes[attrIndex],
-					kAttrs[attrIndex].minValue, kAttrs[attrIndex].maxValue);
+				g_composedAttrs[attrIndex].Apply(set, attr.CurrentValue, &attr.BaseValue, SafeAttrValue(attrIndex),
+					kAttrModes[attrIndex], kAttrs[attrIndex].minValue, kAttrs[attrIndex].maxValue);
 			else
 				g_composedAttrs[attrIndex].Release(set, attr.CurrentValue);
 
@@ -601,7 +602,7 @@ namespace BetterCheats::Panels::Movement
 			{ "Base Speed",        "zipSpeed",      0.10f, 10.0f, "Travel speed on a zipline (your rider, not the zipline itself)." },
 			{ "Ramp Up",           "zipAccel",      0.10f, 10.0f, "How fast you get up to zipline speed." },
 
-			{ "Max Energy",        "maxEnergy",     0.10f, 20.0f, "Size of the stamina pool. Sprint, jump and dash all draw from it.\nMultiplies the game's live value, so a LEM bonus (e.g. Endurancegiver)\nis kept, not overwritten." },
+			{ "Max Energy",        "maxEnergy",     0.10f, 20.0f, "Size of the stamina pool. Sprint, jump and dash all draw from it.\nMultiplies the base value. A LEM bonus (e.g. Endurancegiver) still\nadds on top." },
 			{ "Regen Delay",       "regenDelay",    0.00f,  3.0f, "Pause before energy starts refilling. 0 regenerates immediately." },
 			{ "Sprint Drain",      "sprintDrain",   0.00f,  3.0f, "Energy burned while sprinting. 0 makes sprinting free." },
 			{ "Regen Rate",        "regenRate",     0.10f, 20.0f, "How fast energy refills." },
@@ -822,8 +823,9 @@ namespace BetterCheats::Panels::Movement
 				const bool  active     = IsRawActive(kRawMaxEnergy);
 
 				if (active)
-					g_composedMaxEnergy.Apply(energy, energy->MaxEnergy.CurrentValue, SafeMultiplier(kRawMaxEnergy),
-						BetterCheats::ComposedAttribute::Mode::Multiply, kMaxEnergyFloor, kMaxEnergyCeiling);
+					g_composedMaxEnergy.Apply(energy, energy->MaxEnergy.CurrentValue, &energy->MaxEnergy.BaseValue,
+						SafeMultiplier(kRawMaxEnergy), BetterCheats::ComposedAttribute::Mode::Multiply,
+						kMaxEnergyFloor, kMaxEnergyCeiling);
 				else
 					g_composedMaxEnergy.Release(energy, energy->MaxEnergy.CurrentValue);
 
@@ -1593,7 +1595,7 @@ namespace BetterCheats::Panels::Movement
 			imgui->SetTooltip("Shows the game's own numbers next to each slider, so a change is\n"
 			                  "obvious instead of a guess.");
 
-		imgui->TextDisabled("Multipliers apply on top of your base stats and any LEMs or game buffs.");
+		imgui->TextDisabled("Multipliers apply to your base stats. LEMs and game buffs still add on top.");
 
 		imgui->SeparatorText("Fly / No-Clip Movement");
 

@@ -5,19 +5,28 @@
 
 namespace BetterCheats
 {
-	float ComposedAttribute::Compute(float gameValue, float amount, Mode mode, float minFinal, float maxFinal)
+	float ComposedAttribute::Compute(float gameValue, float baseValue, float amount, Mode mode, float minFinal, float maxFinal)
 	{
 		float final = 0.0f;
 		switch (mode)
 		{
-		case Mode::Multiply: final = gameValue * amount; break;
+		case Mode::Multiply:
+			// One more mod stacked on the base, not a multiplier over whatever the
+			// game already aggregated -- so a x2 slider with +15% attachments on top
+			// lands on 2.15, not 2.30. Floored at 0 before the row's own min/max
+			// clamp below: a reduction row (Recoil, Spread, costs...) can otherwise
+			// go negative once the game's own mods have already cut gameValue below
+			// baseValue and amount is small.
+			final = gameValue + baseValue * (amount - 1.0f);
+			final = (std::max)(final, 0.0f);
+			break;
 		case Mode::Add:      final = gameValue + amount; break;
 		case Mode::Absolute: final = amount;             break;
 		}
 		return std::clamp(final, minFinal, maxFinal);
 	}
 
-	void ComposedAttribute::Apply(const void* owner, float& value, float amount,
+	void ComposedAttribute::Apply(const void* owner, float& value, const float* baseValue, float amount,
 	                               Mode mode, float minFinal, float maxFinal)
 	{
 		if (!m_active || m_owner != owner)
@@ -36,7 +45,11 @@ namespace BetterCheats
 			m_game = value;
 		}
 
-		const float final = Compute(m_game, amount, mode, minFinal, maxFinal);
+		// No real base to read (see the header comment) -- compose onto m_game
+		// itself, which reduces Compute's formula back to the classic
+		// gameValue * amount.
+		const float base  = baseValue ? *baseValue : m_game;
+		const float final = Compute(m_game, base, amount, mode, minFinal, maxFinal);
 
 		if (value != final)
 			value = final;
@@ -90,7 +103,12 @@ namespace BetterCheats
 		const float gameBefore = value;
 
 		if (active)
-			composed.Apply(owner, value, amount, mode, minValue, maxValue);
+			// None of this helper's callers (weapon data-asset fields, grenade
+			// data-asset/global fields, inventory stack size) sit behind a real
+			// FGameplayAttributeData -- see the row-by-row audit in
+			// player_weapons.cpp/player_inventory.cpp. nullptr composes Multiply
+			// rows onto `value` itself, identical to the pre-fix behaviour.
+			composed.Apply(owner, value, nullptr, amount, mode, minValue, maxValue);
 		else
 			composed.Release(owner, value);
 

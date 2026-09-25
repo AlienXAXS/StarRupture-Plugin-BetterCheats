@@ -63,11 +63,11 @@ namespace BetterCheats::Panels::Weapons
 
 		const AttrDef kAttrs[kAttrCount] = {
 			{ "Damage",             "damage",   &SDK::UCrWeaponAttributeSet::DamageModMultiplier,
-			  1.0f, 0.10f,  25.0f, 0.05f, "%.2fx", "Multiplies outgoing weapon damage, attachment bonuses included." },
+			  1.0f, 0.10f,  25.0f, 0.05f, "%.2fx", "Multiplies the weapon's base damage. Attachment and upgrade bonuses\nstill add on top." },
 			{ "Fire Rate",          "fireRate", &SDK::UCrWeaponAttributeSet::FireRateModMultiplier,
-			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Multiplies rounds per second, attachment bonuses included." },
+			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Multiplies the weapon's base rounds per second. Attachment and\nupgrade bonuses still add on top." },
 			{ "Reload Speed",       "reload",   &SDK::UCrWeaponAttributeSet::ReloadSpeedModMultiplier,
-			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Higher is faster. Multiplies on top of any attachment bonus." },
+			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Higher is faster. Multiplies the weapon's base value. Attachment and\nupgrade bonuses still add on top." },
 			// .member unused: Tick() special-cases this row onto the weapon data
 			// asset's BaseMagazine.Value instead (g_composedMagazine) -- the clip-size
 			// getter never reads MaxMagAmmoModOffset at all. Kept here only so every
@@ -75,15 +75,15 @@ namespace BetterCheats::Panels::Weapons
 			{ "Magazine Size",      "magazine", &SDK::UCrWeaponAttributeSet::MaxMagAmmoModOffset,
 			  0.0f, -100.0f, 999.0f, 1.0f, "%.0f", "Flat OFFSET added to this weapon's magazine (its real base\ncapacity, not an attachment-style modifier). Negative shrinks it." },
 			{ "Damage Falloff",     "falloff",  &SDK::UCrWeaponAttributeSet::DamageFallOffModMultiplier,
-			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Effective range before damage drops off. Multiplies on top of\nany attachment bonus." },
+			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Multiplies the weapon's base effective range before damage drops\noff. Attachment bonuses still add on top." },
 			{ "Recoil",             "recoil",   &SDK::UCrWeaponAttributeSet::RecoilModMultiplier,
-			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "0 removes recoil entirely. Multiplies on top of any attachment bonus." },
+			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "Multiplies the weapon's base recoil. Attachment bonuses still add\non top. 0 removes recoil entirely." },
 			{ "Spread",             "spread",   &SDK::UCrWeaponAttributeSet::SpreadModMultiplier,
-			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "0 is perfect accuracy. Multiplies on top of any attachment bonus." },
+			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "Multiplies the weapon's base spread. Attachment bonuses still add\non top. 0 is perfect accuracy." },
 			{ "Sway",               "sway",     &SDK::UCrWeaponAttributeSet::SwayModMultiplier,
-			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "0 removes weapon sway. Multiplies on top of any attachment bonus." },
+			  1.0f, 0.00f,   3.0f, 0.05f, "%.2fx", "Multiplies the weapon's base sway. Attachment bonuses still add on\ntop. 0 removes weapon sway." },
 			{ "ADS Speed",          "ads",      &SDK::UCrWeaponAttributeSet::ADS_TransitionSpeedModMultiplier,
-			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Aim-down-sights transition speed. Multiplies on top of any\nattachment bonus." },
+			  1.0f, 0.10f,   5.0f, 0.05f, "%.2fx", "Multiplies the weapon's base aim-down-sights transition speed.\nAttachment bonuses still add on top." },
 			{ "Enemies Hit / Shot", "pierce",   &SDK::UCrWeaponAttributeSet::PossibleEnemiesHitPerTrace,
 			  1.0f, 1.00f,  10.0f, 1.0f,  "%.0f",  "Projectile piercing -- how many enemies one shot passes through." },
 		};
@@ -951,16 +951,16 @@ namespace BetterCheats::Panels::Weapons
 					bool active = true;
 					if (a == kAttrDamage && profile.oneHitKill)
 					{
-						// Absolute wins outright; Release() hands Damage back to the
-						// game's own aggregate once this turns off.
-						g_composed[a].Apply(weapons, attr.CurrentValue, kOneHitKillDamage,
+						// Absolute wins outright (ignores baseValue); Release() hands
+						// Damage back to the game's own aggregate once this turns off.
+						g_composed[a].Apply(weapons, attr.CurrentValue, &attr.BaseValue, kOneHitKillDamage,
 							BetterCheats::ComposedAttribute::Mode::Absolute,
 							kOneHitKillDamage, kOneHitKillDamage);
 					}
 					else if (IsActive(a, profile.values[a]))
 					{
-						g_composed[a].Apply(weapons, attr.CurrentValue, profile.values[a], kAttrModes[a],
-							kAttrs[a].minValue, kAttrs[a].maxValue);
+						g_composed[a].Apply(weapons, attr.CurrentValue, &attr.BaseValue, profile.values[a],
+							kAttrModes[a], kAttrs[a].minValue, kAttrs[a].maxValue);
 					}
 					else
 					{
@@ -1338,7 +1338,7 @@ namespace BetterCheats::Panels::Weapons
 		imgui->SameLine(0.0f, 12.0f);
 		imgui->TextDisabled("Shows the weapon in your hand. Equip one to see its stats.");
 
-		imgui->TextDisabled("Multipliers apply on top of the weapon's base stats and any attachments.");
+		imgui->TextDisabled("Multipliers apply to the weapon's base stats. Attachments still add on top.");
 
 		{
 			std::lock_guard<std::mutex> lock(g_profilesMutex);

@@ -21,9 +21,16 @@ namespace BetterCheats
 		enum class Mode { Multiply, Add, Absolute };
 
 		// Pure formula: what Apply() would write, given `gameValue` as the game's
-		// own aggregate. Exposed so the "Show live values" readout can compute the
-		// same "expected" figure Apply just used without duplicating the switch.
-		static float Compute(float gameValue, float amount, Mode mode, float minFinal, float maxFinal);
+		// own aggregate and `baseValue` as the attribute's un-modded BaseValue.
+		// Multiply composes the slider onto BaseValue alone -- final = gameValue +
+		// baseValue * (amount - 1) -- so it acts as one more mod stacked on the
+		// base rather than multiplying attachment/LEM bonuses too; passing
+		// `gameValue` itself as `baseValue` collapses this back to the classic
+		// gameValue * amount (see Apply's `baseValue` parameter). Add/Absolute
+		// ignore `baseValue`. Exposed so the "Show live values" readout can
+		// compute the same "expected" figure Apply just used without duplicating
+		// the switch.
+		static float Compute(float gameValue, float baseValue, float amount, Mode mode, float minFinal, float maxFinal);
 
 		// `owner` identifies the instance `value` lives on, so a respawn (or, for a
 		// per-weapon-type field, a weapon swap the caller must detect itself -- see
@@ -31,7 +38,15 @@ namespace BetterCheats
 		// re-aggregating in place. `amount` is the slider/toggle value; Multiply and
 		// Add treat it as relative to the game's own value, Absolute replaces it
 		// outright.
-		void Apply(const void* owner, float& value, float amount, Mode mode,
+		//
+		// `baseValue` is the attribute's FGameplayAttributeData::BaseValue, read
+		// fresh by the caller every call -- never a value this class wrote, since
+		// it only ever writes CurrentValue (see the header comment). Pass nullptr
+		// when the row has no real base to read (a plain CDO/UObject field with no
+		// FGameplayAttributeData behind it, e.g. grenade charge cost or the
+		// grenade-global fields) -- Multiply then composes onto `value` itself,
+		// identical to the pre-fix gameValue * amount. Ignored for Add/Absolute.
+		void Apply(const void* owner, float& value, const float* baseValue, float amount, Mode mode,
 		           float minFinal, float maxFinal);
 
 		// Hands the value back to the game if our last write is still sitting there
