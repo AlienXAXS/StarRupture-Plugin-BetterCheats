@@ -9,6 +9,7 @@
 #include "game_thread.h"
 
 #include "Chimera_classes.hpp"
+#include "Chimera_parameters.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -822,6 +823,33 @@ namespace BetterCheats::Panels::Weapons
 			return static_cast<int>(g_profiles.size()) - 1;
 		}
 
+		// LastEquippedWeaponData (used below to pick the active profile) only becomes a
+		// grenade once one has actually been thrown/charged, so a grenade that has only
+		// ever been equipped never gets a tab. GetGrenadeItemData reports whatever grenade
+		// is currently equipped regardless of charge state -- game-thread only, like every
+		// other UObject/ProcessEvent call here.
+		SDK::UCrGrenadeWeaponItemDataBase* GetEquippedGrenadeItemData(SDK::UCrWeaponComponent* weaponSystem)
+		{
+			if (!weaponSystem) return nullptr;
+
+			static SDK::UFunction* func = nullptr;
+			if (!func)
+				func = SDK::UCrWeaponComponent::StaticClass()->GetFunction("CrWeaponComponent", "GetGrenadeItemData");
+			if (!func)
+			{
+				LOG_WARN("Weapons: could not resolve UCrWeaponComponent::GetGrenadeItemData.");
+				return nullptr;
+			}
+
+			SDK::Params::CrWeaponComponent_GetGrenadeItemData parms{};
+			const auto flags = func->FunctionFlags;
+			func->FunctionFlags |= 0x400;
+			weaponSystem->ProcessEvent(func, &parms);
+			func->FunctionFlags = flags;
+
+			return parms.ReturnValue ? parms.OutGrenadeData : nullptr;
+		}
+
 	}
 
 	void Tick(float deltaSeconds)
@@ -845,6 +873,14 @@ namespace BetterCheats::Panels::Weapons
 		SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
 		if (!character || !character->WeaponSystem)
 			return;
+
+		// Tab presence for whatever grenade is currently equipped, independent of the
+		// active-profile selection below -- see GetEquippedGrenadeItemData.
+		if (SDK::UCrGrenadeWeaponItemDataBase* grenadeData = GetEquippedGrenadeItemData(character->WeaponSystem))
+		{
+			std::lock_guard<std::mutex> lock(g_profilesMutex);
+			FindOrCreateProfile(grenadeData->GetName(), true);
+		}
 
 		if (SDK::UCrWeaponItemDataBase* data = character->WeaponSystem->LastEquippedWeaponData)
 		{

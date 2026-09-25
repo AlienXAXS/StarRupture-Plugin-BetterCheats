@@ -318,7 +318,7 @@ namespace BetterCheats::UI
 			changed = true;
 
 		imgui->SameLine(0.0f, 0.0f);
-		imgui->SetNextItemWidth(-1.0f);
+		imgui->SetNextItemWidth(numBoxW);
 		if (imgui->InputFloat("##num", spec.value, spec.step, spec.step * 10.0f, spec.format))
 			changed = true;
 
