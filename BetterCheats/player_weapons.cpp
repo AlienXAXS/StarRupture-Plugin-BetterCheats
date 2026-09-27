@@ -1590,7 +1590,17 @@ namespace BetterCheats::Panels::Weapons
 				{
 					constexpr int kGrenadePresetFieldCount = kGrenadeRowCount + 1; // + infiniteCharges
 					BetterCheats::PresetStore::Field presetFields[kGrenadePresetFieldCount];
-					const std::string presetGroup = std::string("Weapon:") + profile.key;
+					// PresetStore group ids must never contain ':' themselves --
+					// the store's own file format uses "[group:name]", splitting
+					// on the FIRST ':' when it re-parses the file (see
+					// preset_store.h). "Weapon:" + key put a second colon inside
+					// the group id, which only broke once the file got re-read
+					// from disk (a restart, or the loader's RELOAD button) --
+					// same-session save/load/rename never re-parses, so it looked
+					// fine until then. "Weapon." keeps every weapon/grenade type
+					// in its own group without colliding with the format's own
+					// delimiter.
+					const std::string presetGroup = std::string("Weapon.") + profile.key;
 
 					auto getLive = [&profile](BetterCheats::PresetStore::Field* out)
 					{
@@ -1861,7 +1871,10 @@ namespace BetterCheats::Panels::Weapons
 			{
 				constexpr int kWeaponPresetFieldCount = kAttrCount + 2; // + oneHitKill + infiniteMagazine
 				BetterCheats::PresetStore::Field presetFields[kWeaponPresetFieldCount];
-				const std::string presetGroup = std::string("Weapon:") + profile.key;
+				// See the grenade tab's identical comment above: group ids must
+				// never contain ':' (the store's own "[group:name]" delimiter),
+				// so this is "Weapon." not "Weapon:".
+				const std::string presetGroup = std::string("Weapon.") + profile.key;
 
 				auto getLive = [&profile](BetterCheats::PresetStore::Field* out)
 				{

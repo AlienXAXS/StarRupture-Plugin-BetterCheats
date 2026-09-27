@@ -93,7 +93,13 @@ namespace BetterCheats::PresetStore
 
                 if (line[0] == '[')
                 {
-                    const size_t close = line.find(']');
+                    // The LAST ']' on the line, not the first -- a saved
+                    // name is free to contain ']' itself (WriteWholeFile
+                    // never puts anything after the header's own closing
+                    // bracket), so stopping at the first one would
+                    // truncate any such name back out of the file on the
+                    // very next load.
+                    const size_t close = line.rfind(']');
                     if (close == std::string::npos)
                         continue;
                     std::string group, name;
