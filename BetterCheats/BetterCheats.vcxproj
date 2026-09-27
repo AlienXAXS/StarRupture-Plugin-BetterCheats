@@ -168,6 +168,7 @@
     <ClInclude Include="player_items.h" />
     <ClInclude Include="player_movement.h" />
     <ClInclude Include="player_skills.h" />
+    <ClInclude Include="object_ref.h" />
     <ClInclude Include="player_lookup.h" />
     <ClInclude Include="player_tools.h" />
     <ClInclude Include="player_weapons.h" />

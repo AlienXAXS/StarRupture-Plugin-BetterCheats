@@ -8,6 +8,7 @@
 #include "cheat_math.h"
 #include "ui_widgets.h"
 #include "game_thread.h"
+#include "object_ref.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
@@ -166,37 +167,19 @@ namespace BetterCheats::Panels::Inventory
 		//
 		// GObjects has to be walked to find it — there is no path to the
 		// inventory widget from the player controller — so the result is cached
-		// and revalidated by index rather than by dereferencing a pointer that
-		// may belong to a destroyed widget. If the object at the cached index is
-		// still the same pointer then it is live, and only then is it safe to
-		// look at.
+		// as an ObjectRef, revalidated by its GObjects slot rather than by
+		// dereferencing a pointer that may belong to a destroyed widget.
 		// ---------------------------------------------------------------------
-		SDK::UCrUW_InventoryContainer* g_container      = nullptr;
-		int32_t                        g_containerIndex = -1;
+		ObjectRef<SDK::UCrUW_InventoryContainer> g_container;
 
 		SDK::UCrUW_InventoryContainer* ValidateContainer()
 		{
-			if (!g_container || g_containerIndex < 0)
-				return nullptr;
-
-			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
-			if (!arr || g_containerIndex >= arr->Num())
-				return nullptr;
-
-			if (arr->GetByIndex(g_containerIndex) != g_container)
-				return nullptr;
-
-			SDK::UClass* containerClass = SDK::UCrUW_InventoryContainer::StaticClass();
-			if (!containerClass || !g_container->IsA(containerClass))
-				return nullptr;
-
-			return g_container;
+			return g_container.Get();
 		}
 
 		void RescanContainer()
 		{
-			g_container      = nullptr;
-			g_containerIndex = -1;
+			g_container.Reset();
 
 			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
 			if (!arr)
@@ -221,8 +204,7 @@ namespace BetterCheats::Panels::Inventory
 				if (!container || !container->ItemGridPanel)
 					continue;
 
-				g_container      = container;
-				g_containerIndex = container->Index;
+				g_container.Set(container);
 				return;
 			}
 		}
@@ -250,15 +232,22 @@ namespace BetterCheats::Panels::Inventory
 		// same way we would, and whatever else the Blueprint does to keep the
 		// slot's insides in proportion comes along with it. The direct SizeBox
 		// write below still runs, so a stubbed-out event is not a silent failure.
+		//
+		// SetSlotSize is a Blueprint function, not a native one: it is freed with
+		// its class when the widget Blueprint unloads (back to the main menu, for
+		// one), and a reload makes a new one. So the cached function is an
+		// ObjectRef, looked up again once it's gone.
 		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height)
 		{
-			static SDK::UFunction* function = nullptr;
+			static ObjectRef<SDK::UFunction> s_function;
 
+			SDK::UFunction* function = s_function.Get();
 			if (!function)
 			{
 				if (!slot->Class) return;
 				function = slot->Class->GetFunction("WBP_InventorySlot_C", "SetSlotSize");
 				if (!function) return;
+				s_function.Set(function);
 			}
 
 			SetSlotSizeParams params{};
@@ -504,8 +493,7 @@ namespace BetterCheats::Panels::Inventory
 			g_appliedSlotScale = 1.0f;
 			g_baseSlotWidth    = 0.0f;
 			g_baseSlotHeight   = 0.0f;
-			g_container        = nullptr;
-			g_containerIndex   = -1;
+			g_container.Reset();
 		}
 
 		// ---------------------------------------------------------------------
@@ -703,9 +691,13 @@ namespace BetterCheats::Panels::Inventory
 		// render-thread copy without a lock it doesn't otherwise need.
 		// =====================================================================
 
+		// `item` is an ObjectRef, checked before every read or write: the scan
+		// force-loads each item's package and nothing keeps it loaded, so a
+		// garbage collection (a world travel always runs one) can free the CDO
+		// while this list still holds it.
 		struct StackEntry
 		{
-			SDK::UAuItemDataBase* item             = nullptr;
+			ObjectRef<SDK::UAuItemDataBase> item;
 			SDK::FAssetData         assetData;         // re-resolve fresh before a write -- item_registry.h
 			std::string             uniqueName;        // item->UniqueItemName, the identity key
 			std::string             name;              // display name
@@ -759,7 +751,7 @@ namespace BetterCheats::Panels::Inventory
 		struct StackComposeState
 		{
 			BetterCheats::ComposedAttribute composed;
-			SDK::UAuItemDataBase*           item = nullptr;
+			ObjectRef<SDK::UAuItemDataBase> item;
 		};
 		std::unordered_map<std::string, StackComposeState> g_stackComposed;
 
@@ -1023,7 +1015,7 @@ namespace BetterCheats::Panels::Inventory
 						if (!item) { ++unresolvedCount; continue; }
 
 						StackEntry entry;
-						entry.item       = item;
+						entry.item.Set(item);
 						entry.assetData  = assetData[i];
 						entry.uniqueName = item->UniqueItemName.ToString();
 						entry.name       = SDK::UKismetTextLibrary::Conv_TextToString(item->ItemName).ToString();
@@ -1127,25 +1119,36 @@ namespace BetterCheats::Panels::Inventory
 			{
 				for (const StackEntry& e : g_stackItemsGameThread)
 				{
-					if (!e.item || !e.canStack)
+					if (!e.canStack)
 						continue;
+
+					StackComposeState& state = g_stackComposed[e.uniqueName];
+
+					// Unloaded since the scan. Whatever we wrote went with it, so
+					// there is nothing to hand back either.
+					SDK::UAuItemDataBase* item = e.item.Get();
+					if (!item)
+					{
+						state.composed.Forget();
+						state.item.Reset();
+						continue;
+					}
 
 					const int  desired = EffectiveStackFor(e, multiplier, categoryOverrides, overrides);
 					const bool active  = desired != e.originalMaxStack;
 
-					StackComposeState& state = g_stackComposed[e.uniqueName];
-					state.item = e.item;
+					state.item.Set(item);
 
-					float valueF = static_cast<float>(e.item->MaxStack);
+					float valueF = static_cast<float>(item->MaxStack);
 					const std::string key = "playerInventory.stacks." + SanitizeStackKey(e.uniqueName);
 
-					BetterCheats::ApplyComposedRow(state.composed, e.item, valueF, key, active,
+					BetterCheats::ApplyComposedRow(state.composed, item, valueF, key, active,
 						static_cast<float>(desired), BetterCheats::ComposedAttribute::Mode::Absolute,
 						static_cast<float>(kStackFloor), static_cast<float>(kStackCeiling));
 
 					const int newValue = static_cast<int>(valueF + 0.5f);
-					if (e.item->MaxStack != newValue)
-						e.item->MaxStack = newValue;
+					if (item->MaxStack != newValue)
+						item->MaxStack = newValue;
 				}
 			}
 			catch (...) {}
@@ -1573,13 +1576,14 @@ namespace BetterCheats::Panels::Inventory
 			for (auto& kv : g_stackComposed)
 			{
 				StackComposeState& state = kv.second;
-				if (!state.item) continue;
+				SDK::UAuItemDataBase* item = state.item.Get();
+				if (!item) continue;
 
-				float valueF = static_cast<float>(state.item->MaxStack);
-				state.composed.Release(state.item, valueF);
+				float valueF = static_cast<float>(item->MaxStack);
+				state.composed.Release(item, valueF);
 				const int newValue = static_cast<int>(valueF + 0.5f);
-				if (state.item->MaxStack != newValue)
-					state.item->MaxStack = newValue;
+				if (item->MaxStack != newValue)
+					item->MaxStack = newValue;
 
 				BetterCheats::ClearComposeState("playerInventory.stacks." + SanitizeStackKey(kv.first));
 			}
@@ -1628,8 +1632,7 @@ namespace BetterCheats::Panels::Inventory
 		// is no longer something we know to be unscaled.
 		g_baseSlotWidth  = 0.0f;
 		g_baseSlotHeight = 0.0f;
-		g_container      = nullptr;
-		g_containerIndex = -1;
+		g_container.Reset();
 
 		// Item stack sizes.
 		g_stackMultiplier.store(SessionConfig::Get("playerInventory.stacks.multiplier", kStackMultDefault));

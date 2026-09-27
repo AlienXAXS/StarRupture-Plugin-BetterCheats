@@ -7,6 +7,7 @@
 #include "cheat_math.h"
 #include "player_lookup.h"
 #include "game_thread.h"
+#include "object_ref.h"
 
 #include "Chimera_classes.hpp"
 #include "Chimera_parameters.hpp"
@@ -274,14 +275,15 @@ namespace BetterCheats::Panels::Weapons
 		// How long between resolution retries while a CDO/property hasn't
 		// resolved yet (class package not loaded, ability not granted yet) --
 		// WalkAllObjectsInto-family calls are a GObjects scan, too expensive to
-		// retry every tick. Once resolved it's cached forever (CDOs don't
-		// disappear), so this only ever costs anything before the player's
-		// first grenade.
+		// retry every tick. Once resolved it's kept until the object goes away:
+		// both are Blueprint classes, and a Blueprint class and its CDO are
+		// freed when their package is unloaded, so the cached CDO is checked on
+		// every use and re-resolved once it's gone.
 		constexpr float kGrenadeGlobalRetryInterval = 5.0f;
 
 		struct GrenadeFieldHandle
 		{
-			void*                 object        = nullptr;
+			ObjectRef<SDK::UObject> object;
 			PluginPropertyHandle  property      = nullptr;
 			bool                  ok            = false;
 			bool                  loggedMiss    = false;
@@ -299,21 +301,30 @@ namespace BetterCheats::Panels::Weapons
 		std::atomic<float> g_dbgGrenadeGlobalExpected[kGrenadeGlobalCount];
 
 		// Retries every kGrenadeGlobalRetryInterval seconds until the CDO and
-		// its named property both resolve, then caches the result forever.
+		// its named property both resolve, then keeps the result for as long as
+		// the CDO is still alive. Returns the live CDO, or null.
 		// Game thread only (ObjectWalker/ObjectProperties both touch GObjects).
-		bool ResolveGrenadeField(GrenadeFieldHandle& h, const char* className, const char* propertyName, float deltaSeconds)
+		SDK::UObject* ResolveGrenadeField(GrenadeFieldHandle& h, const char* className, const char* propertyName, float deltaSeconds)
 		{
-			if (h.ok) return true;
+			if (h.ok)
+			{
+				if (SDK::UObject* object = h.object.Get())
+					return object;
+
+				// Unloaded since it was resolved. Look it up again straight away.
+				h.ok = false;
+				h.retryCooldown = 0.0f;
+			}
 
 			h.retryCooldown -= deltaSeconds;
-			if (h.retryCooldown > 0.0f) return false;
+			if (h.retryCooldown > 0.0f) return nullptr;
 			h.retryCooldown = kGrenadeGlobalRetryInterval;
 
 			IPluginHooks* hooks = GetHooks();
 			IPluginObjectWalker*     walker = hooks ? hooks->ObjectWalker     : nullptr;
 			IPluginObjectProperties* props  = hooks ? hooks->ObjectProperties : nullptr;
 			if (!walker || !props || !walker->IsReady() || !props->IsReady())
-				return false;   // not ready yet -- try again next cooldown
+				return nullptr;   // not ready yet -- try again next cooldown
 
 			char cdoName[160];
 			snprintf(cdoName, sizeof(cdoName), "Default__%s", className);
@@ -326,7 +337,7 @@ namespace BetterCheats::Panels::Weapons
 						cdoName, propertyName);
 					h.loggedMiss = true;
 				}
-				return false;
+				return nullptr;
 			}
 
 			PluginPropertyHandle property = props->FindPropertyByName(className, propertyName);
@@ -338,14 +349,14 @@ namespace BetterCheats::Panels::Weapons
 						className, propertyName);
 					h.loggedMiss = true;
 				}
-				return false;
+				return nullptr;
 			}
 
-			h.object   = object;
+			h.object.Set(static_cast<SDK::UObject*>(object));
 			h.property = property;
 			h.ok       = true;
 			LOG_INFO("Weapons: resolved grenade field '%s::%s'.", className, propertyName);
-			return true;
+			return static_cast<SDK::UObject*>(object);
 		}
 
 		// Profiles are DISCOVERED, not hardcoded. Weapon data assets live in the paks
@@ -611,12 +622,12 @@ namespace BetterCheats::Panels::Weapons
 		constexpr float kMagazineFloor   = 1.0f;
 		constexpr float kMagazineCeiling = 9999.0f;
 		BetterCheats::ComposedAttribute g_composedMagazine;
-		SDK::UCrWeaponItemDataBase*     g_magazineOwner = nullptr;
+		ObjectRef<SDK::UCrWeaponItemDataBase> g_magazineOwner;
 
 		// Charge Cost: same per-weapon-TYPE-CDO shape as Magazine Size above, just
 		// a plain float member instead of FScalableFloat.Value.
 		BetterCheats::ComposedAttribute    g_composedGrenadeCost;
-		SDK::UCrGrenadeWeaponItemDataBase* g_grenadeCostOwner = nullptr;
+		ObjectRef<SDK::UCrGrenadeWeaponItemDataBase> g_grenadeCostOwner;
 
 		// Max/Min Charge: GAS attributes on character->GrenadeChargeAttributes, ONE
 		// shared instance regardless of grenade type -- same "shared instance,
@@ -641,10 +652,10 @@ namespace BetterCheats::Panels::Weapons
 			g_composedOwner = current;
 
 			g_composedMagazine.Forget();
-			g_magazineOwner = nullptr;
+			g_magazineOwner.Reset();
 
 			g_composedGrenadeCost.Forget();
-			g_grenadeCostOwner = nullptr;
+			g_grenadeCostOwner.Reset();
 
 			g_composedGrenade[0].Forget();
 			g_composedGrenade[1].Forget();
@@ -657,15 +668,23 @@ namespace BetterCheats::Panels::Weapons
 		// one's, or the old weapon stays offset forever (ComposedAttribute's own
 		// owner-change handling only ever recaptures on the new owner, it never
 		// writes back to an owner it's leaving).
+		//
+		// The previous owner is held across ticks and can be unloaded in the
+		// meantime, so it's an ObjectRef: gone means nothing to hand back.
 		void ReleaseMagazineIfOwnerChanged(SDK::UCrWeaponItemDataBase* current)
 		{
-			if (current == g_magazineOwner) return;
-			if (g_magazineOwner)
+			SDK::UCrWeaponItemDataBase* previous = g_magazineOwner.Get();
+			if (current == previous) return;
+			if (previous)
 			{
-				g_composedMagazine.Release(g_magazineOwner, g_magazineOwner->BaseMagazine.Value);
+				g_composedMagazine.Release(previous, previous->BaseMagazine.Value);
 				BetterCheats::ClearComposeState("playerWeapons.compose.magazine");
 			}
-			g_magazineOwner = current;
+			else
+			{
+				g_composedMagazine.Forget();
+			}
+			g_magazineOwner.Set(current);
 		}
 
 		// Same reasoning as ReleaseMagazineIfOwnerChanged: Charge Cost lives on the
@@ -674,13 +693,18 @@ namespace BetterCheats::Panels::Weapons
 		// one being left before adopting the next.
 		void ReleaseGrenadeCostIfOwnerChanged(SDK::UCrGrenadeWeaponItemDataBase* current)
 		{
-			if (current == g_grenadeCostOwner) return;
-			if (g_grenadeCostOwner)
+			SDK::UCrGrenadeWeaponItemDataBase* previous = g_grenadeCostOwner.Get();
+			if (current == previous) return;
+			if (previous)
 			{
-				g_composedGrenadeCost.Release(g_grenadeCostOwner, g_grenadeCostOwner->GrenadeThrowCostOfGrenadeCharge);
+				g_composedGrenadeCost.Release(previous, previous->GrenadeThrowCostOfGrenadeCharge);
 				BetterCheats::ClearComposeState("playerWeapons.compose.grenadeCost");
 			}
-			g_grenadeCostOwner = current;
+			else
+			{
+				g_composedGrenadeCost.Forget();
+			}
+			g_grenadeCostOwner.Set(current);
 		}
 
 		// Max/Min Charge share ONE instance across every grenade type (like
@@ -1124,12 +1148,13 @@ namespace BetterCheats::Panels::Weapons
 				for (int g = 0; g < kGrenadeGlobalCount; ++g)
 				{
 					const GrenadeGlobalDef& def = kGrenadeGlobals[g];
-					if (!props || !ResolveGrenadeField(g_grenadeGlobalHandle[g], def.className, def.propertyName, deltaSeconds))
+					GrenadeFieldHandle& h = g_grenadeGlobalHandle[g];
+					SDK::UObject* object = props ? ResolveGrenadeField(h, def.className, def.propertyName, deltaSeconds) : nullptr;
+					if (!object)
 						continue;
 
-					GrenadeFieldHandle& h = g_grenadeGlobalHandle[g];
 					double raw = 0.0;
-					if (!props->GetFloatProperty(h.object, h.property, &raw))
+					if (!props->GetFloatProperty(object, h.property, &raw))
 						continue;
 
 					float valueF = static_cast<float>(raw);
@@ -1137,7 +1162,7 @@ namespace BetterCheats::Panels::Weapons
 					const bool  active = BetterCheats::DiffersFromDefault(sliderValue, def.defaultValue);
 					const std::string key = std::string("playerWeapons.compose.") + def.key;
 
-					const ComposeStep step = ApplyComposedRow(g_composedGrenadeGlobal[g], h.object, valueF, key,
+					const ComposeStep step = ApplyComposedRow(g_composedGrenadeGlobal[g], object, valueF, key,
 						active, sliderValue, BetterCheats::ComposedAttribute::Mode::Multiply,
 						kGrenadeGlobalFinalMin, kGrenadeGlobalFinalMax);
 
@@ -1145,7 +1170,7 @@ namespace BetterCheats::Panels::Weapons
 					g_dbgGrenadeGlobalExpected[g].store(step.expected);
 
 					if (raw != static_cast<double>(valueF))
-						props->SetFloatProperty(h.object, h.property, static_cast<double>(valueF));
+						props->SetFloatProperty(object, h.property, static_cast<double>(valueF));
 				}
 			}
 
@@ -1222,9 +1247,9 @@ namespace BetterCheats::Panels::Weapons
 					g_composed[a].Forget();
 			}
 
-			if (g_magazineOwner)
+			if (SDK::UCrWeaponItemDataBase* owner = g_magazineOwner.Get())
 			{
-				g_composedMagazine.Release(g_magazineOwner, g_magazineOwner->BaseMagazine.Value);
+				g_composedMagazine.Release(owner, owner->BaseMagazine.Value);
 				BetterCheats::ClearComposeState("playerWeapons.compose.magazine");
 			}
 			else
@@ -1232,9 +1257,9 @@ namespace BetterCheats::Panels::Weapons
 				g_composedMagazine.Forget();
 			}
 
-			if (g_grenadeCostOwner)
+			if (SDK::UCrGrenadeWeaponItemDataBase* owner = g_grenadeCostOwner.Get())
 			{
-				g_composedGrenadeCost.Release(g_grenadeCostOwner, g_grenadeCostOwner->GrenadeThrowCostOfGrenadeCharge);
+				g_composedGrenadeCost.Release(owner, owner->GrenadeThrowCostOfGrenadeCharge);
 				BetterCheats::ClearComposeState("playerWeapons.compose.grenadeCost");
 			}
 			else
@@ -1256,22 +1281,23 @@ namespace BetterCheats::Panels::Weapons
 			}
 
 			// Fuse/Blast Radius/Throw Force: global CDOs, not tied to the local
-			// character at all -- resolved once, valid regardless of who (or
-			// whether anyone) is currently possessed, so no owner-swap check.
+			// character at all, so no owner-swap check -- only whether the CDO
+			// is still loaded.
 			IPluginHooks* hooks = GetHooks();
 			IPluginObjectProperties* props = hooks ? hooks->ObjectProperties : nullptr;
 			for (int g = 0; g < kGrenadeGlobalCount; ++g)
 			{
 				GrenadeFieldHandle& h = g_grenadeGlobalHandle[g];
-				if (props && h.ok)
+				SDK::UObject* object = h.ok ? h.object.Get() : nullptr;
+				if (props && object)
 				{
 					double raw = 0.0;
-					if (props->GetFloatProperty(h.object, h.property, &raw))
+					if (props->GetFloatProperty(object, h.property, &raw))
 					{
 						float valueF = static_cast<float>(raw);
-						g_composedGrenadeGlobal[g].Release(h.object, valueF);
+						g_composedGrenadeGlobal[g].Release(object, valueF);
 						if (raw != static_cast<double>(valueF))
-							props->SetFloatProperty(h.object, h.property, static_cast<double>(valueF));
+							props->SetFloatProperty(object, h.property, static_cast<double>(valueF));
 					}
 					BetterCheats::ClearComposeState(std::string("playerWeapons.compose.") + kGrenadeGlobals[g].key);
 				}

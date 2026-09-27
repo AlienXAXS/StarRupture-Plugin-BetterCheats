@@ -77,9 +77,11 @@ namespace BetterCheats::Panels::Items
 		}
 
 		// Attempts to register UTexture2D icons with ImGui for every entry that has
-		// no handle yet.  Safe to call from any thread — LoadFromUTexture2D returns
-		// NULL (without throwing) when D3D12 is not yet ready, so entries that miss
-		// here are retried the next time this function is called.
+		// no handle yet. Game thread only, straight after the scan that found the
+		// icons: `icon` is a raw pointer into a package nothing keeps loaded, so it
+		// is only safe to read in the same tick it was read. LoadFromUTexture2D
+		// returns NULL (without throwing) when D3D12 is not yet ready; an icon
+		// that misses stays blank until the list is refreshed.
 		void LoadItemTexHandles(std::vector<ItemEntry>& items, IPluginSplash* splash = nullptr)
 		{
 			IPluginHooks* hooks = GetHooks();
@@ -371,7 +373,6 @@ namespace BetterCheats::Panels::Items
 			g_items         = std::move(incoming);
 			g_itemsLoaded   = true;
 			g_selectedIndex = -1;
-			LoadItemTexHandles(g_items);  // retry any entries that returned NULL on the game thread
 			RefreshFilteredItems();
 		}
 
