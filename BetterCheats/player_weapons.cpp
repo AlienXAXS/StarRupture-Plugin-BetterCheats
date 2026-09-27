@@ -199,6 +199,32 @@ namespace BetterCheats::Panels::Weapons
 			BetterCheats::ComposedAttribute::Mode::Absolute,  // Min Charge
 		};
 
+		// Built-in grenade presets, same shape as the weapon kPresets above but
+		// indexing into kGrenadeRows instead of kAttrs. Entries end at row < 0.
+		// Only Charge Cost/Max Charges/Min Charge are reachable here -- Fuse,
+		// Blast Radius and Throw Force (kGrenadeGlobals) are one shared CDO for
+		// every grenade type, not part of this per-profile table, so a preset
+		// can't set them the same way it sets a profile's own rows.
+		struct GrenadePresetVal { int row; float value; };
+
+		struct GrenadePreset
+		{
+			const char*      label;
+			const char*      tooltip;
+			const char*      credit;
+			GrenadePresetVal vals[4];
+		};
+
+		const GrenadePreset kGrenadePresets[] = {
+			{ "Less Cost Grenade",
+			  "Halves how many charges one throw costs. Max/Min Charges, Fuse, Blast\n"
+			  "Radius and Throw Force are untouched -- the pak this reproduces changes\n"
+			  "cost only.",
+			  "Modelled on 'Less Cost Grenade' (part of 'Better Grenade') by axbhub,\nNexusMod #41 for StarRupture",
+			  { {kGrenadeCost, 0.5f}, {-1,0} } },
+		};
+		constexpr int kGrenadePresetCount = static_cast<int>(sizeof(kGrenadePresets) / sizeof(kGrenadePresets[0]));
+
 		// Fuse / Blast Radius / Throw Force. These live on classes Dumper-7
 		// only typed under the game's Server SDK dump (BP_GrenadeProjectile_
 		// classes.hpp, GA_ThrowGrenade_classes.hpp), whose struct layout for
@@ -1520,8 +1546,46 @@ namespace BetterCheats::Panels::Weapons
 				                    "isn't confirmed safe to write blind. Fuse, blast radius and throw\n"
 				                    "force are below.");
 
-				// Saved presets sit directly under the built-ins (none exist for
-				// grenades) and above every control, same position in every group.
+				// A preset writes only into THIS grenade profile's rows, same as the
+				// weapon presets above do for kAttrs.
+				imgui->TextDisabled("Presets:");
+				for (int i = 0; i < kGrenadePresetCount; ++i)
+				{
+					const GrenadePreset& preset = kGrenadePresets[i];
+
+					imgui->SameLine(0.0f, -1.0f);
+
+					if (imgui->SmallButton(preset.label))
+					{
+						// A preset is a starting point, not a mode: clear the profile's
+						// grenade rows first so leftovers from a previous preset don't
+						// silently survive underneath.
+						for (int g = 0; g < kGrenadeRowCount; ++g)
+						{
+							profile.grenadeValues[g] = kGrenadeRows[g].defaultValue;
+							SessionConfig::Set(ConfigKey(profile, kGrenadeRows[g].key, "value"), kGrenadeRows[g].defaultValue);
+						}
+						for (const GrenadePresetVal& v : preset.vals)
+						{
+							if (v.row < 0) break;
+							profile.grenadeValues[v.row] = v.value;
+							SessionConfig::Set(ConfigKey(profile, kGrenadeRows[v.row].key, "value"), v.value);
+						}
+						LOG_INFO("Weapons: applied grenade preset '%s' to '%s'", preset.label, profile.display.c_str());
+					}
+					if (imgui->IsItemHovered())
+					{
+						char tip[384];
+						snprintf(tip, sizeof(tip), "%s%s%s",
+							preset.tooltip,
+							preset.credit ? "\n\n" : "",
+							preset.credit ? preset.credit : "");
+						imgui->SetTooltip(tip);
+					}
+				}
+
+				// Saved presets sit directly under the built-ins and above every
+				// control, same position in every group.
 				imgui->Spacing();
 				{
 					constexpr int kGrenadePresetFieldCount = kGrenadeRowCount + 1; // + infiniteCharges
@@ -1547,9 +1611,53 @@ namespace BetterCheats::Panels::Weapons
 							SessionConfig::Set(ConfigKey(profile, "infiniteCharges", "enabled"), profile.infiniteCharges);
 						}
 					};
-					// The grenade tab has no built-in presets to guard against.
-					auto isBuiltin      = [](const char*) { return false; };
-					auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+					// Only the built-ins above should be guarded against; a saved
+					// preset can't take one of their names.
+					auto isBuiltin = [](const char* name)
+					{
+						for (int i = 0; i < kGrenadePresetCount; ++i)
+							if (strcmp(kGrenadePresets[i].label, name) == 0)
+								return true;
+						return false;
+					};
+					// "<built-in> Custom" only when every row the preset touches
+					// matches AND every other row is still at its own default --
+					// same rule the weapon presets above use.
+					auto computeSuggest = [&profile](char* out, int cap)
+					{
+						for (int i = 0; i < kGrenadePresetCount; ++i)
+						{
+							const GrenadePreset& preset = kGrenadePresets[i];
+
+							bool touched[kGrenadeRowCount] = {};
+							bool matches = true;
+							for (const GrenadePresetVal& v : preset.vals)
+							{
+								if (v.row < 0) break;
+								if (std::fabs(profile.grenadeValues[v.row] - v.value) > BetterCheats::kActiveEpsilon)
+								{
+									matches = false;
+									break;
+								}
+								touched[v.row] = true;
+							}
+							if (matches)
+							{
+								for (int g = 0; g < kGrenadeRowCount && matches; ++g)
+									if (!touched[g] && BetterCheats::DiffersFromDefault(profile.grenadeValues[g], kGrenadeRows[g].defaultValue))
+										matches = false;
+							}
+							if (matches && profile.infiniteCharges)
+								matches = false;   // presets never set this -- a match must leave it off too
+
+							if (matches)
+							{
+								snprintf(out, cap, "%s Custom", preset.label);
+								return;
+							}
+						}
+						snprintf(out, cap, "Custom");
+					};
 
 					BetterCheats::UI::RenderSavedPresetsRow(imgui, "grenade_saved_presets", presetGroup.c_str(),
 						presetFields, kGrenadePresetFieldCount,
