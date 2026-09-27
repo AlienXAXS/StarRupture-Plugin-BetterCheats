@@ -1136,6 +1136,10 @@ namespace BetterCheats::Panels::Movement
 			spec.hasBase      = true;
 			spec.base         = g_dbgAttrBase[attr].load();
 			spec.unmodified   = g_dbgAttrBuffed[attr].load();
+			// Full Base/Mods & buffs/Ours breakdown only for the Multiply rows --
+			// Move Speed Cap/Floor are Absolute (see kAttrModes) and don't decompose.
+			spec.hasOurs      = kAttrModes[attr] == BetterCheats::ComposedAttribute::Mode::Multiply;
+			spec.ours         = spec.hasOurs ? spec.base * (value - 1.0f) : 0.0f;
 			spec.changeDesc   = changeDesc;
 			spec.tagWord      = "buff";
 			spec.baseLabel    = "Base (no LEMs/buffs)";
@@ -1195,6 +1199,10 @@ namespace BetterCheats::Panels::Movement
 			spec.hasBase      = (raw == kRawMaxEnergy);
 			spec.base         = g_dbgRawBase[raw].load();
 			spec.unmodified   = (raw == kRawMaxEnergy) ? g_dbgRawBuffed[raw].load() : g_rawBaseline[raw].load();
+			// Max Energy is the one raw row that's actually GAS-composed
+			// (Multiply, real BaseValue) -- see the Tick-side comment above.
+			spec.hasOurs      = spec.hasBase;
+			spec.ours         = spec.hasOurs ? spec.base * (value - 1.0f) : 0.0f;
 			spec.changeDesc   = changeDesc;
 			spec.tagWord      = "buff";
 			spec.baseLabel    = "Base (no LEMs/buffs)";

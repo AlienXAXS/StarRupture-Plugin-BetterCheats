@@ -2017,6 +2017,11 @@ namespace BetterCheats::Panels::Weapons
 					spec.hasBase       = (a != kAttrMagazine);
 					spec.base          = g_dbgAttrBase[a].load();
 					spec.unmodified    = (a == kAttrMagazine) ? g_dbgWeaponBaseMagazine.load() : g_dbgAttrBuffed[a].load();
+					// Full Base/Mods & buffs/Ours breakdown only where the formula
+					// actually applies: a Multiply row with a real base, and not while
+					// One Hit Kill has forced this row to Absolute instead.
+					spec.hasOurs       = spec.hasBase && !ownedByOneHitKill && kAttrModes[a] == BetterCheats::ComposedAttribute::Mode::Multiply;
+					spec.ours          = spec.hasOurs ? spec.base * (value - 1.0f) : 0.0f;
 					spec.changeDesc    = changeDesc;
 					spec.tagWord       = "mods";
 					spec.baseLabel     = "Base (no attachments)";

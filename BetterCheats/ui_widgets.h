@@ -80,6 +80,16 @@ namespace BetterCheats::UI
 		return mag > 0.0f && (diff / mag) <= 1e-4f;
 	}
 
+	// Same precision rule as FormatLiveValue, but always signed ("+0.15"/"-0.05")
+	// -- used for the "Mods & buffs"/"Ours" tooltip lines, which read as deltas
+	// rather than absolute values. Callers check LiveValuesMatch(value, 0.0f)
+	// first and print "none" instead of calling this for a ~zero delta.
+	inline void FormatSignedLiveValue(char* out, size_t outSize, float value)
+	{
+		const float mag = std::fabs(value);
+		snprintf(out, outSize, (mag > 0.0f && mag < 0.1f) ? "%+.3f" : "%+.2f", value);
+	}
+
 	// "Our change" as the row's own compose formula would describe it -- not the
 	// row's slider format string, since this always needs to read as a delta on
 	// top of the unmodified value, e.g. "x1.50" even on a row whose slider box
@@ -99,13 +109,26 @@ namespace BetterCheats::UI
 	// `base` (BaseValue, which we never write) differs from `unmodified` (the
 	// game's own aggregate, LEMs/buffs/attachments included, with our own change
 	// excluded) -- i.e. something external is contributing to this attribute.
-	// Every row, tag or not, gets one hover tooltip over the whole group,
-	// spelling out the chain a lone "expected = game" can't show on its own:
+	// Every row, tag or not, gets one hover tooltip over the whole group.
 	//
-	//   Unmodified: <v>                              -- always
-	//   <baseLabel>: <v>                              -- only when it != Unmodified
+	// `hasOurs` is true only for a Multiply row with a real base (`hasBase`) --
+	// the one case where `ours` (baseValue * (amount - 1), see attribute_compose.h's
+	// Compute) is a meaningful, addable number. That row's tooltip spells out the
+	// full breakdown, in the same units the slider shows, so it visibly adds up:
+	//
+	//   <baseLabel>: <v>                                   -- e.g. "Base (no attachments): 1.00"
+	//   Mods & buffs: +<v> / none                          -- unmodified - base
+	//   Ours: +<v> / none                                  -- baseValue * (amount - 1)
+	//   Result: <expected> [(floor/clamp applied)]         -- noted when the sum above isn't what got written
+	//   Live in game: <game>
+	//
+	// Any other row (Add/Absolute, or no real base) falls back to the older,
+	// shorter chain -- there's no baseValue-scaled "Ours" to decompose for those:
+	//
+	//   Unmodified: <v>                              -- always, when !hasBase
+	//   <baseLabel>: <v>                              -- only when it != Unmodified, when hasBase
 	//   Our change: x1.50 / +15 / set to 2 / none     -- "none" while inactive
-	//   Set to: <expected>
+	//   Result: <expected>
 	//   Live in game: <game>
 	//
 	// ASCII "!=" and "->" rather than U+2260/U+2192 -- the loader's baked font
@@ -114,7 +137,8 @@ namespace BetterCheats::UI
 	// would render as "?".
 	inline void RenderLiveValue(IModLoaderImGui* imgui, float expected, float game,
 	                             bool active, bool hasBase, float base, float unmodified,
-	                             const char* changeDesc, const char* tagWord, const char* baseLabel)
+	                             const char* changeDesc, const char* tagWord, const char* baseLabel,
+	                             bool hasOurs = false, float ours = 0.0f)
 	{
 		char e[32], g[32], line[80];
 		FormatLiveValue(e, sizeof(e), expected);
@@ -138,19 +162,52 @@ namespace BetterCheats::UI
 
 		if (imgui->IsItemHovered())
 		{
-			char unmodStr[32], baseStr[32], expectedStr[32], gameStr[32], tip[320];
-			FormatLiveValue(unmodStr, sizeof(unmodStr), unmodified);
+			char expectedStr[32], gameStr[32], tip[384];
 			FormatLiveValue(expectedStr, sizeof(expectedStr), expected);
 			FormatLiveValue(gameStr, sizeof(gameStr), game);
 
-			int n = snprintf(tip, sizeof(tip), "Unmodified: %s", unmodStr);
-			if (hasBase && !LiveValuesMatch(base, unmodified))
+			int n = 0;
+			if (hasBase)
 			{
+				char baseStr[32];
 				FormatLiveValue(baseStr, sizeof(baseStr), base);
-				n += snprintf(tip + n, sizeof(tip) - n, "\n%s: %s", baseLabel, baseStr);
+				n += snprintf(tip + n, sizeof(tip) - n, "%s: %s", baseLabel, baseStr);
 			}
-			n += snprintf(tip + n, sizeof(tip) - n, "\nOur change: %s", active ? changeDesc : "none");
-			n += snprintf(tip + n, sizeof(tip) - n, "\nSet to: %s", expectedStr);
+			else
+			{
+				char unmodStr[32];
+				FormatLiveValue(unmodStr, sizeof(unmodStr), unmodified);
+				n += snprintf(tip + n, sizeof(tip) - n, "Unmodified: %s", unmodStr);
+			}
+
+			if (hasOurs)
+			{
+				// modsAndBuffs + ours + base == unmodified + ours -- the row's own
+				// pre-floor/clamp sum (see attribute_compose.cpp's Compute) -- so a
+				// mismatch against `expected` (post floor/clamp) is exactly the case
+				// worth calling out.
+				const float modsAndBuffs = unmodified - base;
+				char modsStr[32];
+				if (LiveValuesMatch(modsAndBuffs, 0.0f)) snprintf(modsStr, sizeof(modsStr), "none");
+				else                                     FormatSignedLiveValue(modsStr, sizeof(modsStr), modsAndBuffs);
+				n += snprintf(tip + n, sizeof(tip) - n, "\nMods & buffs: %s", modsStr);
+
+				char oursStr[32];
+				if (LiveValuesMatch(ours, 0.0f)) snprintf(oursStr, sizeof(oursStr), "none");
+				else                             FormatSignedLiveValue(oursStr, sizeof(oursStr), ours);
+				n += snprintf(tip + n, sizeof(tip) - n, "\nOurs: %s", oursStr);
+
+				const float rawSum = unmodified + ours;
+				const bool  adjusted = !LiveValuesMatch(rawSum, expected);
+				n += snprintf(tip + n, sizeof(tip) - n, "\nResult: %s%s", expectedStr,
+					adjusted ? " (floor/clamp applied)" : "");
+			}
+			else
+			{
+				n += snprintf(tip + n, sizeof(tip) - n, "\nOur change: %s", active ? changeDesc : "none");
+				n += snprintf(tip + n, sizeof(tip) - n, "\nResult: %s", expectedStr);
+			}
+
 			snprintf(tip + n, sizeof(tip) - n, "\nLive in game: %s", gameStr);
 			imgui->SetTooltip(tip);
 		}
@@ -238,6 +295,8 @@ namespace BetterCheats::UI
 		bool        composing   = false;     // are we actually overriding this row right now (tooltip's "Our change")
 		bool        hasBase     = false;     // GAS rows only: enables the +tag and the tooltip's Base line
 		float       base = 0.0f, unmodified = 0.0f;
+		bool        hasOurs     = false;     // Multiply rows with a real base: full Base/Mods & buffs/Ours/Result breakdown
+		float       ours        = 0.0f;      // baseValue * (amount - 1) -- see RenderLiveValue
 		const char* changeDesc  = nullptr;
 		const char* tagWord     = "buff";
 		const char* baseLabel   = "Base (no LEMs/buffs)";
@@ -282,7 +341,8 @@ namespace BetterCheats::UI
 		{
 			imgui->SameLine(spec.labelReserve, 0.0f);
 			RenderLiveValue(imgui, spec.expected, spec.game, spec.composing, spec.hasBase,
-				spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel);
+				spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel,
+				spec.hasOurs, spec.ours);
 		}
 
 		if (!spec.openFlag && spec.padForArrow)
