@@ -755,6 +755,12 @@ namespace BetterCheats::Panels::Inventory
 		};
 		std::unordered_map<std::string, StackComposeState> g_stackComposed;
 
+		// Each item's true MaxStack, keyed by UniqueItemName, game-thread only.
+		// Captured once per plugin lifetime and never dropped, so a rescan or a
+		// new session can never recapture one of our own writes as the base
+		// (which would compound 3x into 9x).
+		std::unordered_map<std::string, int> g_stackOriginals;
+
 		std::string ToLowerAsciiStack(const std::string& s)
 		{
 			std::string out = s;
@@ -774,6 +780,28 @@ namespace BetterCheats::Panels::Inventory
 			for (char c : ToLowerAsciiStack(raw))
 				if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) out += c;
 			return out.empty() ? "unknown" : out;
+		}
+
+		std::string StackComposeKey(const std::string& uniqueName)
+		{
+			return "playerInventory.stacks." + SanitizeStackKey(uniqueName);
+		}
+
+		// Game thread only. The base of a count we scale, from the value it
+		// holds now: a previous plugin instance unloaded by RELOAD (Shutdown on
+		// the render thread) may have left its write in place, and
+		// RestoreIfStale maps that back to the base it saved. Returns false
+		// while no session config is loaded, since the saved pair can't be read
+		// yet and a leftover would be taken for the base.
+		bool RecoverOriginal(const std::string& key, int current, int& original)
+		{
+			if (!SessionConfig::IsLoaded())
+				return false;
+
+			float value = static_cast<float>(current);
+			BetterCheats::RestoreIfStale(key, value);
+			original = static_cast<int>(value + 0.5f);
+			return true;
 		}
 
 		int ClampStackValue(int value)
@@ -1028,7 +1056,23 @@ namespace BetterCheats::Panels::Inventory
 							continue;
 						if (entry.uniqueName.empty()) continue;   // nothing to key an override against
 
-						entry.originalMaxStack = item->MaxStack > 0 ? item->MaxStack : 1;
+						auto known = g_stackOriginals.find(entry.uniqueName);
+						if (known != g_stackOriginals.end())
+						{
+							entry.originalMaxStack = known->second;
+						}
+						else
+						{
+							// Before the session config loads nothing is scaled
+							// (the multiplier and overrides are still defaults),
+							// so the current value serves until the rescan that
+							// ApplySavedConfig requests captures the real one.
+							int original = item->MaxStack;
+							const bool recovered = RecoverOriginal(StackComposeKey(entry.uniqueName), item->MaxStack, original);
+							entry.originalMaxStack = original > 0 ? original : 1;
+							if (recovered)
+								g_stackOriginals[entry.uniqueName] = entry.originalMaxStack;
+						}
 						entry.canStack          = item->StackingType != SDK::ENxItemStackType::DoNotStack;
 						entry.category          = item->UIItemType;
 
@@ -1140,7 +1184,7 @@ namespace BetterCheats::Panels::Inventory
 					state.item.Set(item);
 
 					float valueF = static_cast<float>(item->MaxStack);
-					const std::string key = "playerInventory.stacks." + SanitizeStackKey(e.uniqueName);
+					const std::string key = StackComposeKey(e.uniqueName);
 
 					BetterCheats::ApplyComposedRow(state.composed, item, valueF, key, active,
 						static_cast<float>(desired), BetterCheats::ComposedAttribute::Mode::Absolute,
@@ -1152,6 +1196,31 @@ namespace BetterCheats::Panels::Inventory
 				}
 			}
 			catch (...) {}
+		}
+
+		// Game thread only. Hands every live item its original MaxStack back
+		// and drops the persisted compose state.
+		void RestoreStackSizes()
+		{
+			for (auto& kv : g_stackComposed)
+			{
+				StackComposeState& state = kv.second;
+				SDK::UAuItemDataBase* item = state.item.Get();
+				if (!item)
+				{
+					state.composed.Forget();
+					continue;
+				}
+
+				float valueF = static_cast<float>(item->MaxStack);
+				state.composed.Release(item, valueF);
+				auto known = g_stackOriginals.find(kv.first);
+				const int newValue = known != g_stackOriginals.end() ? known->second : static_cast<int>(valueF + 0.5f);
+				if (item->MaxStack != newValue)
+					item->MaxStack = newValue;
+
+				BetterCheats::ClearComposeState(StackComposeKey(kv.first));
+			}
 		}
 
 		// Render thread. Global multiplier row, search + "only show changed"
@@ -1571,23 +1640,7 @@ namespace BetterCheats::Panels::Inventory
 			return;
 		}
 
-		try
-		{
-			for (auto& kv : g_stackComposed)
-			{
-				StackComposeState& state = kv.second;
-				SDK::UAuItemDataBase* item = state.item.Get();
-				if (!item) continue;
-
-				float valueF = static_cast<float>(item->MaxStack);
-				state.composed.Release(item, valueF);
-				const int newValue = static_cast<int>(valueF + 0.5f);
-				if (item->MaxStack != newValue)
-					item->MaxStack = newValue;
-
-				BetterCheats::ClearComposeState("playerInventory.stacks." + SanitizeStackKey(kv.first));
-			}
-		}
+		try { RestoreStackSizes(); }
 		catch (...) {}
 	}
 
@@ -1672,12 +1725,15 @@ namespace BetterCheats::Panels::Inventory
 			g_categoryOverrides = std::move(loaded);
 		}
 
-		// A new session's item CDOs are the same static assets, but a fresh
-		// scan is the only way to know their true original MaxStack before
-		// this session's Tick() writes anything -- ApplyStackSizes() will
-		// RestoreIfStale-recover from a leftover write left by an unclean
-		// reload of a PREVIOUS session, but never from a genuine session
-		// change, which is exactly what just happened.
+		// Hand every item its original MaxStack back first, then rescan: the
+		// next tick captures from the true base and persists into this
+		// session's config rather than the last one's. Off the game thread (only before the first Tick, when nothing
+		// has been written yet) dropping state is enough.
+		if (BetterCheats::IsGameThread())
+		{
+			try { RestoreStackSizes(); }
+			catch (...) {}
+		}
 		g_stackItemsGameThread.clear();
 		g_stackComposed.clear();
 		RequestRefreshStackList();
