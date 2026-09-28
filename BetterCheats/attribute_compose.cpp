@@ -112,7 +112,10 @@ namespace BetterCheats
 		else
 			composed.Release(owner, value);
 
-		if (active && (!wasActive || gameBefore != previousWrite))
+		// Also on a new write (the slider moved): RestoreIfStale only recognizes
+		// a leftover that still equals the stored `written`, so a stale one
+		// would otherwise be captured as the game's own value after a reload.
+		if (active && (!wasActive || gameBefore != previousWrite || composed.GetWritten() != previousWrite))
 			SaveComposeState(key, composed.GetGame(), composed.GetWritten());
 		else if (!active)
 			ClearComposeState(key);

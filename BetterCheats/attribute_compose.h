@@ -93,8 +93,8 @@ namespace BetterCheats
 	// stored `game` in place so Apply() captures the pre-reload aggregate instead.
 	void RestoreIfStale(const std::string& keyPrefix, float& value);
 
-	// Call after Apply(), only when this tick actually recaptured (first
-	// activation, or the game re-aggregated) -- never every frame.
+	// Call after Apply(), only when this tick recaptured (first activation,
+	// or the game re-aggregated) or wrote a new value -- never every frame.
 	void SaveComposeState(const std::string& keyPrefix, float game, float written);
 
 	// Call after Release() (or when persistence should stop tracking this slot).
