@@ -754,9 +754,7 @@ namespace BetterCheats::Panels::Weapons
 		}
 
 		// ComposeStep/ApplyComposedRow: the capture/write/restore/persist dance
-		// every composed row in this file (except the ten kAttrs rows, whose
-		// own buffed/base/One-Hit-Kill bookkeeping interleaves too tightly to
-		// factor out cleanly) shares -- now a BetterCheats:: helper in
+		// every composed row in this file shares -- a BetterCheats:: helper in
 		// attribute_compose.h, found here via unqualified enclosing-namespace
 		// lookup, same as ComposedAttribute itself.
 
@@ -1144,47 +1142,21 @@ namespace BetterCheats::Panels::Weapons
 					SDK::FGameplayAttributeData& attr = weapons->*kAttrs[a].member;
 					const std::string key = std::string("playerWeapons.compose.") + kAttrs[a].key;
 
-					// Captured before we touch anything: "game" for the readout, and
-					// (when this row was already active going into this tick) the
-					// basis for "expected" -- what our last write should still read
-					// back as if nothing has overridden it since.
-					const bool  wasActive     = g_composed[a].IsActive();
-					const float previousWrite = g_composed[a].GetWritten();
-					if (!wasActive)
-						BetterCheats::RestoreIfStale(key, attr.CurrentValue);
-					const float gameBefore = attr.CurrentValue;
-
-					bool active = true;
-					if (a == kAttrDamage && profile.oneHitKill)
-					{
-						// Absolute wins outright (ignores baseValue); Release() hands
-						// Damage back to the game's own aggregate once this turns off.
-						g_composed[a].Apply(weapons, attr.CurrentValue, &attr.BaseValue, kOneHitKillDamage,
-							BetterCheats::ComposedAttribute::Mode::Absolute,
-							kOneHitKillDamage, kOneHitKillDamage);
-					}
-					else if (IsActive(a, profile.values[a]))
-					{
-						g_composed[a].Apply(weapons, attr.CurrentValue, &attr.BaseValue, profile.values[a],
-							kAttrModes[a], kAttrs[a].minValue, kAttrs[a].maxValue);
-					}
-					else
-					{
-						active = false;
-						g_composed[a].Release(weapons, attr.CurrentValue);
-					}
-
-					// Recaptured (first activation, or the game re-aggregated) --
-					// persist so a botched hot-reload can tell this from a stale
-					// leftover next time. Never every frame.
-					if (active && (!wasActive || gameBefore != previousWrite))
-						BetterCheats::SaveComposeState(key, g_composed[a].GetGame(), g_composed[a].GetWritten());
-					else if (!active)
-						BetterCheats::ClearComposeState(key);
-
+					// One Hit Kill: Absolute wins outright (ignores baseValue); Release()
+					// hands Damage back to the game's own aggregate once this turns off.
+					const bool oneHitKill = a == kAttrDamage && profile.oneHitKill;
+					const bool active     = oneHitKill || IsActive(a, profile.values[a]);
+					const ComposeStep step = oneHitKill
+						? ApplyComposedRow(g_composed[a], weapons, attr.CurrentValue, key, active,
+							kOneHitKillDamage, BetterCheats::ComposedAttribute::Mode::Absolute,
+							kOneHitKillDamage, kOneHitKillDamage, &attr.BaseValue)
+						: ApplyComposedRow(g_composed[a], weapons, attr.CurrentValue, key, active,
+							profile.values[a], kAttrModes[a], kAttrs[a].minValue, kAttrs[a].maxValue,
+							&attr.BaseValue);
+					const float gameBefore = step.game;
 					// On the very first activation frame there is no previous write to
 					// compare against yet -- expected is trivially "game" until next tick.
-					const float expected = active ? (wasActive ? previousWrite : gameBefore) : gameBefore;
+					const float expected = step.expected;
 					// "Buffed" (base + attachments, ours excluded): GetGame() reflects
 					// what Apply() just composed from -- valid once active. Inactive rows
 					// never had that captured, but CurrentValue is already untouched by

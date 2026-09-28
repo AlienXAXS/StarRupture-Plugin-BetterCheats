@@ -100,22 +100,23 @@ namespace BetterCheats
 	// Call after Release() (or when persistence should stop tracking this slot).
 	void ClearComposeState(const std::string& keyPrefix);
 
-	// The capture/write/restore/persist dance shared by every composed row
-	// that isn't a GAS attribute with its own extra bookkeeping (buffed/base
-	// readouts, a One-Hit-Kill-style override) interleaved into it -- weapon
-	// CDO fields (Magazine Size, Grenade Charge Cost in player_weapons.cpp)
-	// and per-item-type fields (Inventory's stack size in
-	// player_inventory.cpp) all follow this exact sequence: capture the game
-	// value before touching it (recovering from a stale leftover write via
-	// RestoreIfStale first), Apply or Release depending on `active`, persist
-	// only on a genuine recapture, and hand back what the row's "expected"
-	// readout should show. Kept as free functions rather than methods on
-	// ComposedAttribute itself, since RestoreIfStale/SaveComposeState/
+	// The capture/write/restore/persist dance shared by every composed row --
+	// the GAS attribute rows (Weapons and Movement), weapon CDO fields
+	// (Magazine Size, Grenade Charge Cost in player_weapons.cpp) and
+	// per-item-type fields (Inventory's stack size in player_inventory.cpp)
+	// all follow this exact sequence: capture the game value before touching
+	// it (recovering from a stale leftover write via RestoreIfStale first),
+	// Apply or Release depending on `active`, persist on a recapture or a new
+	// write, and hand back what the row's "expected" readout should show.
+	// `baseValue` goes straight to Apply: a GAS row passes &attr.BaseValue,
+	// everything else leaves it nullptr. Kept as free functions rather than
+	// methods on ComposedAttribute itself, since RestoreIfStale/SaveComposeState/
 	// ClearComposeState are free functions with their own SessionConfig
 	// concerns that ComposedAttribute doesn't otherwise know about.
 	struct ComposeStep { float game; float expected; };
 
 	ComposeStep ApplyComposedRow(ComposedAttribute& composed, const void* owner,
 		float& value, const std::string& key, bool active, float amount,
-		ComposedAttribute::Mode mode, float minValue, float maxValue);
+		ComposedAttribute::Mode mode, float minValue, float maxValue,
+		const float* baseValue = nullptr);
 }

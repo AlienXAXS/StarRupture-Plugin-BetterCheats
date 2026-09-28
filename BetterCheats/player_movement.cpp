@@ -477,29 +477,13 @@ namespace BetterCheats::Panels::Movement
 		template <typename Set>
 		void ApplyAttrRow(Set* set, SDK::FGameplayAttributeData& attr, int attrIndex)
 		{
-			const bool  wasActive     = g_composedAttrs[attrIndex].IsActive();
-			const float previousWrite = g_composedAttrs[attrIndex].GetWritten();
-			const std::string key = std::string("playerMovement.compose.") + kAttrs[attrIndex].key;
-			if (!wasActive)
-				BetterCheats::RestoreIfStale(key, attr.CurrentValue);
-			const float gameBefore = attr.CurrentValue;
-
-			bool active = IsAttrActive(attrIndex);
-			if (active)
-				g_composedAttrs[attrIndex].Apply(set, attr.CurrentValue, &attr.BaseValue, SafeAttrValue(attrIndex),
-					kAttrModes[attrIndex], kAttrs[attrIndex].minValue, kAttrs[attrIndex].maxValue);
-			else
-				g_composedAttrs[attrIndex].Release(set, attr.CurrentValue);
-
-			// Recaptured (first activation, or the game re-aggregated) -- persist so
-			// a botched hot-reload can tell this from a stale leftover next time.
-			// Never every frame.
-			if (active && (!wasActive || gameBefore != previousWrite))
-				BetterCheats::SaveComposeState(key, g_composedAttrs[attrIndex].GetGame(), g_composedAttrs[attrIndex].GetWritten());
-			else if (!active)
-				BetterCheats::ClearComposeState(key);
-
-			const float expected = active ? (wasActive ? previousWrite : gameBefore) : gameBefore;
+			const bool active = IsAttrActive(attrIndex);
+			const BetterCheats::ComposeStep step = BetterCheats::ApplyComposedRow(g_composedAttrs[attrIndex], set,
+				attr.CurrentValue, std::string("playerMovement.compose.") + kAttrs[attrIndex].key, active,
+				SafeAttrValue(attrIndex), kAttrModes[attrIndex], kAttrs[attrIndex].minValue,
+				kAttrs[attrIndex].maxValue, &attr.BaseValue);
+			const float gameBefore = step.game;
+			const float expected   = step.expected;
 			// "Buffed" (base + LEMs/buffs, ours excluded): GetGame() reflects what
 			// Apply() just composed from -- valid once active. Inactive rows never
 			// had that captured, but CurrentValue is already untouched by us, so it
@@ -810,28 +794,14 @@ namespace BetterCheats::Panels::Movement
 			// already compare before writing.
 			if (SDK::UCrEnergyAttributeSet* energy = character->EnergyAttributes)
 			{
-				constexpr const char* kMaxEnergyKey = "playerMovement.compose.maxEnergy";
-				const bool  wasActive     = g_composedMaxEnergy.IsActive();
-				const float previousWrite = g_composedMaxEnergy.GetWritten();
-				if (!wasActive)
-					BetterCheats::RestoreIfStale(kMaxEnergyKey, energy->MaxEnergy.CurrentValue);
-				const float gameBefore = energy->MaxEnergy.CurrentValue;
-				const bool  active     = IsRawActive(kRawMaxEnergy);
-
-				if (active)
-					g_composedMaxEnergy.Apply(energy, energy->MaxEnergy.CurrentValue, &energy->MaxEnergy.BaseValue,
-						SafeMultiplier(kRawMaxEnergy), BetterCheats::ComposedAttribute::Mode::Multiply,
-						kMaxEnergyFloor, kMaxEnergyCeiling);
-				else
-					g_composedMaxEnergy.Release(energy, energy->MaxEnergy.CurrentValue);
-
-				if (active && (!wasActive || gameBefore != previousWrite))
-					BetterCheats::SaveComposeState(kMaxEnergyKey, g_composedMaxEnergy.GetGame(), g_composedMaxEnergy.GetWritten());
-				else if (!active)
-					BetterCheats::ClearComposeState(kMaxEnergyKey);
-
-				const float expected = active ? (wasActive ? previousWrite : gameBefore) : gameBefore;
-				const float buffed   = active ? g_composedMaxEnergy.GetGame() : gameBefore;
+				const bool active = IsRawActive(kRawMaxEnergy);
+				const BetterCheats::ComposeStep step = BetterCheats::ApplyComposedRow(g_composedMaxEnergy, energy,
+					energy->MaxEnergy.CurrentValue, "playerMovement.compose.maxEnergy", active,
+					SafeMultiplier(kRawMaxEnergy), BetterCheats::ComposedAttribute::Mode::Multiply,
+					kMaxEnergyFloor, kMaxEnergyCeiling, &energy->MaxEnergy.BaseValue);
+				const float gameBefore = step.game;
+				const float expected   = step.expected;
+				const float buffed     = active ? g_composedMaxEnergy.GetGame() : gameBefore;
 				g_dbgRawGame[kRawMaxEnergy].store(gameBefore);
 				g_dbgRawExpected[kRawMaxEnergy].store(expected);
 				g_dbgRawBase[kRawMaxEnergy].store(energy->MaxEnergy.BaseValue);

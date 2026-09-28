@@ -94,7 +94,8 @@ namespace BetterCheats
 
 	ComposeStep ApplyComposedRow(ComposedAttribute& composed, const void* owner,
 		float& value, const std::string& key, bool active, float amount,
-		ComposedAttribute::Mode mode, float minValue, float maxValue)
+		ComposedAttribute::Mode mode, float minValue, float maxValue,
+		const float* baseValue)
 	{
 		const bool  wasActive     = composed.IsActive();
 		const float previousWrite = composed.GetWritten();
@@ -103,12 +104,7 @@ namespace BetterCheats
 		const float gameBefore = value;
 
 		if (active)
-			// None of this helper's callers (weapon data-asset fields, grenade
-			// data-asset/global fields, inventory stack size) sit behind a real
-			// FGameplayAttributeData -- see the row-by-row audit in
-			// player_weapons.cpp/player_inventory.cpp. nullptr composes Multiply
-			// rows onto `value` itself, identical to the pre-fix behaviour.
-			composed.Apply(owner, value, nullptr, amount, mode, minValue, maxValue);
+			composed.Apply(owner, value, baseValue, amount, mode, minValue, maxValue);
 		else
 			composed.Release(owner, value);
 
