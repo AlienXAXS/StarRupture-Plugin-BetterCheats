@@ -145,6 +145,13 @@ static void OnEngineTick(float deltaSeconds)
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
 #endif
+
+	// Debounced: almost every call here is a no-op (nothing dirty, or the
+	// debounce window hasn't elapsed yet). See session_config.cpp -- this is
+	// what turns a slider held down for a second, or a stack-size apply
+	// pass touching every item, into at most one disk write per window
+	// instead of one per Set() call.
+	BetterCheats::SessionConfig::Commit();
 }
 
 extern "C" {
