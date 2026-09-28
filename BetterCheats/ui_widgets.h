@@ -111,10 +111,17 @@ namespace BetterCheats::UI
 	// excluded) -- i.e. something external is contributing to this attribute.
 	// Every row, tag or not, gets one hover tooltip over the whole group.
 	//
-	// `hasOurs` is true only for a Multiply row with a real base (`hasBase`) --
-	// the one case where `ours` (baseValue * (amount - 1), see attribute_compose.h's
-	// Compute) is a meaningful, addable number. That row's tooltip spells out the
-	// full breakdown, in the same units the slider shows, so it visibly adds up:
+	// `hasBase` alone (any row with a real base to read, not just Multiply
+	// rows) is enough to print the "Mods & buffs" line -- unmodified - base,
+	// i.e. whatever's contributing to this attribute besides us, whether or
+	// not that delta is one this row's own compose formula could re-derive
+	// (`ours` needs a Multiply row's baseValue * (amount - 1) scaling; "Mods
+	// & buffs" needs nothing row-specific at all).
+	//
+	// `hasOurs` is true only for a Multiply row with a real base -- the one
+	// case where `ours` is ALSO a meaningful, addable number, so that row's
+	// tooltip spells out the full breakdown, in the same units the slider
+	// shows, so it visibly adds up:
 	//
 	//   <baseLabel>: <v>                                   -- e.g. "Base (no attachments): 1.00"
 	//   Mods & buffs: +<v> / none                          -- unmodified - base
@@ -122,11 +129,18 @@ namespace BetterCheats::UI
 	//   Result: <expected> [(floor/clamp applied)]         -- noted when the sum above isn't what got written
 	//   Live in game: <game>
 	//
-	// Any other row (Add/Absolute, or no real base) falls back to the older,
-	// shorter chain -- there's no baseValue-scaled "Ours" to decompose for those:
+	// A hasBase row without hasOurs (Add/Absolute) still gets the Mods &
+	// buffs line, just without an "Ours" to add to it:
 	//
-	//   Unmodified: <v>                              -- always, when !hasBase
-	//   <baseLabel>: <v>                              -- only when it != Unmodified, when hasBase
+	//   <baseLabel>: <v>
+	//   Mods & buffs: +<v> / none
+	//   Our change: x1.50 / +15 / set to 2 / none     -- "none" while inactive
+	//   Result: <expected>
+	//   Live in game: <game>
+	//
+	// No real base at all (!hasBase) falls back to the oldest, shortest chain:
+	//
+	//   Unmodified: <v>
 	//   Our change: x1.50 / +15 / set to 2 / none     -- "none" while inactive
 	//   Result: <expected>
 	//   Live in game: <game>
@@ -172,6 +186,18 @@ namespace BetterCheats::UI
 				char baseStr[32];
 				FormatLiveValue(baseStr, sizeof(baseStr), base);
 				n += snprintf(tip + n, sizeof(tip) - n, "%s: %s", baseLabel, baseStr);
+
+				// Whatever's contributing to this attribute besides us -- true for
+				// any row with a real base, not just the Multiply/hasOurs ones.
+				// modsAndBuffs + ours + base == unmodified + ours -- the row's own
+				// pre-floor/clamp sum (see attribute_compose.cpp's Compute) -- so a
+				// mismatch against `expected` (post floor/clamp) is exactly the case
+				// worth calling out once `ours` is in the picture (hasOurs below).
+				const float modsAndBuffs = unmodified - base;
+				char modsStr[32];
+				if (LiveValuesMatch(modsAndBuffs, 0.0f)) snprintf(modsStr, sizeof(modsStr), "none");
+				else                                     FormatSignedLiveValue(modsStr, sizeof(modsStr), modsAndBuffs);
+				n += snprintf(tip + n, sizeof(tip) - n, "\nMods & buffs: %s", modsStr);
 			}
 			else
 			{
@@ -182,16 +208,6 @@ namespace BetterCheats::UI
 
 			if (hasOurs)
 			{
-				// modsAndBuffs + ours + base == unmodified + ours -- the row's own
-				// pre-floor/clamp sum (see attribute_compose.cpp's Compute) -- so a
-				// mismatch against `expected` (post floor/clamp) is exactly the case
-				// worth calling out.
-				const float modsAndBuffs = unmodified - base;
-				char modsStr[32];
-				if (LiveValuesMatch(modsAndBuffs, 0.0f)) snprintf(modsStr, sizeof(modsStr), "none");
-				else                                     FormatSignedLiveValue(modsStr, sizeof(modsStr), modsAndBuffs);
-				n += snprintf(tip + n, sizeof(tip) - n, "\nMods & buffs: %s", modsStr);
-
 				char oursStr[32];
 				if (LiveValuesMatch(ours, 0.0f)) snprintf(oursStr, sizeof(oursStr), "none");
 				else                             FormatSignedLiveValue(oursStr, sizeof(oursStr), ours);

@@ -371,6 +371,24 @@ namespace BetterCheats::Panels::Weapons
 			bool        oneHitKill       = false;
 			bool        infiniteMagazine = false;
 
+			// Base stats resolved once from this weapon TYPE's own CDO --
+			// `raw` already IS the CDO's object name (see kBuiltInWeapons/
+			// PersistKnownWeapons), so no separate lookup key is needed.
+			// Valid whether or not this weapon is currently equipped, unlike
+			// g_dbgAttrGame/Expected/Base/Buffed below, which Tick() fills
+			// only for the active profile -- this is what lets every tab
+			// show ITS OWN weapon's base numbers instead of whatever's in
+			// the player's hand. See ResolveWeaponBaseFields.
+			ObjectRef<SDK::UCrWeaponItemDataBase> baseCdo;
+			bool        baseResolved        = false;
+			bool        baseLoggedMiss      = false;
+			float       baseRetryCooldown   = 0.0f;
+			float       baseDamage          = 0.0f;
+			float       baseRoundsPerMinute = 0.0f;
+			float       baseMagazine        = 0.0f;
+			float       baseRange           = 0.0f;
+			int         basePierce          = 0;
+
 			// Grenade-only fields, meaningful only when isGrenade is true --
 			// discovered the same way as every other weapon, just tagged so
 			// RenderImGui can swap in the grenade-specific layout.
@@ -873,6 +891,58 @@ namespace BetterCheats::Panels::Weapons
 			return static_cast<int>(g_profiles.size()) - 1;
 		}
 
+		// Resolves this weapon TYPE's base stats from its own CDO, independent of
+		// whether it's currently equipped -- profile.raw IS the CDO's object name
+		// already, so this needs only FindFirstObjectByName, the same mechanism
+		// ResolveGrenadeField uses above. Cached forever once found (base stats
+		// don't change at runtime); re-resolved, at the same retry cadence, if the
+		// CDO's package is ever unloaded out from under it. A grenade profile's
+		// `raw` is a UCrGrenadeWeaponItemDataBase CDO, which upcasts to
+		// UCrWeaponItemDataBase* safely (see the class comment above
+		// kGrenadeGlobalCount) -- called uniformly for every profile, no
+		// isGrenade branch needed.
+		//
+		// Game thread only (ObjectWalker touches GObjects). Called from Tick()
+		// for every profile in g_profiles, not just the active one -- cheap: once
+		// resolved, ObjectRef::Get() is a slot check, not a scan.
+		void ResolveWeaponBaseFields(Profile& profile, float deltaSeconds)
+		{
+			if (profile.baseCdo.Get())
+				return;   // resolved and still alive -- nothing to refresh
+
+			profile.baseRetryCooldown -= deltaSeconds;
+			if (profile.baseRetryCooldown > 0.0f)
+				return;
+			profile.baseRetryCooldown = kGrenadeGlobalRetryInterval;
+
+			IPluginHooks* hooks = GetHooks();
+			IPluginObjectWalker* walker = hooks ? hooks->ObjectWalker : nullptr;
+			if (!walker || !walker->IsReady())
+				return;   // not ready yet -- try again next cooldown
+
+			void* object = walker->FindFirstObjectByName(profile.raw.c_str());
+			if (!object)
+			{
+				if (!profile.baseLoggedMiss)
+				{
+					LOG_WARN("Weapons: base CDO '%s' not found (yet) for tab '%s' -- showing no base stats until it resolves.",
+						profile.raw.c_str(), profile.display.c_str());
+					profile.baseLoggedMiss = true;
+				}
+				return;
+			}
+
+			auto* cdo = static_cast<SDK::UCrWeaponItemDataBase*>(object);
+			profile.baseCdo.Set(cdo);
+			profile.baseDamage          = cdo->BaseDamage.Value;
+			profile.baseRoundsPerMinute = cdo->RoundsPerMinute.Value;
+			profile.baseMagazine        = cdo->BaseMagazine.Value;
+			profile.baseRange           = cdo->BaseRange.Value;
+			profile.basePierce          = cdo->PossibleEnemiesHitPerTrace;
+			profile.baseResolved        = true;
+			LOG_INFO("Weapons: resolved base stats for '%s' (tab '%s').", profile.raw.c_str(), profile.display.c_str());
+		}
+
 		// LastEquippedWeaponData (used below to pick the active profile) only becomes a
 		// grenade once one has actually been thrown/charged, so a grenade that has only
 		// ever been equipped never gets a tab. GetGrenadeItemData reports whatever grenade
@@ -918,6 +988,12 @@ namespace BetterCheats::Panels::Weapons
 		{
 			std::lock_guard<std::mutex> lock(g_profilesMutex);
 			EnsureBuiltInProfiles();
+
+			// Every profile, not just the active one -- see ResolveWeaponBaseFields.
+			// Cheap once resolved; still cheap unresolved, since it's cooldown-gated
+			// the same way the grenade-globals resolver above is.
+			for (Profile& p : g_profiles)
+				ResolveWeaponBaseFields(p, deltaSeconds);
 		}
 
 		SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
@@ -1471,24 +1547,12 @@ namespace BetterCheats::Panels::Weapons
 			imgui->TextDisabled(line);
 		}
 
-		// The equipped weapon's real base stats, from its data asset -- not the
-		// inherited Au-layer attribute fields a previous build showed here, which
-		// the game never writes at all (confirmed permanently zero). Magazine
-		// shows the CAPTURED ORIGINAL, so it reads the same whether or not
-		// Magazine Size is active.
-		if (g_showLiveValues.load() && dbgMagMax >= 0.0f)
-		{
-			char dmg[32], rpm[32], mag[32], range[32];
-			BetterCheats::UI::FormatLiveValue(dmg,   sizeof(dmg),   g_dbgWeaponBaseDamage.load());
-			BetterCheats::UI::FormatLiveValue(rpm,   sizeof(rpm),   g_dbgWeaponRoundsPerMinute.load());
-			BetterCheats::UI::FormatLiveValue(mag,   sizeof(mag),   g_dbgWeaponBaseMagazine.load());
-			BetterCheats::UI::FormatLiveValue(range, sizeof(range), g_dbgWeaponBaseRange.load());
-			char line[220];
-			snprintf(line, sizeof(line),
-				"  weapon base: dmg %s  rounds/min %s  mag %s  range %s",
-				dmg, rpm, mag, range);
-			imgui->TextDisabled(line);
-		}
+		// The "weapon base: dmg / rounds/min / mag / range" line used to live
+		// here, sourced from globals Tick() only ever filled for the equipped
+		// weapon -- so every tab showed whatever was in the player's hand. It
+		// now lives inside each tab below, sourced from that profile's own
+		// cached CDO fields (see ResolveWeaponBaseFields), which are correct
+		// whether or not that weapon is the one currently equipped.
 
 		imgui->Spacing();
 		imgui->SeparatorText("Per-Weapon");
@@ -1848,6 +1912,40 @@ namespace BetterCheats::Panels::Weapons
 			}
 			else
 			{
+			// This weapon type's own base stats -- from its CDO (resolved once,
+			// see ResolveWeaponBaseFields), so they read correctly on every tab
+			// whether or not this is the weapon currently in hand. Magazine is
+			// the one exception: while EQUIPPED and our own override is active,
+			// show the live composed value instead of the captured original, same
+			// as the readout on the Magazine Size row below.
+			if (g_showLiveValues.load())
+			{
+				if (profile.baseResolved)
+				{
+					char dmg[32], rpm[32], mag[32], range[32];
+					BetterCheats::UI::FormatLiveValue(dmg, sizeof(dmg), profile.baseDamage);
+					BetterCheats::UI::FormatLiveValue(rpm, sizeof(rpm), profile.baseRoundsPerMinute);
+					const bool magazineLive = isEquipped && IsActive(kAttrMagazine, profile.values[kAttrMagazine]);
+					BetterCheats::UI::FormatLiveValue(mag, sizeof(mag),
+						magazineLive ? g_dbgWeaponBaseMagazine.load() : profile.baseMagazine);
+					BetterCheats::UI::FormatLiveValue(range, sizeof(range), profile.baseRange);
+					char line[220];
+					snprintf(line, sizeof(line),
+						"  weapon base: dmg %s  rounds/min %s  mag %s  range %s",
+						dmg, rpm, mag, range);
+					imgui->TextDisabled(line);
+				}
+				else
+				{
+					imgui->TextDisabled("  weapon base: not resolved yet.");
+				}
+
+				if (!isEquipped)
+					imgui->TextDisabled("  Live values need this weapon equipped to show -- rows below\n"
+					                    "  show your own setting only.");
+			}
+			imgui->Spacing();
+
 			// A preset writes only into THIS weapon's profile, so every weapon carries its
 			// own independently. `match` gates presets that only make sense on one weapon.
 			const std::string loweredRaw = ToLower(profile.raw);
@@ -2027,7 +2125,13 @@ namespace BetterCheats::Panels::Weapons
 					imgui->PushIDInt(a);
 					imgui->TableNextRow(0, 0.0f);
 
-					const bool showLive = g_showLiveValues.load();
+					// Live readout (expected=game, +mods tag, full hover) only means
+					// anything for the weapon actually in hand -- the globals it reads
+					// from (g_dbgAttrGame/Expected/Base/Buffed) are Tick()'s live
+					// capture for the ACTIVE profile only, so showing them on another
+					// tab would just be the equipped weapon's numbers relabelled. See
+					// the "Live values need this weapon equipped" note above.
+					const bool showLive = g_showLiveValues.load() && isEquipped;
 					char changeDesc[24];
 					if (showLive)
 						BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc),
@@ -2054,8 +2158,29 @@ namespace BetterCheats::Panels::Weapons
 					// captured original (g_dbgWeaponBaseMagazine, same number the base-
 					// stats block above shows).
 					spec.hasBase       = (a != kAttrMagazine);
-					spec.base          = g_dbgAttrBase[a].load();
-					spec.unmodified    = (a == kAttrMagazine) ? g_dbgWeaponBaseMagazine.load() : g_dbgAttrBuffed[a].load();
+					if (a == kAttrPierce)
+					{
+						// UCrWeaponAttributeSet::PossibleEnemiesHitPerTrace (what
+						// g_dbgAttrBase/Buffed read) is a dead Au-layer GAS field --
+						// BaseValue never gets written by the game at all (same
+						// permanently-zero pattern as every other row's inherited
+						// base, see the file comment above), so it never carried this
+						// weapon's real pierce count. The true base lives on the
+						// weapon TYPE's own CDO instead (profile.basePierce, see
+						// ResolveWeaponBaseFields) -- used for BOTH base and
+						// unmodified here, not just the tooltip's Base line: nothing
+						// in this plugin has a verified live source for a REAL
+						// attachment-driven pierce bonus, so comparing this base
+						// against the still-dead GAS aggregate would tag every
+						// weapon with a nonzero base as "+mods" for no real reason.
+						spec.base       = static_cast<float>(profile.basePierce);
+						spec.unmodified = static_cast<float>(profile.basePierce);
+					}
+					else
+					{
+						spec.base       = g_dbgAttrBase[a].load();
+						spec.unmodified = (a == kAttrMagazine) ? g_dbgWeaponBaseMagazine.load() : g_dbgAttrBuffed[a].load();
+					}
 					// Full Base/Mods & buffs/Ours breakdown only where the formula
 					// actually applies: a Multiply row with a real base, and not while
 					// One Hit Kill has forced this row to Absolute instead.
