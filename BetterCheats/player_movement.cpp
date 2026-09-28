@@ -439,10 +439,6 @@ namespace BetterCheats::Panels::Movement
 			g_composedCharacter = character;
 		}
 
-		// "Show live values" toggle -- default on so a fresh install proves the
-		// compose fix works without the owner having to find the setting.
-		std::atomic<bool> g_showLiveValues{ true };
-
 		// One-shot confirmation logging: records in ModLoader.log that both the
 		// Tick-side fill and the RenderImGui-side draw have run this session,
 		// so a silently-broken live-values pipeline (one side running, the
@@ -1129,7 +1125,7 @@ namespace BetterCheats::Panels::Movement
 			spec.depth        = depth;
 			spec.openFlag     = openFlag;
 			spec.padForArrow  = true;
-			spec.showLive     = g_showLiveValues.load();
+			spec.showLive     = true;   // always -- no more "Show live values" toggle
 			spec.expected     = g_dbgAttrExpected[attr].load();
 			spec.game         = g_dbgAttrGame[attr].load();
 			spec.composing    = active;
@@ -1189,7 +1185,7 @@ namespace BetterCheats::Panels::Movement
 			spec.depth        = depth;
 			spec.openFlag     = openFlag;
 			spec.padForArrow  = true;
-			spec.showLive     = g_showLiveValues.load();
+			spec.showLive     = true;   // always -- no more "Show live values" toggle
 			spec.expected     = g_dbgRawExpected[raw].load();
 			spec.game         = g_dbgRawGame[raw].load();
 			spec.composing    = active;
@@ -1545,7 +1541,6 @@ namespace BetterCheats::Panels::Movement
 
 		g_flySpeedMultiplier.store(speed);
 		g_passThroughWalls.store(SessionConfig::Get("playerMovement.passThroughWalls", true));
-		g_showLiveValues.store(SessionConfig::Get("playerMovement.showLiveValues", true));
 
 		EnsureAttrDefaults();
 		EnsureRawDefaults();
@@ -1590,18 +1585,6 @@ namespace BetterCheats::Panels::Movement
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snap = g_snapshot;
 		}
-
-		// First control in the tab, unconditional -- not gated behind
-		// snap.characterFound below, so it's visible even before a save loads.
-		bool showLiveValues = g_showLiveValues.load();
-		if (imgui->Checkbox("Show live values", &showLiveValues))
-		{
-			g_showLiveValues.store(showLiveValues);
-			SessionConfig::Set("playerMovement.showLiveValues", showLiveValues);
-		}
-		if (imgui->IsItemHovered())
-			imgui->SetTooltip("Shows the game's own numbers next to each slider, so a change is\n"
-			                  "obvious instead of a guess.");
 
 		imgui->TextDisabled("Multipliers apply to your base stats. LEMs and game buffs still add on top.");
 
@@ -1752,7 +1735,6 @@ namespace BetterCheats::Panels::Movement
 		imgui->TextDisabled("A value differing from the default is applied. Reset a row to turn it off.");
 		imgui->TextDisabled("Rows with an arrow open up the finer controls behind them.");
 
-		if (g_showLiveValues.load())
 		{
 			char walk[32], horiz[32], jumpZ[32], staCur[32], staMax[32];
 			BetterCheats::UI::FormatLiveValue(walk,   sizeof(walk),   g_dbgMaxWalkSpeed.load());

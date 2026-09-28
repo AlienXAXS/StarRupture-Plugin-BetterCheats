@@ -145,6 +145,16 @@ namespace BetterCheats::UI
 	//   Result: <expected>
 	//   Live in game: <game>
 	//
+	// `estimate` (a weapon/item not currently equipped/active, so there is no
+	// live game read to compare against) swaps the blue/red match colour for
+	// the theme's own disabled-text colour (GetStyleColorVec4, not a
+	// hand-picked RGB -- see ImGuiCol_TextDisabled below) and drops the
+	// trailing "Live in game" tooltip line for a one-line "estimated" note.
+	// Every other line (Base/Mods & buffs/Ours/Result) is unchanged: callers
+	// feed `base`/`unmodified`/`ours` from the last mods this row saw while
+	// it WAS live, so the breakdown still adds up, just without a fresh game
+	// read to confirm it against.
+	//
 	// ASCII "!=" and "->" rather than U+2260/U+2192 -- the loader's baked font
 	// ranges (imgui_backend.cpp) stop at Latin-1/Cyrillic plus a CJK merge that
 	// doesn't cover Mathematical Operators or Arrows either, so the real glyphs
@@ -152,19 +162,34 @@ namespace BetterCheats::UI
 	inline void RenderLiveValue(IModLoaderImGui* imgui, float expected, float game,
 	                             bool active, bool hasBase, float base, float unmodified,
 	                             const char* changeDesc, const char* tagWord, const char* baseLabel,
-	                             bool hasOurs = false, float ours = 0.0f)
+	                             bool hasOurs = false, float ours = 0.0f, bool estimate = false)
 	{
-		char e[32], g[32], line[80];
+		char e[32], line[80];
 		FormatLiveValue(e, sizeof(e), expected);
-		FormatLiveValue(g, sizeof(g), game);
-		const bool match = LiveValuesMatch(expected, game);
-		snprintf(line, sizeof(line), "%s %s %s", e, match ? "=" : "!=", g);
 
 		const bool showTag = hasBase && !LiveValuesMatch(base, unmodified);
 
 		imgui->BeginGroup();
-		if (match) imgui->TextColored(0.310f, 0.639f, 0.878f, 1.0f, line);   // #4FA3E0
-		else       imgui->TextColored(0.878f, 0.282f, 0.282f, 1.0f, line);   // #E04848
+		if (estimate)
+		{
+			// ImGuiCol_TextDisabled == 1 in every Dear ImGui version this loader
+			// has shipped -- the enum's first two entries (Text, TextDisabled)
+			// have never been reordered. Reusing the theme's own disabled-text
+			// colour here (rather than a hand-picked grey) is what keeps this
+			// "not live" tint matching whatever palette/theme is active.
+			float dr = 0.0f, dg = 0.0f, db = 0.0f, da = 1.0f;
+			imgui->GetStyleColorVec4(1, &dr, &dg, &db, &da);
+			imgui->TextColored(dr, dg, db, da, e);
+		}
+		else
+		{
+			char g[32];
+			FormatLiveValue(g, sizeof(g), game);
+			const bool match = LiveValuesMatch(expected, game);
+			snprintf(line, sizeof(line), "%s %s %s", e, match ? "=" : "!=", g);
+			if (match) imgui->TextColored(0.310f, 0.639f, 0.878f, 1.0f, line);   // #4FA3E0
+			else       imgui->TextColored(0.878f, 0.282f, 0.282f, 1.0f, line);   // #E04848
+		}
 		if (showTag)
 		{
 			char tag[16];
@@ -224,7 +249,10 @@ namespace BetterCheats::UI
 				n += snprintf(tip + n, sizeof(tip) - n, "\nResult: %s", expectedStr);
 			}
 
-			snprintf(tip + n, sizeof(tip) - n, "\nLive in game: %s", gameStr);
+			if (estimate)
+				n += snprintf(tip + n, sizeof(tip) - n, "\nEstimated -- equip this weapon to see live values.");
+			else
+				n += snprintf(tip + n, sizeof(tip) - n, "\nLive in game: %s", gameStr);
 			imgui->SetTooltip(tip);
 		}
 	}
@@ -305,8 +333,9 @@ namespace BetterCheats::UI
 		bool*       openFlag    = nullptr;   // non-null draws a disclosure arrow
 		bool        padForArrow = false;     // indent non-arrow rows to match sibling arrow rows
 
-		// "Show live values" readout -- see RenderLiveValue for the full contract.
+		// Live-or-estimated readout -- see RenderLiveValue for the full contract.
 		bool        showLive    = false;
+		bool        estimate    = false;     // no live game read available -- dim/disabled colour, no "Live in game" line
 		float       expected = 0.0f, game = 0.0f;
 		bool        composing   = false;     // are we actually overriding this row right now (tooltip's "Our change")
 		bool        hasBase     = false;     // GAS rows only: enables the +tag and the tooltip's Base line
@@ -358,7 +387,7 @@ namespace BetterCheats::UI
 			imgui->SameLine(spec.labelReserve, 0.0f);
 			RenderLiveValue(imgui, spec.expected, spec.game, spec.composing, spec.hasBase,
 				spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel,
-				spec.hasOurs, spec.ours);
+				spec.hasOurs, spec.ours, spec.estimate);
 		}
 
 		if (!spec.openFlag && spec.padForArrow)

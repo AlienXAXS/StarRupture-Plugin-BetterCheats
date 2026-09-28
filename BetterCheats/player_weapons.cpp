@@ -384,10 +384,25 @@ namespace BetterCheats::Panels::Weapons
 			bool        baseLoggedMiss      = false;
 			float       baseRetryCooldown   = 0.0f;
 			float       baseDamage          = 0.0f;
-			float       baseRoundsPerMinute = 0.0f;
+			float       baseRoundsPerMinute = 0.0f;   // seconds between shots, not literal RPM -- see RealBaseForAttr
 			float       baseMagazine        = 0.0f;
 			float       baseRange           = 0.0f;
 			int         basePierce          = 0;
+			float       baseReloadTime      = 0.0f;
+			float       baseSpread          = 0.0f;
+			float       baseAdsSpeed        = 0.0f;
+
+			// The multiplier delta this weapon's own attachments/LEMs last showed
+			// while it WAS the equipped/active profile (unmodified - base, in the
+			// same multiplier space g_dbgAttrBuffed/g_dbgAttrBase capture) --
+			// indexed like kAttrs. Kept so a tab can still show a best-effort
+			// estimate of this weapon's real numbers while it isn't in hand,
+			// rather than nothing at all. 0 (no mods) until Tick() has actually
+			// seen this weapon equipped at least once -- "estimate with no mods"
+			// from the spec. Only Multiply-mode rows are ever written here
+			// (Magazine composes onto a real field directly, Pierce is a literal
+			// Absolute count) -- see Tick()'s write-back next to g_composed[a].
+			float       cachedModsMult[kAttrCount] = {};
 
 			// Grenade-only fields, meaningful only when isGrenade is true --
 			// discovered the same way as every other weapon, just tagged so
@@ -418,10 +433,6 @@ namespace BetterCheats::Panels::Weapons
 		std::atomic<float>    g_dbgMagMax    { -1.0f };
 		std::atomic<float>    g_dbgReserve   { -1.0f };
 		std::atomic<float>    g_dbgReserveMax{ -1.0f };
-
-		// "Show live values" toggle -- default on so a fresh install proves the
-		// compose fix works without the owner having to find the setting.
-		std::atomic<bool> g_showLiveValues{ true };
 
 		// One-shot confirmation logging: records in ModLoader.log that both the
 		// Tick-side fill and the RenderImGui-side draw have run this session,
@@ -939,8 +950,66 @@ namespace BetterCheats::Panels::Weapons
 			profile.baseMagazine        = cdo->BaseMagazine.Value;
 			profile.baseRange           = cdo->BaseRange.Value;
 			profile.basePierce          = cdo->PossibleEnemiesHitPerTrace;
+			profile.baseReloadTime      = cdo->ReloadTime.Value;
+			profile.baseSpread          = cdo->Spread.Value;
+			profile.baseAdsSpeed        = cdo->AimCameraSpeed.Value;
 			profile.baseResolved        = true;
 			LOG_INFO("Weapons: resolved base stats for '%s' (tab '%s').", profile.raw.c_str(), profile.display.c_str());
+		}
+
+		// Whether row `a` has a single real stat this plugin can convert its
+		// multiplier into -- false for Recoil/Sway, which the game splits into
+		// separate horizontal/vertical CDO fields with no unified value to
+		// multiply (see weapon-tabs-research.md); those two stay shown as a
+		// plain "x1.50" multiplier, same as before this pass.
+		constexpr bool kAttrHasRealBase[kAttrCount] = {
+			true,   // Damage
+			true,   // Fire Rate
+			true,   // Reload Speed
+			true,   // Magazine Size (already real -- Add mode onto a real field)
+			true,   // Damage Falloff (base effective range before falloff)
+			false,  // Recoil
+			true,   // Spread
+			false,  // Sway
+			true,   // ADS Speed
+			true,   // Enemies Hit/Shot (already real -- Absolute mode, a literal count)
+		};
+
+		// This weapon's real per-stat base value, resolved once from its CDO
+		// (see ResolveWeaponBaseFields) -- 0 if that hasn't happened yet, or if
+		// this row has no such field (kAttrHasRealBase false).
+		//
+		// Fire Rate: RoundsPerMinute.Value is a per-shot INTERVAL in seconds
+		// despite its name, not a literal rounds-per-minute count -- a rifle
+		// read back ~0.13 there, which is nonsensical as RPM (real rifles are
+		// several hundred) but exactly a plausible reload... no, fire interval
+		// (60 / 0.13 =~ 461 RPM, a believable rifle rate). Unverified against
+		// engine source (Dumper-7 gives signatures, not bodies); worth a
+		// once-over in game -- does raising the Fire Rate slider move this
+		// readout the direction you'd expect?
+		//
+		// Reload Speed: ReloadTime.Value is shown multiplied by the slider
+		// (real = base x effective multiplier) exactly like every other row
+		// here, per spec -- also unverified whether the game applies
+		// ReloadSpeedModMultiplier the same direction (a "higher is faster"
+		// tooltip on a value that reads as a duration would want an inverse
+		// relationship instead). Flagging both here rather than guessing;
+		// see the owner-facing report for what to check in game.
+		float RealBaseForAttr(const Profile& profile, int a)
+		{
+			if (!profile.baseResolved) return 0.0f;
+			switch (a)
+			{
+			case kAttrDamage:   return profile.baseDamage;
+			case kAttrFireRate: return (profile.baseRoundsPerMinute > 0.0f) ? 60.0f / profile.baseRoundsPerMinute : 0.0f;
+			case kAttrReload:   return profile.baseReloadTime;
+			case kAttrMagazine: return profile.baseMagazine;
+			case kAttrFalloff:  return profile.baseRange;
+			case kAttrSpread:   return profile.baseSpread;
+			case kAttrADS:      return profile.baseAdsSpeed;
+			case kAttrPierce:   return static_cast<float>(profile.basePierce);
+			default:            return 0.0f;   // Recoil, Sway
+			}
 		}
 
 		// LastEquippedWeaponData (used below to pick the active profile) only becomes a
@@ -1037,6 +1106,7 @@ namespace BetterCheats::Panels::Weapons
 		// overridden with no weapon out) while still updating every debug atomic.
 		Profile profile;
 		bool haveActiveProfile = false;
+		int  activeIndex = -1;
 		{
 			std::lock_guard<std::mutex> lock(g_profilesMutex);
 			const int active = g_activeProfile.load();
@@ -1044,10 +1114,20 @@ namespace BetterCheats::Panels::Weapons
 			{
 				profile = g_profiles[active];
 				haveActiveProfile = true;
+				activeIndex = active;
 			}
 		}
 		if (!haveActiveProfile)
 			ResetProfileValues(profile);   // oneHitKill/infiniteMagazine already default false
+
+		// This tick's mods delta per row (unmodified - base, same multiplier
+		// space g_dbgAttrBuffed/g_dbgAttrBase capture) -- written back into
+		// g_profiles[activeIndex].cachedModsMult below, once the SDK calls that
+		// fill it are done, so an unequipped tab can still show a best-effort
+		// estimate of this weapon's real numbers (see RealBaseForAttr/the
+		// estimate branch in RenderImGui) instead of nothing at all. Only
+		// Multiply-mode rows carry a meaningful mods concept here.
+		float modsMultThisTick[kAttrCount] = {};
 
 		try
 		{
@@ -1114,10 +1194,26 @@ namespace BetterCheats::Panels::Weapons
 					g_dbgAttrExpected[a].store(expected);
 					g_dbgAttrBase[a].store(attr.BaseValue);
 					g_dbgAttrBuffed[a].store(buffed);
+
+					if (kAttrModes[a] == BetterCheats::ComposedAttribute::Mode::Multiply)
+						modsMultThisTick[a] = buffed - attr.BaseValue;
 				}
 
 				if (!g_loggedTickFill.exchange(true))
 					LOG_INFO("Weapons: live values first filled by Tick (weapon '%s').", profile.display.c_str());
+
+				// Write back this weapon's own mods snapshot now, while its index
+				// is still valid (g_profiles only ever grows, never shrinks or
+				// reorders, so activeIndex captured above still names the same
+				// weapon) -- see the estimate branch in RenderImGui.
+				if (haveActiveProfile)
+				{
+					std::lock_guard<std::mutex> lock(g_profilesMutex);
+					if (activeIndex >= 0 && activeIndex < static_cast<int>(g_profiles.size()))
+						for (int a = 0; a < kAttrCount; ++a)
+							if (kAttrModes[a] == BetterCheats::ComposedAttribute::Mode::Multiply)
+								g_profiles[activeIndex].cachedModsMult[a] = modsMultThisTick[a];
+				}
 			}
 
 			// Magazine Size: composes (Add) onto LastEquippedWeaponData->BaseMagazine
@@ -1435,7 +1531,6 @@ namespace BetterCheats::Panels::Weapons
 		g_autoRestock.store(SessionConfig::Get("playerWeapons.autoRestock", false));
 		g_restockHidden.store(SessionConfig::Get("playerWeapons.restockHidden", true));
 		g_restockMags.store(SessionConfig::Get("playerWeapons.restockMags", 3.0f));
-		g_showLiveValues.store(SessionConfig::Get("playerWeapons.showLiveValues", true));
 
 		for (int g = 0; g < kGrenadeGlobalCount; ++g)
 			g_grenadeGlobalValue[g].store(SessionConfig::Get(
@@ -1452,20 +1547,7 @@ namespace BetterCheats::Panels::Weapons
 		if (!g_loggedRender.exchange(true))
 			LOG_INFO("Weapons: live values readout rendering (%d rows).", kAttrCount);
 
-		// First control in the tab, unconditional -- burying this below a
-		// disclaimer line made it easy to miss entirely.
-		bool showLiveValues = g_showLiveValues.load();
-		if (imgui->Checkbox("Show live values", &showLiveValues))
-		{
-			g_showLiveValues.store(showLiveValues);
-			SessionConfig::Set("playerWeapons.showLiveValues", showLiveValues);
-		}
-		if (imgui->IsItemHovered())
-			imgui->SetTooltip("Shows the game's own numbers next to each slider, so a change is\n"
-			                  "obvious instead of a guess.");
-		imgui->SameLine(0.0f, 12.0f);
-		imgui->TextDisabled("Shows the weapon in your hand. Equip one to see its stats.");
-
+		imgui->TextDisabled("Live values show the weapon in your hand; other tabs show an estimate.");
 		imgui->TextDisabled("Multipliers apply to the weapon's base stats. Attachments still add on top.");
 
 		{
@@ -1794,10 +1876,8 @@ namespace BetterCheats::Panels::Weapons
 						imgui->PushIDInt(g);
 						imgui->TableNextRow(0, 0.0f);
 
-						const bool showLive = g_showLiveValues.load();
 						char changeDesc[24];
-						if (showLive)
-							BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc), kGrenadeModes[g], value);
+						BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc), kGrenadeModes[g], value);
 
 						BetterCheats::UI::RowSpec spec;
 						spec.label         = def.label;
@@ -1809,7 +1889,7 @@ namespace BetterCheats::Panels::Weapons
 						spec.format        = def.format;
 						spec.resetValue    = def.defaultValue;
 						spec.active        = active;
-						spec.showLive      = showLive;
+						spec.showLive      = true;
 						spec.expected      = g_dbgGrenadeExpected[g].load();
 						spec.game          = g_dbgGrenadeGame[g].load();
 						spec.composing     = active;
@@ -1869,11 +1949,9 @@ namespace BetterCheats::Panels::Weapons
 						imgui->PushIDInt(1000 + g);   // offset clear of the kGrenadeRowCount PushIDInt(g) block above
 						imgui->TableNextRow(0, 0.0f);
 
-						const bool showLive = g_showLiveValues.load();
 						char changeDesc[24];
-						if (showLive)
-							BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc),
-								BetterCheats::ComposedAttribute::Mode::Multiply, value);
+						BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc),
+							BetterCheats::ComposedAttribute::Mode::Multiply, value);
 
 						BetterCheats::UI::RowSpec spec;
 						spec.label         = def.label;
@@ -1889,7 +1967,7 @@ namespace BetterCheats::Panels::Weapons
 						spec.resetValue    = def.defaultValue;
 						spec.active        = active;
 						spec.disableSlider = !resolved;
-						spec.showLive      = showLive && resolved;
+						spec.showLive      = resolved;
 						spec.expected      = g_dbgGrenadeGlobalExpected[g].load();
 						spec.game          = g_dbgGrenadeGlobalGame[g].load();
 						spec.composing     = active;
@@ -1917,32 +1995,30 @@ namespace BetterCheats::Panels::Weapons
 			// whether or not this is the weapon currently in hand. Magazine is
 			// the one exception: while EQUIPPED and our own override is active,
 			// show the live composed value instead of the captured original, same
-			// as the readout on the Magazine Size row below.
-			if (g_showLiveValues.load())
+			// as the readout on the Magazine Size row below. "rounds/min" is the
+			// real rate (60 / RoundsPerMinute.Value) -- that CDO field is
+			// actually a per-shot interval in seconds despite its name (see
+			// RealBaseForAttr), so showing it raw here used to mislabel a
+			// number like 0.13 as "rounds/min".
+			if (profile.baseResolved)
 			{
-				if (profile.baseResolved)
-				{
-					char dmg[32], rpm[32], mag[32], range[32];
-					BetterCheats::UI::FormatLiveValue(dmg, sizeof(dmg), profile.baseDamage);
-					BetterCheats::UI::FormatLiveValue(rpm, sizeof(rpm), profile.baseRoundsPerMinute);
-					const bool magazineLive = isEquipped && IsActive(kAttrMagazine, profile.values[kAttrMagazine]);
-					BetterCheats::UI::FormatLiveValue(mag, sizeof(mag),
-						magazineLive ? g_dbgWeaponBaseMagazine.load() : profile.baseMagazine);
-					BetterCheats::UI::FormatLiveValue(range, sizeof(range), profile.baseRange);
-					char line[220];
-					snprintf(line, sizeof(line),
-						"  weapon base: dmg %s  rounds/min %s  mag %s  range %s",
-						dmg, rpm, mag, range);
-					imgui->TextDisabled(line);
-				}
-				else
-				{
-					imgui->TextDisabled("  weapon base: not resolved yet.");
-				}
-
-				if (!isEquipped)
-					imgui->TextDisabled("  Live values need this weapon equipped to show -- rows below\n"
-					                    "  show your own setting only.");
+				char dmg[32], rpm[32], mag[32], range[32];
+				BetterCheats::UI::FormatLiveValue(dmg, sizeof(dmg), profile.baseDamage);
+				const float realBaseRpm = (profile.baseRoundsPerMinute > 0.0f) ? 60.0f / profile.baseRoundsPerMinute : 0.0f;
+				BetterCheats::UI::FormatLiveValue(rpm, sizeof(rpm), realBaseRpm);
+				const bool magazineLive = isEquipped && IsActive(kAttrMagazine, profile.values[kAttrMagazine]);
+				BetterCheats::UI::FormatLiveValue(mag, sizeof(mag),
+					magazineLive ? g_dbgWeaponBaseMagazine.load() : profile.baseMagazine);
+				BetterCheats::UI::FormatLiveValue(range, sizeof(range), profile.baseRange);
+				char line[220];
+				snprintf(line, sizeof(line),
+					"  weapon base: dmg %s  rounds/min %s  mag %s  range %s",
+					dmg, rpm, mag, range);
+				imgui->TextDisabled(line);
+			}
+			else
+			{
+				imgui->TextDisabled("  weapon base: not resolved yet.");
 			}
 			imgui->Spacing();
 
@@ -2121,22 +2197,15 @@ namespace BetterCheats::Panels::Weapons
 					float&         value = profile.values[a];
 
 					const bool ownedByOneHitKill = (a == kAttrDamage && profile.oneHitKill);
+					const bool rowActive         = IsActive(a, value) && !ownedByOneHitKill;
 
 					imgui->PushIDInt(a);
 					imgui->TableNextRow(0, 0.0f);
 
-					// Live readout (expected=game, +mods tag, full hover) only means
-					// anything for the weapon actually in hand -- the globals it reads
-					// from (g_dbgAttrGame/Expected/Base/Buffed) are Tick()'s live
-					// capture for the ACTIVE profile only, so showing them on another
-					// tab would just be the equipped weapon's numbers relabelled. See
-					// the "Live values need this weapon equipped" note above.
-					const bool showLive = g_showLiveValues.load() && isEquipped;
 					char changeDesc[24];
-					if (showLive)
-						BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc),
-							ownedByOneHitKill ? BetterCheats::ComposedAttribute::Mode::Absolute : kAttrModes[a],
-							ownedByOneHitKill ? kOneHitKillDamage : value);
+					BetterCheats::UI::FormatChangeDesc(changeDesc, sizeof(changeDesc),
+						ownedByOneHitKill ? BetterCheats::ComposedAttribute::Mode::Absolute : kAttrModes[a],
+						ownedByOneHitKill ? kOneHitKillDamage : value);
 
 					BetterCheats::UI::RowSpec spec;
 					spec.label         = def.label;
@@ -2147,18 +2216,34 @@ namespace BetterCheats::Panels::Weapons
 					spec.step          = def.step;
 					spec.format        = def.format;
 					spec.resetValue    = def.defaultValue;
-					spec.active        = IsActive(a, value) && !ownedByOneHitKill;
+					spec.active        = rowActive;
 					spec.disableSlider = ownedByOneHitKill;
-					spec.showLive      = showLive;
-					spec.expected      = g_dbgAttrExpected[a].load();
-					spec.game          = g_dbgAttrGame[a].load();
-					spec.composing     = IsActive(a, value) || ownedByOneHitKill;
+					// Always on now -- live while this weapon is equipped, an estimate
+					// otherwise (see the two branches below). No more "Show live
+					// values" toggle to gate it.
+					spec.showLive      = true;
+					spec.estimate      = !isEquipped;
+					spec.composing     = rowActive || ownedByOneHitKill;
 					// Magazine composes onto the weapon data asset now, not a GAS
 					// attribute -- no BaseValue split, so no tag; "Unmodified" is the
 					// captured original (g_dbgWeaponBaseMagazine, same number the base-
 					// stats block above shows).
 					spec.hasBase       = (a != kAttrMagazine);
-					if (a == kAttrPierce)
+
+					if (a == kAttrMagazine)
+					{
+						// Already a real number (Add mode onto the weapon data asset's
+						// own BaseMagazine field) -- no multiplier layer to convert.
+						// Estimate = the CDO's own base plus our own offset; no live
+						// mods signal exists for this field either way.
+						const float baseMag = profile.baseMagazine;
+						spec.expected   = isEquipped ? g_dbgAttrExpected[a].load() : (baseMag + (rowActive ? value : 0.0f));
+						spec.game       = isEquipped ? g_dbgAttrGame[a].load()     : spec.expected;
+						spec.unmodified = isEquipped ? g_dbgWeaponBaseMagazine.load() : baseMag;
+						spec.base       = 0.0f;
+						spec.hasOurs    = false;
+					}
+					else if (a == kAttrPierce)
 					{
 						// UCrWeaponAttributeSet::PossibleEnemiesHitPerTrace (what
 						// g_dbgAttrBase/Buffed read) is a dead Au-layer GAS field --
@@ -2173,19 +2258,67 @@ namespace BetterCheats::Panels::Weapons
 						// attachment-driven pierce bonus, so comparing this base
 						// against the still-dead GAS aggregate would tag every
 						// weapon with a nonzero base as "+mods" for no real reason.
-						spec.base       = static_cast<float>(profile.basePierce);
-						spec.unmodified = static_cast<float>(profile.basePierce);
+						// Already a real number (Absolute mode, a literal count).
+						const float baseP = static_cast<float>(profile.basePierce);
+						spec.base       = baseP;
+						spec.unmodified = baseP;
+						spec.expected   = isEquipped ? g_dbgAttrExpected[a].load() : (rowActive ? value : baseP);
+						spec.game       = isEquipped ? g_dbgAttrGame[a].load()     : spec.expected;
+						spec.hasOurs    = false;
 					}
 					else
 					{
-						spec.base       = g_dbgAttrBase[a].load();
-						spec.unmodified = (a == kAttrMagazine) ? g_dbgWeaponBaseMagazine.load() : g_dbgAttrBuffed[a].load();
+						// Every other row composes a *ModMultiplier GAS attribute
+						// (Multiply mode), whose own BaseValue is a dead Au-layer
+						// field always sitting at its neutral 1.0 (see the file's
+						// Au-layer comment) -- true whether or not this weapon is
+						// the one in hand. While unequipped, the estimate reuses
+						// the exact "final = game + base*(k-1)" shape Tick()'s live
+						// compose already uses, just fed by the mods this weapon
+						// last showed (profile.cachedModsMult) instead of a fresh
+						// GAS read -- 0 (no mods) the first time it's ever equipped.
+						const float multBase       = isEquipped ? g_dbgAttrBase[a].load()   : 1.0f;
+						const float multUnmodified = isEquipped ? g_dbgAttrBuffed[a].load() : (1.0f + profile.cachedModsMult[a]);
+						const float oursDelta      = rowActive ? (value - 1.0f) : 0.0f;
+						const float multExpected   = multUnmodified + multBase * oursDelta;
+						const float multGame       = isEquipped ? g_dbgAttrGame[a].load() : multExpected;
+
+						spec.base       = multBase;
+						spec.unmodified = multUnmodified;
+						spec.expected   = multExpected;
+						spec.game       = multGame;
+						spec.hasOurs    = !ownedByOneHitKill;
+						spec.ours       = spec.hasOurs ? multBase * oursDelta : 0.0f;
+
+						// Damage/Fire Rate/Reload/Falloff/Spread/ADS have a real per-
+						// stat base on the weapon's own CDO -- show the actual damage/
+						// rate/etc. (real = base x effective multiplier) instead of the
+						// bare multiplier the slider edits. Recoil/Sway have no single
+						// real field to convert (kAttrHasRealBase false) and stay "x".
+						if (kAttrHasRealBase[a] && profile.baseResolved)
+						{
+							const float realBase = RealBaseForAttr(profile, a);
+							if (realBase > 0.0f)
+							{
+								spec.base       *= realBase;
+								spec.unmodified *= realBase;
+								spec.expected   *= realBase;
+								spec.game       *= realBase;
+								spec.ours       *= realBase;
+							}
+						}
+
+						// One Hit Kill forces Damage to a flat Absolute value that has
+						// nothing to do with the multiplier above (Tick() applies it
+						// the same way) -- set AFTER the real-unit scaling, not scaled
+						// itself.
+						if (ownedByOneHitKill)
+						{
+							spec.expected = isEquipped ? g_dbgAttrExpected[a].load() : kOneHitKillDamage;
+							spec.game     = isEquipped ? g_dbgAttrGame[a].load()     : kOneHitKillDamage;
+						}
 					}
-					// Full Base/Mods & buffs/Ours breakdown only where the formula
-					// actually applies: a Multiply row with a real base, and not while
-					// One Hit Kill has forced this row to Absolute instead.
-					spec.hasOurs       = spec.hasBase && !ownedByOneHitKill && kAttrModes[a] == BetterCheats::ComposedAttribute::Mode::Multiply;
-					spec.ours          = spec.hasOurs ? spec.base * (value - 1.0f) : 0.0f;
+
 					spec.changeDesc    = changeDesc;
 					spec.tagWord       = "mods";
 					spec.baseLabel     = "Base (no attachments)";
@@ -2199,6 +2332,13 @@ namespace BetterCheats::Panels::Weapons
 
 				imgui->EndTable();
 			}
+
+			// Fixed, always-reserved spot below every row -- text only while
+			// estimating, so switching tabs never shifts anything below this
+			// point (a note that used to sit ABOVE the rows, conditionally,
+			// was exactly what made tabs jump when switching between an
+			// equipped and unequipped weapon).
+			imgui->TextDisabled(isEquipped ? "" : "Estimated. Live values show once this weapon is equipped.");
 
 			imgui->Spacing();
 			if (imgui->SmallButton("Reset this weapon to stock"))
