@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
@@ -1601,6 +1602,278 @@ namespace BetterCheats::Panels::Inventory
 			}
 			imgui->EndChild();
 		}
+
+		// =====================================================================
+		// Plant Pickup (wild-plant gather multiplier)
+		// =====================================================================
+		// Scales ACrGatherableBaseActor::ResourceCount, the per-type count a
+		// simple (non-crop) gatherable hands out, on each gatherable Blueprint
+		// class's CDO -- the same kind of per-type field as MaxStack above. A
+		// gatherable actor takes its ResourceCount from the CDO when it is
+		// constructed. Crops (ACrGatherableCropActor) derive from ACrOreActor,
+		// not this base, and are not covered.
+		//
+		// The classes are found in memory, not through the asset registry. A
+		// Blueprint asset's registry class is Blueprint, not the actor class it
+		// generates, so a registry query on the actor base finds nothing (the
+		// item scan above only works because AuItemBlueprint is itself a
+		// UBlueprint subclass). Walking loaded classes also means nothing here
+		// force-loads a Blueprint the game isn't holding: a class only we had
+		// loaded would be collected at the next GC and reloaded later with its
+		// original count. The world loads the gatherable classes it spawns
+		// from; one it loads later is picked up by the periodic rescan below.
+
+		// `cdo` is an ObjectRef, checked before every read or write: a GC can
+		// collect a class the world no longer needs. `original` is captured
+		// once per plugin lifetime and entries are never dropped, so a rescan,
+		// a new session, or a class the game reloaded can never recapture one
+		// of our own writes as the base (which would compound 3x into 9x).
+		struct GatherEntry
+		{
+			ObjectRef<SDK::ACrGatherableBaseActor> cdo;
+			std::string                            key;           // SessionConfig path for the compose state
+			int                                    original = 0;  // the Blueprint's own ResourceCount
+			BetterCheats::ComposedAttribute        composed;
+		};
+
+		// Game thread only, keyed by the generated class name.
+		std::unordered_map<std::string, GatherEntry> g_gather;
+
+		// The UI reads these; only the game thread touches g_gather itself.
+		std::atomic<int>  g_gatherTypeCount{ 0 };
+		std::atomic<bool> g_gatherScanNow{ true };     // plugin start, new session
+		std::atomic<bool> g_gatherPanelOpen{ false };  // keeps the rescan going while the panel shows
+
+		// Capped at 5x. 1x is the floor -- this is a reward
+		// multiplier, not a way to make plants worse. Whole steps only: a
+		// fractional multiplier would round a one-item plant to a half.
+		constexpr float kGatherMultDefault = 1.0f;
+		constexpr float kGatherMultMin     = 1.0f;
+		constexpr float kGatherMultMax     = 5.0f;
+
+		// Sanity clamp on the multiplied result, same spirit as kStackCeiling
+		// above -- ResourceCount is a plain int32 with no engine-side range
+		// check of its own.
+		constexpr int kGatherResourceCeiling = 1000000;
+
+		// One GObjects pass, the same cost as RescanContainer's; enemies.cpp
+		// walks GObjects every 0.25s, so this cadence is well inside budget.
+		constexpr float kGatherRescanSeconds = 5.0f;
+		float           g_gatherRescanTimer  = 0.0f;
+
+		std::atomic<float> g_gatherMultiplier{ kGatherMultDefault };
+
+		float ClampGatherMultiplier(float value)
+		{
+			if (!(value >= kGatherMultMin)) return kGatherMultMin;   // also catches NaN
+			if (value > kGatherMultMax)     return kGatherMultMax;
+			return std::round(value);
+		}
+
+		// Game thread only. Binds every loaded gatherable Blueprint class's
+		// CDO, new or reloaded since the last pass.
+		void ScanGatherables()
+		{
+			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
+			SDK::UClass* generatedClass = SDK::UBlueprintGeneratedClass::StaticClass();
+			SDK::UClass* gatherBase     = SDK::ACrGatherableBaseActor::StaticClass();
+			if (!arr || !generatedClass || !gatherBase)
+				return;
+
+			int bound = 0;
+
+			// Still being loaded (its CDO may not hold the Blueprint's value
+			// yet), or on its way out.
+			constexpr uint32_t kSkipFlags =
+				static_cast<uint32_t>(SDK::EObjectFlags::NeedLoad) |
+				static_cast<uint32_t>(SDK::EObjectFlags::NeedPostLoad) |
+				static_cast<uint32_t>(SDK::EObjectFlags::NeedPostLoadSubobjects) |
+				static_cast<uint32_t>(SDK::EObjectFlags::BeginDestroyed) |
+				static_cast<uint32_t>(SDK::EObjectFlags::FinishDestroyed) |
+				static_cast<uint32_t>(SDK::EObjectFlags::MirroredGarbage);
+
+			for (int i = 0; i < arr->Num(); ++i)
+			{
+				// Pointer compare before any dereference: GObjects can hand back
+				// half-registered entries whose Class is garbage (world_wave.cpp).
+				SDK::UObject* obj = arr->GetByIndex(i);
+				if (!obj || obj->Class != generatedClass)
+					continue;
+
+				SDK::UClass* cls = static_cast<SDK::UClass*>(obj);
+				if (static_cast<uint32_t>(cls->Flags) & kSkipFlags)
+					continue;
+				if (!cls->IsSubclassOf(gatherBase))
+					continue;
+
+				SDK::UObject* cdoObj = cls->ClassDefaultObject;
+				if (!cdoObj || (static_cast<uint32_t>(cdoObj->Flags) & kSkipFlags))
+					continue;
+
+				SDK::ACrGatherableBaseActor* cdo = static_cast<SDK::ACrGatherableBaseActor*>(cdoObj);
+				const std::string name = cls->GetName();
+
+				auto it = g_gather.find(name);
+				if (it != g_gather.end())
+				{
+					GatherEntry& e = it->second;
+					if (e.cdo.Get() == cdo)
+						continue;
+
+					// Reloaded since we bound it: a fresh CDO holding the
+					// original again, so there is nothing of ours to hand back.
+					e.composed.Forget();
+					e.cdo.Set(cdo);
+					++bound;
+					continue;
+				}
+
+				// First sighting this plugin lifetime. Not bound until the
+				// session config loads; ApplySavedConfig rescans then.
+				const std::string key = "playerInventory.gather." + SanitizeStackKey(name);
+				int original = 0;
+				if (!RecoverOriginal(key, cdo->ResourceCount, original))
+					continue;
+				if (original <= 0)
+					continue;   // no reward to scale
+
+				GatherEntry& e = g_gather[name];
+				e.cdo.Set(cdo);
+				e.key      = key;
+				e.original = original;
+				++bound;
+			}
+
+			if (bound > 0)
+				LOG_INFO("Inventory: bound %d gatherable type(s) for plant pickup (%d known).",
+					bound, static_cast<int>(g_gather.size()));
+			g_gatherTypeCount.store(static_cast<int>(g_gather.size()));
+		}
+
+		// Game thread only. Hands every live CDO its original back and drops
+		// the persisted compose state.
+		void RestoreGatherables()
+		{
+			for (auto& kv : g_gather)
+			{
+				GatherEntry& e = kv.second;
+				e.composed.Forget();
+
+				SDK::ACrGatherableBaseActor* cdo = e.cdo.Get();
+				if (!cdo)
+					continue;
+
+				if (cdo->ResourceCount != e.original)
+					cdo->ResourceCount = e.original;
+				BetterCheats::ClearComposeState(e.key);
+			}
+		}
+
+		// Game thread only. Rescans on start and on a new session, then every
+		// few seconds while a multiplier is set or the panel is open. Writes
+		// ResourceCount only when the value it should hold changes.
+		void ApplyGatherMultiplier(float deltaSeconds)
+		{
+			const float multiplier = g_gatherMultiplier.load();
+
+			g_gatherRescanTimer += deltaSeconds;
+			const bool periodic = g_gatherRescanTimer >= kGatherRescanSeconds &&
+				(multiplier != kGatherMultDefault || g_gatherPanelOpen.exchange(false));
+			if (g_gatherScanNow.exchange(false) || periodic)
+			{
+				g_gatherRescanTimer = 0.0f;
+				try { ScanGatherables(); }
+				catch (...) { LOG_WARN("Inventory: exception scanning for gatherable classes."); }
+			}
+
+			try
+			{
+				for (auto& kv : g_gather)
+				{
+					GatherEntry& e = kv.second;
+
+					SDK::ACrGatherableBaseActor* cdo = e.cdo.Get();
+					if (!cdo)
+					{
+						e.composed.Forget();
+						continue;
+					}
+
+					// Nearest whole item, never below the original (so never 0).
+					int desired = static_cast<int>(static_cast<float>(e.original) * multiplier + 0.5f);
+					if (desired < e.original)             desired = e.original;
+					if (desired > kGatherResourceCeiling) desired = kGatherResourceCeiling;
+					const bool active = desired != e.original;
+
+					float valueF = static_cast<float>(cdo->ResourceCount);
+					BetterCheats::ApplyComposedRow(e.composed, cdo, valueF, e.key, active,
+						static_cast<float>(desired), BetterCheats::ComposedAttribute::Mode::Absolute,
+						1.0f, static_cast<float>(kGatherResourceCeiling));
+
+					const int newValue = static_cast<int>(valueF + 0.5f);
+					if (cdo->ResourceCount != newValue)
+						cdo->ResourceCount = newValue;
+				}
+			}
+			catch (...) {}
+		}
+
+		// Render thread. Single global multiplier row, same BuildRow shape as
+		// the stack-size rows.
+		void RenderPlantPickup(IModLoaderImGui* imgui)
+		{
+			g_gatherPanelOpen.store(true);
+
+			imgui->Spacing();
+			imgui->Separator();
+			imgui->SeparatorText("Plant Pickup");
+			imgui->TextDisabled("Scales how many items a wild plant/mushroom/rock hands out when\n"
+			                    "picked up. Crops (regrowing bushes) are not covered by this.");
+			imgui->Spacing();
+
+			float multiplier = g_gatherMultiplier.load();
+			if (imgui->BeginTable("##gather_mult_table", 3, kTableFlags))
+			{
+				const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
+					[](int) { return "Plant Pickup"; });
+
+				imgui->TableSetupColumn("Attribute", kColumnFixed,
+					BetterCheats::UI::GetReadoutColumnWidth(imgui, labelReserve));
+				imgui->TableSetupColumn("Value", 0, 0.54f);
+				imgui->TableSetupColumn("",      0, 0.10f);
+
+				imgui->TableNextRow(0, 0.0f);
+
+				const int typeCount = g_gatherTypeCount.load();
+				char tooltip[192];
+				snprintf(tooltip, sizeof(tooltip),
+					"Multiplies every wild gatherable's original ResourceCount.\n"
+					"%d gatherable type%s loaded. Capped at %.0fx.",
+					typeCount, typeCount == 1 ? "" : "s", kGatherMultMax);
+
+				BetterCheats::UI::RowSpec spec;
+				spec.label        = "Plant Pickup";
+				spec.tooltip      = tooltip;
+				spec.value        = &multiplier;
+				spec.minValue     = kGatherMultMin;
+				spec.maxValue     = kGatherMultMax;
+				spec.step         = 1.0f;
+				spec.format       = "%.0fx";
+				spec.wholeNumbers = true;
+				spec.resetValue   = kGatherMultDefault;
+				spec.active       = BetterCheats::DiffersFromDefault(multiplier, kGatherMultDefault);
+				spec.labelReserve = labelReserve;
+
+				// BuildRow rounds and clamps both the slider and the typed box.
+				if (BetterCheats::UI::BuildRow(imgui, spec).changed)
+				{
+					g_gatherMultiplier.store(multiplier);
+					SessionConfig::Set("playerInventory.gather.multiplier", static_cast<int>(multiplier));
+				}
+
+				imgui->EndTable();
+			}
+		}
 	}
 
 	void Initialize()
@@ -1656,10 +1929,16 @@ namespace BetterCheats::Panels::Inventory
 		{
 			for (auto& kv : g_stackComposed)
 				kv.second.composed.Forget();
+			for (auto& kv : g_gather)
+				kv.second.composed.Forget();
 			return;
 		}
 
 		try { RestoreStackSizes(); }
+		catch (...) {}
+
+		// Plant Pickup: same render-thread-Shutdown hazard, same fix.
+		try { RestoreGatherables(); }
 		catch (...) {}
 	}
 
@@ -1672,6 +1951,7 @@ namespace BetterCheats::Panels::Inventory
 		RefreshSnapshot();
 
 		ApplyStackSizes();
+		ApplyGatherMultiplier(deltaSeconds);
 	}
 
 	void ApplySavedConfig()
@@ -1751,9 +2031,10 @@ namespace BetterCheats::Panels::Inventory
 			g_categoryOverrides = std::move(loaded);
 		}
 
-		// Hand every item its original MaxStack back first, then rescan: the
-		// next tick captures from the true base and persists into this
-		// session's config rather than the last one's. Off the game thread (only before the first Tick, when nothing
+		// Hand every item its original MaxStack back first, the same way as
+		// Plant Pickup below, then rescan: the next tick captures from the true
+		// base and persists into this session's config rather than the last
+		// one's. Off the game thread (only before the first Tick, when nothing
 		// has been written yet) dropping state is enough.
 		if (BetterCheats::IsGameThread())
 		{
@@ -1763,6 +2044,27 @@ namespace BetterCheats::Panels::Inventory
 		g_stackItemsGameThread.clear();
 		g_stackComposed.clear();
 		RequestRefreshStackList();
+
+		// Plant Pickup. Hand every CDO its original back first, so the next
+		// tick captures the true base and persists it into this session's
+		// config rather than the last one's. This runs on the game thread;
+		// IsGameThread() is only false before the first Tick, when nothing has
+		// been written yet, so dropping state is enough there.
+		{
+			const nlohmann::json saved = SessionConfig::Get("playerInventory.gather.multiplier", kGatherMultDefault);
+			g_gatherMultiplier.store(ClampGatherMultiplier(saved.is_number() ? saved.get<float>() : kGatherMultDefault));
+		}
+		if (BetterCheats::IsGameThread())
+		{
+			try { RestoreGatherables(); }
+			catch (...) {}
+		}
+		else
+		{
+			for (auto& kv : g_gather)
+				kv.second.composed.Forget();
+		}
+		g_gatherScanNow.store(true);
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
@@ -1886,6 +2188,8 @@ namespace BetterCheats::Panels::Inventory
 		imgui->Spacing();
 		imgui->TextDisabled("Console: bc_invsize <columns> <rows>");
 
+		// Plant Pickup first: the stack list below fills the rest of the panel.
+		RenderPlantPickup(imgui);
 		RenderItemStackSizes(imgui);
 	}
 }
