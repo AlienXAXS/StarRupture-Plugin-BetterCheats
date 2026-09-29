@@ -8,6 +8,7 @@
 #include "player_lookup.h"
 #include "game_thread.h"
 #include "object_ref.h"
+#include "cdo_lookup.h"
 
 #include "Chimera_classes.hpp"
 #include "Chimera_parameters.hpp"
@@ -272,25 +273,9 @@ namespace BetterCheats::Panels::Weapons
 		constexpr float kGrenadeGlobalFinalMin = 0.001f;
 		constexpr float kGrenadeGlobalFinalMax = 1000000.0f;
 
-		// How long between resolution retries while a CDO/property hasn't
-		// resolved yet (class package not loaded, ability not granted yet) --
-		// WalkAllObjectsInto-family calls are a GObjects scan, too expensive to
-		// retry every tick. Once resolved it's kept until the object goes away:
-		// both are Blueprint classes, and a Blueprint class and its CDO are
-		// freed when their package is unloaded, so the cached CDO is checked on
-		// every use and re-resolved once it's gone.
-		constexpr float kGrenadeGlobalRetryInterval = 5.0f;
-
-		struct GrenadeFieldHandle
-		{
-			ObjectRef<SDK::UObject> object;
-			PluginPropertyHandle  property      = nullptr;
-			bool                  ok            = false;
-			bool                  loggedMiss    = false;
-			float                 retryCooldown = 0.0f;
-		};
-
-		GrenadeFieldHandle              g_grenadeGlobalHandle[kGrenadeGlobalCount];
+		// Resolved by name through ResolveCdoField (cdo_lookup.h), retried
+		// until the class is loaded and re-resolved if it unloads.
+		CdoFieldHandle                  g_grenadeGlobalHandle[kGrenadeGlobalCount];
 		BetterCheats::ComposedAttribute g_composedGrenadeGlobal[kGrenadeGlobalCount];
 		std::atomic<float>              g_grenadeGlobalValue[kGrenadeGlobalCount] = { 1.0f, 1.0f, 1.0f };
 
@@ -299,65 +284,6 @@ namespace BetterCheats::Panels::Weapons
 		// rather than a slot in that one.
 		std::atomic<float> g_dbgGrenadeGlobalGame[kGrenadeGlobalCount];
 		std::atomic<float> g_dbgGrenadeGlobalExpected[kGrenadeGlobalCount];
-
-		// Retries every kGrenadeGlobalRetryInterval seconds until the CDO and
-		// its named property both resolve, then keeps the result for as long as
-		// the CDO is still alive. Returns the live CDO, or null.
-		// Game thread only (ObjectWalker/ObjectProperties both touch GObjects).
-		SDK::UObject* ResolveGrenadeField(GrenadeFieldHandle& h, const char* className, const char* propertyName, float deltaSeconds)
-		{
-			if (h.ok)
-			{
-				if (SDK::UObject* object = h.object.Get())
-					return object;
-
-				// Unloaded since it was resolved. Look it up again straight away.
-				h.ok = false;
-				h.retryCooldown = 0.0f;
-			}
-
-			h.retryCooldown -= deltaSeconds;
-			if (h.retryCooldown > 0.0f) return nullptr;
-			h.retryCooldown = kGrenadeGlobalRetryInterval;
-
-			IPluginHooks* hooks = GetHooks();
-			IPluginObjectWalker*     walker = hooks ? hooks->ObjectWalker     : nullptr;
-			IPluginObjectProperties* props  = hooks ? hooks->ObjectProperties : nullptr;
-			if (!walker || !props || !walker->IsReady() || !props->IsReady())
-				return nullptr;   // not ready yet -- try again next cooldown
-
-			char cdoName[160];
-			snprintf(cdoName, sizeof(cdoName), "Default__%s", className);
-			void* object = walker->FindFirstObjectByName(cdoName);
-			if (!object)
-			{
-				if (!h.loggedMiss)
-				{
-					LOG_WARN("Weapons: grenade CDO '%s' not found (yet) -- '%s' stays disabled until it resolves.",
-						cdoName, propertyName);
-					h.loggedMiss = true;
-				}
-				return nullptr;
-			}
-
-			PluginPropertyHandle property = props->FindPropertyByName(className, propertyName);
-			if (!property || props->GetPropertyKind(property) != PluginPropertyKind::Float)
-			{
-				if (!h.loggedMiss)
-				{
-					LOG_WARN("Weapons: property '%s::%s' not found or not a float -- row stays disabled.",
-						className, propertyName);
-					h.loggedMiss = true;
-				}
-				return nullptr;
-			}
-
-			h.object.Set(static_cast<SDK::UObject*>(object));
-			h.property = property;
-			h.ok       = true;
-			LOG_INFO("Weapons: resolved grenade field '%s::%s'.", className, propertyName);
-			return static_cast<SDK::UObject*>(object);
-		}
 
 		// Profiles are DISCOVERED, not hardcoded. Weapon data assets live in the paks
 		// (no I_*DataItem_C classes exist in the SDK dump), so the only truthful source
@@ -903,7 +829,7 @@ namespace BetterCheats::Panels::Weapons
 		// Resolves this weapon TYPE's base stats from its own CDO, independent of
 		// whether it's currently equipped -- profile.raw IS the CDO's object name
 		// already, so this needs only FindFirstObjectByName, the same mechanism
-		// ResolveGrenadeField uses above. Cached forever once found (base stats
+		// ResolveCdoField (cdo_lookup.h) uses. Cached forever once found (base stats
 		// don't change at runtime); re-resolved, at the same retry cadence, if the
 		// CDO's package is ever unloaded out from under it. A grenade profile's
 		// `raw` is a UCrGrenadeWeaponItemDataBase CDO, which upcasts to
@@ -919,17 +845,10 @@ namespace BetterCheats::Panels::Weapons
 			if (profile.baseCdo.Get())
 				return;   // resolved and still alive -- nothing to refresh
 
-			profile.baseRetryCooldown -= deltaSeconds;
-			if (profile.baseRetryCooldown > 0.0f)
+			if (!CdoRetryDue(profile.baseRetryCooldown, deltaSeconds))
 				return;
-			profile.baseRetryCooldown = kGrenadeGlobalRetryInterval;
 
-			IPluginHooks* hooks = GetHooks();
-			IPluginObjectWalker* walker = hooks ? hooks->ObjectWalker : nullptr;
-			if (!walker || !walker->IsReady())
-				return;   // not ready yet -- try again next cooldown
-
-			void* object = walker->FindFirstObjectByName(profile.raw.c_str());
+			void* object = FindObjectByName(profile.raw.c_str());
 			if (!object)
 			{
 				if (!profile.baseLoggedMiss)
@@ -1292,8 +1211,8 @@ namespace BetterCheats::Panels::Weapons
 				for (int g = 0; g < kGrenadeGlobalCount; ++g)
 				{
 					const GrenadeGlobalDef& def = kGrenadeGlobals[g];
-					GrenadeFieldHandle& h = g_grenadeGlobalHandle[g];
-					SDK::UObject* object = props ? ResolveGrenadeField(h, def.className, def.propertyName, deltaSeconds) : nullptr;
+					CdoFieldHandle& h = g_grenadeGlobalHandle[g];
+					SDK::UObject* object = props ? ResolveCdoField(h, def.className, def.propertyName, deltaSeconds, "Weapons") : nullptr;
 					if (!object)
 						continue;
 
@@ -1431,7 +1350,7 @@ namespace BetterCheats::Panels::Weapons
 			IPluginObjectProperties* props = hooks ? hooks->ObjectProperties : nullptr;
 			for (int g = 0; g < kGrenadeGlobalCount; ++g)
 			{
-				GrenadeFieldHandle& h = g_grenadeGlobalHandle[g];
+				CdoFieldHandle& h = g_grenadeGlobalHandle[g];
 				SDK::UObject* object = h.ok ? h.object.Get() : nullptr;
 				if (props && object)
 				{
@@ -2249,36 +2168,22 @@ namespace BetterCheats::Panels::Weapons
 						// compose already uses, just fed by the mods this weapon
 						// last showed (profile.cachedModsMult) instead of a fresh
 						// GAS read -- 0 (no mods) the first time it's ever equipped.
-						const float multBase       = isEquipped ? g_dbgAttrBase[a].load()   : 1.0f;
-						const float multUnmodified = isEquipped ? g_dbgAttrBuffed[a].load() : (1.0f + profile.cachedModsMult[a]);
-						const float oursDelta      = rowActive ? (value - 1.0f) : 0.0f;
-						const float multExpected   = multUnmodified + multBase * oursDelta;
-						const float multGame       = isEquipped ? g_dbgAttrGame[a].load() : multExpected;
-
-						spec.base       = multBase;
-						spec.unmodified = multUnmodified;
-						spec.expected   = multExpected;
-						spec.game       = multGame;
-						spec.hasOurs    = !ownedByOneHitKill;
-						spec.ours       = spec.hasOurs ? multBase * oursDelta : 0.0f;
-
+						//
 						// Damage/Fire Rate/Reload/Falloff/Spread/ADS have a real per-
 						// stat base on the weapon's own CDO -- show the actual damage/
 						// rate/etc. (real = base x effective multiplier) instead of the
 						// bare multiplier the slider edits. Recoil/Sway have no single
 						// real field to convert (kAttrHasRealBase false) and stay "x".
-						if (kAttrHasRealBase[a] && profile.baseResolved)
-						{
-							const float realBase = RealBaseForAttr(profile, a);
-							if (realBase > 0.0f)
-							{
-								spec.base       *= realBase;
-								spec.unmodified *= realBase;
-								spec.expected   *= realBase;
-								spec.game       *= realBase;
-								spec.ours       *= realBase;
-							}
-						}
+						BetterCheats::UI::MultiplyReadout readout;
+						readout.live       = isEquipped;
+						readout.base       = g_dbgAttrBase[a].load();
+						readout.unmodified = g_dbgAttrBuffed[a].load();
+						readout.game       = g_dbgAttrGame[a].load();
+						readout.cachedMods = profile.cachedModsMult[a];
+						readout.amount     = value;
+						readout.active     = rowActive;
+						readout.realBase   = kAttrHasRealBase[a] ? RealBaseForAttr(profile, a) : 0.0f;
+						BetterCheats::UI::SetMultiplyReadout(spec, readout);
 
 						// One Hit Kill forces Damage to a flat Absolute value that has
 						// nothing to do with the multiplier above (Tick() applies it
@@ -2286,6 +2191,8 @@ namespace BetterCheats::Panels::Weapons
 						// itself.
 						if (ownedByOneHitKill)
 						{
+							spec.hasOurs  = false;
+							spec.ours     = 0.0f;
 							spec.expected = isEquipped ? g_dbgAttrExpected[a].load() : kOneHitKillDamage;
 							spec.game     = isEquipped ? g_dbgAttrGame[a].load()     : kOneHitKillDamage;
 						}

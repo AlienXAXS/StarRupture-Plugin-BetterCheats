@@ -148,6 +148,7 @@
     <ClInclude Include="preset_store.h" />
     <ClInclude Include="item_registry.h" />
     <ClInclude Include="ui_widgets.h" />
+    <ClInclude Include="cdo_lookup.h" />
     <ClInclude Include="cheat_math.h" />
     <ClInclude Include="game_thread.h" />
     <ClInclude Include="keybind_picker.h" />

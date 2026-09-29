@@ -165,7 +165,8 @@ namespace BetterCheats::UI
 	inline void RenderLiveValue(IModLoaderImGui* imgui, float expected, float game,
 	                             bool active, bool hasBase, float base, float unmodified,
 	                             const char* changeDesc, const char* tagWord, const char* baseLabel,
-	                             bool hasOurs = false, float ours = 0.0f, bool estimate = false)
+	                             bool hasOurs = false, float ours = 0.0f, bool estimate = false,
+	                             const char* estimateNote = "Estimated -- equip this weapon to see live values.")
 	{
 		const bool showTag = hasBase && !LiveValuesMatch(base, unmodified);
 
@@ -245,7 +246,7 @@ namespace BetterCheats::UI
 			}
 
 			if (estimate)
-				n += snprintf(tip + n, sizeof(tip) - n, "\nEstimated -- equip this weapon to see live values.");
+				n += snprintf(tip + n, sizeof(tip) - n, "\n%s", estimateNote);
 			else
 				n += snprintf(tip + n, sizeof(tip) - n, "\nLive in game: %s", gameStr);
 			imgui->SetTooltip(tip);
@@ -341,10 +342,56 @@ namespace BetterCheats::UI
 		const char* changeDesc  = nullptr;
 		const char* tagWord     = "buff";
 		const char* baseLabel   = "Base (no LEMs/buffs)";
+		const char* estimateNote = "Estimated -- equip this weapon to see live values.";
 		float       labelReserve = 0.0f;
 
 		const char* resetTooltip = "Reset to the game default (turns this row off).";
 	};
+
+	// The live-or-estimated readout of a Multiply row whose slider scales a
+	// stat with one real per-stat base value -- a weapon's damage, fire
+	// rate, reload..., or one of the mining tool's stats. Worked out in
+	// multiplier space (1.0 = the stat untouched), then converted to real
+	// units by `realBase` so the readout and its hover show the actual stat.
+	//
+	// Live (the weapon or tool is in hand): `base` and `unmodified` are the
+	// multiplier the game holds without our change (base = no mods at all,
+	// unmodified = with mods and buffs), `game` the one it holds right now.
+	// Not live: nothing fresh to read, so `unmodified` falls back to the mods
+	// this row last showed while it was (`cachedMods`, 0 = none seen yet).
+	// Either way our change stacks onto the base, not onto the modded total --
+	// expected = unmodified + base * (amount - 1), the same rule
+	// ComposedAttribute::Compute applies.
+	struct MultiplyReadout
+	{
+		bool  live       = false;
+		float base       = 1.0f;   // live only
+		float unmodified = 1.0f;   // live only
+		float game       = 1.0f;   // live only
+		float cachedMods = 0.0f;   // not live only
+		float amount     = 1.0f;   // the row's slider value
+		bool  active     = false;  // is the row applied (amount differs from its default)
+		float realBase   = 0.0f;   // the stat's real base; 0 = none known, stay a bare multiplier
+	};
+
+	inline void SetMultiplyReadout(RowSpec& spec, const MultiplyReadout& r)
+	{
+		const float base       = r.live ? r.base       : 1.0f;
+		const float unmodified = r.live ? r.unmodified : (1.0f + r.cachedMods);
+		const float oursDelta  = r.active ? (r.amount - 1.0f) : 0.0f;
+		const float expected   = unmodified + base * oursDelta;
+		const float scale      = (r.realBase > 0.0f) ? r.realBase : 1.0f;
+
+		spec.showLive   = true;
+		spec.estimate   = !r.live;
+		spec.hasBase    = true;
+		spec.hasOurs    = true;
+		spec.base       = base * scale;
+		spec.unmodified = unmodified * scale;
+		spec.expected   = expected * scale;
+		spec.game       = (r.live ? r.game : expected) * scale;
+		spec.ours       = base * oursDelta * scale;
+	}
 
 	struct RowResult
 	{
@@ -388,7 +435,7 @@ namespace BetterCheats::UI
 			imgui->SameLine(spec.labelReserve, 0.0f);
 			RenderLiveValue(imgui, spec.expected, spec.game, spec.composing, spec.hasBase,
 				spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel,
-				spec.hasOurs, spec.ours, spec.estimate);
+				spec.hasOurs, spec.ours, spec.estimate, spec.estimateNote);
 		}
 
 		if (!spec.openFlag && spec.padForArrow)
