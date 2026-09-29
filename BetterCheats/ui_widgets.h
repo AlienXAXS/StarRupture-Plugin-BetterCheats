@@ -359,6 +359,11 @@ namespace BetterCheats::UI
 
 		imgui->TableSetColumnIndex(0);
 
+		// The slider, number box and reset button in this row are frame-height;
+		// without this the label sits at the top of the cell, a few pixels above
+		// their text.
+		imgui->AlignTextToFramePadding();
+
 		if (spec.depth > 0)
 			imgui->Indent(frameH * static_cast<float>(spec.depth));
 
