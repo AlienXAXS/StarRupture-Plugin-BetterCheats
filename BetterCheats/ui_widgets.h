@@ -321,6 +321,7 @@ namespace BetterCheats::UI
 		bool        active         = true;
 		bool        disableSlider  = false;
 		float       sliderWidthCap = 0.0f;   // 0 = GetSliderWidthCap(imgui)
+		bool        wholeNumbers   = false;  // round a typed value too, not just the slider's
 
 		// Disclosure arrow / indent (Movement only -- weapons leaves these at
 		// their defaults, which draws a flat, unindented row).
@@ -424,6 +425,7 @@ namespace BetterCheats::UI
 
 		if (changed)
 		{
+			if (spec.wholeNumbers) *spec.value = std::round(*spec.value);
 			if (*spec.value < spec.minValue) *spec.value = spec.minValue;
 			if (*spec.value > spec.maxValue) *spec.value = spec.maxValue;
 			result.changed = true;

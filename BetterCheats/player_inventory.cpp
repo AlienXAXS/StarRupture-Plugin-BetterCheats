@@ -727,19 +727,22 @@ namespace BetterCheats::Panels::Inventory
 		std::vector<int>         g_filteredStackIndices;
 		bool                     g_onlyShowChangedStacks = false;
 
-		constexpr int   kStackFloor      = 1;
-		constexpr int   kStackCeiling    = 1000000;  // sanity clamp on the multiplier's result --
-		                                              // same spirit as player_weapons.cpp's kMagazineCeiling
-		constexpr float kStackMultDefault = 1.0f;
-		constexpr float kStackMultMin     = 0.10f;
-		constexpr float kStackMultMax     = 20.0f;
+		// Every tier sets an absolute stack size, and a size only ever RAISES
+		// an item: one whose own MaxStack is already higher keeps it, so no
+		// setting can shrink a cap below what a player is already holding.
+		// That makes 1 the global "off" value. MaxStack is a plain int32
+		// with no engine-side limit; 9999 keeps the slider usable and the
+		// count readable in an inventory slot.
+		constexpr int kStackFloor   = 1;
+		constexpr int kStackCeiling = 9999;
+		constexpr int kStackSizeOff = kStackFloor;
 
-		std::atomic<float> g_stackMultiplier{ kStackMultDefault };
+		std::atomic<int> g_stackSize{ kStackSizeOff };
 
 		// Per-item override, keyed by the item's true UniqueItemName (an exact
 		// in-memory key, distinct from the sanitized string used for
-		// SessionConfig paths below). Absent = no override, follow the global
-		// multiplier. Guarded because RenderImGui (render thread) writes it and
+		// SessionConfig paths below). Absent = no override, follow the category
+		// and global tiers. Guarded because RenderImGui (render thread) writes it and
 		// Tick() (game thread) reads it every tick.
 		std::mutex                           g_overrideMutex;
 		std::unordered_map<std::string, int> g_stackOverrides;
@@ -811,9 +814,11 @@ namespace BetterCheats::Panels::Inventory
 			return value;
 		}
 
-		int MultiplierDefaultFor(int originalMaxStack, float multiplier)
+		// What a tier's size means for one item: the size, but never below the
+		// item's own original.
+		int RaiseOnly(int originalMaxStack, int size)
 		{
-			return ClampStackValue(static_cast<int>(static_cast<float>(originalMaxStack) * multiplier + 0.5f));
+			return (std::max)(originalMaxStack, ClampStackValue(size));
 		}
 
 		// EUIItemType's own enum names, not a raw/crafted/building/consumable
@@ -856,20 +861,26 @@ namespace BetterCheats::Panels::Inventory
 			return false;
 		}
 
+		// The category tier's size for one item, or the global one while the
+		// category has no override.
+		int CategorySizeFor(const StackEntry& e, int globalSize,
+			const std::unordered_map<int, int>& categoryOverrides)
+		{
+			auto catIt = categoryOverrides.find(static_cast<int>(e.category));
+			return (catIt != categoryOverrides.end()) ? catIt->second : globalSize;
+		}
+
 		// Per-item override, keyed by the item's true UniqueItemName -- the
 		// innermost, most-specific tier. Absent = no item-level override,
 		// inherit the category tier below.
-		int EffectiveStackFor(const StackEntry& e, float globalMultiplier,
-			const std::unordered_map<int, float>& categoryOverrides,
+		int EffectiveStackFor(const StackEntry& e, int globalSize,
+			const std::unordered_map<int, int>& categoryOverrides,
 			const std::unordered_map<std::string, int>& itemOverrides)
 		{
 			auto itemIt = itemOverrides.find(e.uniqueName);
-			if (itemIt != itemOverrides.end())
-				return ClampStackValue(itemIt->second);
-
-			auto catIt = categoryOverrides.find(static_cast<int>(e.category));
-			const float categoryMultiplier = (catIt != categoryOverrides.end()) ? catIt->second : globalMultiplier;
-			return MultiplierDefaultFor(e.originalMaxStack, categoryMultiplier);
+			const int size = (itemIt != itemOverrides.end()) ? itemIt->second
+			                                                 : CategorySizeFor(e, globalSize, categoryOverrides);
+			return RaiseOnly(e.originalMaxStack, size);
 		}
 
 		// Persisted as one array of {uniqueName, value} objects -- the same
@@ -918,11 +929,11 @@ namespace BetterCheats::Panels::Inventory
 		// value, so a future game patch that reorders EUIItemType doesn't
 		// silently remap a saved override onto the wrong category.
 		std::mutex                     g_categoryMutex;
-		std::unordered_map<int, float> g_categoryOverrides;   // key: static_cast<int>(EUIItemType)
+		std::unordered_map<int, int> g_categoryOverrides;   // key: static_cast<int>(EUIItemType)
 
 		void PersistCategoryOverrides()
 		{
-			std::unordered_map<int, float> snapshot;
+			std::unordered_map<int, int> snapshot;
 			{
 				std::lock_guard<std::mutex> lock(g_categoryMutex);
 				snapshot = g_categoryOverrides;
@@ -931,10 +942,10 @@ namespace BetterCheats::Panels::Inventory
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& kv : snapshot)
 				arr.push_back({ {"category", CategoryLabel(static_cast<SDK::EUIItemType>(kv.first))}, {"value", kv.second} });
-			SessionConfig::Set("playerInventory.stacks.categoryOverrides", arr);
+			SessionConfig::Set("playerInventory.stacks.categorySizes", arr);
 		}
 
-		void SetCategoryOverride(SDK::EUIItemType category, float value)
+		void SetCategoryOverride(SDK::EUIItemType category, int value)
 		{
 			{
 				std::lock_guard<std::mutex> lock(g_categoryMutex);
@@ -977,14 +988,14 @@ namespace BetterCheats::Panels::Inventory
 			g_filteredStackIndices.clear();
 
 			const std::string needle     = ToLowerAsciiStack(g_stackSearchBuf);
-			const float       multiplier = g_stackMultiplier.load();
+			const int         globalSize = g_stackSize.load();
 
 			std::unordered_map<std::string, int> overrides;
 			{
 				std::lock_guard<std::mutex> lock(g_overrideMutex);
 				overrides = g_stackOverrides;
 			}
-			std::unordered_map<int, float> categoryOverrides;
+			std::unordered_map<int, int> categoryOverrides;
 			{
 				std::lock_guard<std::mutex> lock(g_categoryMutex);
 				categoryOverrides = g_categoryOverrides;
@@ -998,7 +1009,7 @@ namespace BetterCheats::Panels::Inventory
 
 				if (g_onlyShowChangedStacks)
 				{
-					const int effective = EffectiveStackFor(e, multiplier, categoryOverrides, overrides);
+					const int effective = EffectiveStackFor(e, globalSize, categoryOverrides, overrides);
 					if (effective == e.originalMaxStack)
 						continue;
 				}
@@ -1064,7 +1075,7 @@ namespace BetterCheats::Panels::Inventory
 						else
 						{
 							// Before the session config loads nothing is scaled
-							// (the multiplier and overrides are still defaults),
+							// (every size and override is still a default),
 							// so the current value serves until the rescan that
 							// ApplySavedConfig requests captures the real one.
 							int original = item->MaxStack;
@@ -1138,7 +1149,7 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		// Game thread only. Writes MaxStack for every stackable item whose
-		// effective value (override, or the global multiplier applied to its
+		// effective value (the most specific tier's size, never below the
 		// captured original) differs from that original -- never touches
 		// DoNotStack items at all. Cheap: this walks the already-resolved list,
 		// no asset-registry work here, so running it every tick is fine.
@@ -1147,13 +1158,13 @@ namespace BetterCheats::Panels::Inventory
 			if (g_stackItemsGameThread.empty())
 				return;
 
-			const float multiplier = g_stackMultiplier.load();
+			const int globalSize = g_stackSize.load();
 			std::unordered_map<std::string, int> overrides;
 			{
 				std::lock_guard<std::mutex> lock(g_overrideMutex);
 				overrides = g_stackOverrides;
 			}
-			std::unordered_map<int, float> categoryOverrides;
+			std::unordered_map<int, int> categoryOverrides;
 			{
 				std::lock_guard<std::mutex> lock(g_categoryMutex);
 				categoryOverrides = g_categoryOverrides;
@@ -1178,7 +1189,7 @@ namespace BetterCheats::Panels::Inventory
 						continue;
 					}
 
-					const int  desired = EffectiveStackFor(e, multiplier, categoryOverrides, overrides);
+					const int  desired = EffectiveStackFor(e, globalSize, categoryOverrides, overrides);
 					const bool active  = desired != e.originalMaxStack;
 
 					state.item.Set(item);
@@ -1223,12 +1234,12 @@ namespace BetterCheats::Panels::Inventory
 			}
 		}
 
-		// Render thread. Global multiplier row, search + "only show changed"
+		// Render thread. Global size row, category rows, search + "only show changed"
 		// filter, then a scrolled table of every filtered item -- follows the
 		// same shared-row-helper shape as player_weapons.cpp's tables, and the
 		// same scrolled-list-with-a-search-box shape as player_items.cpp's Item
 		// Spawner. g_filteredStackIndices is only ever rebuilt on an actual
-		// input change (search text, filter toggle, multiplier, an override),
+		// input change (search text, filter toggle, a size, an override),
 		// never every frame -- "hundreds of items" is fine to filter on demand,
         // not fine to re-filter every single frame for no reason.
 		void RenderItemStackSizes(IModLoaderImGui* imgui)
@@ -1239,6 +1250,8 @@ namespace BetterCheats::Panels::Inventory
 			imgui->TextDisabled("Applies to new stacks only -- items already stacked keep their\n"
 			                    "current cap until picked up, split, or merged again. Items that\n"
 			                    "don't stack at all are shown but can't be changed here.");
+			imgui->TextDisabled("A size only raises a stack: an item that already stacks higher\n"
+			                    "keeps its own size.");
 			imgui->Spacing();
 
 			AdoptPendingStackItemsIfReady();
@@ -1253,7 +1266,7 @@ namespace BetterCheats::Panels::Inventory
 
 			// No built-in presets here, so saved presets sit at the very top --
 			// same "above every control" position every group uses. One "Inventory"
-			// group covers all three tiers in one save/load: the global multiplier,
+			// group covers all three tiers in one save/load: the global size,
 			// every category (keyed by label, same future-proofing as
 			// PersistCategoryOverrides -- a game patch reordering EUIItemType must
 			// not remap a saved override onto the wrong category), and every item
@@ -1267,7 +1280,7 @@ namespace BetterCheats::Panels::Inventory
 
 				std::vector<std::string> categoryKeys(g_stackCategories.size());
 				for (size_t i = 0; i < g_stackCategories.size(); ++i)
-					categoryKeys[i] = std::string("category:") + CategoryLabel(g_stackCategories[i]);
+					categoryKeys[i] = std::string("categorySize:") + CategoryLabel(g_stackCategories[i]);
 
 				std::vector<std::string> itemKeys(g_stackItems.size());
 				for (size_t i = 0; i < g_stackItems.size(); ++i)
@@ -1278,7 +1291,7 @@ namespace BetterCheats::Panels::Inventory
 
 				auto getLive = [&](BetterCheats::PresetStore::Field* out)
 				{
-					std::unordered_map<int, float> categoryOverrides;
+					std::unordered_map<int, int> categoryOverrides;
 					{
 						std::lock_guard<std::mutex> lock(g_categoryMutex);
 						categoryOverrides = g_categoryOverrides;
@@ -1290,12 +1303,12 @@ namespace BetterCheats::Panels::Inventory
 					}
 
 					int idx = 0;
-					out[idx++] = { "multiplier", g_stackMultiplier.load() };
+					out[idx++] = { "size", static_cast<float>(g_stackSize.load()) };
 
 					for (size_t i = 0; i < g_stackCategories.size(); ++i)
 					{
 						const auto it = categoryOverrides.find(static_cast<int>(g_stackCategories[i]));
-						out[idx++] = { categoryKeys[i].c_str(), it != categoryOverrides.end() ? it->second : -1.0f };
+						out[idx++] = { categoryKeys[i].c_str(), it != categoryOverrides.end() ? static_cast<float>(it->second) : -1.0f };
 					}
 					for (size_t i = 0; i < g_stackItems.size(); ++i)
 					{
@@ -1308,9 +1321,9 @@ namespace BetterCheats::Panels::Inventory
 					int idx = 0;
 					if (idx < count)
 					{
-						const float mult = f[idx].value;
-						g_stackMultiplier.store(mult);
-						SessionConfig::Set("playerInventory.stacks.multiplier", mult);
+						const int size = ClampStackValue(static_cast<int>(f[idx].value + 0.5f));
+						g_stackSize.store(size);
+						SessionConfig::Set("playerInventory.stacks.globalSize", size);
 					}
 					++idx;
 
@@ -1319,7 +1332,7 @@ namespace BetterCheats::Panels::Inventory
 						if (idx >= count) break;
 						const float v = f[idx].value;
 						if (v < 0.0f) ClearCategoryOverride(cat);
-						else          SetCategoryOverride(cat, v);
+						else          SetCategoryOverride(cat, ClampStackValue(static_cast<int>(v + 0.5f)));
 						++idx;
 					}
 					for (const StackEntry& e : g_stackItems)
@@ -1327,7 +1340,7 @@ namespace BetterCheats::Panels::Inventory
 						if (idx >= count) break;
 						const float v = f[idx].value;
 						if (v < 0.0f) ClearStackOverride(e.uniqueName);
-						else          SetStackOverride(e.uniqueName, static_cast<int>(v + 0.5f));
+						else          SetStackOverride(e.uniqueName, ClampStackValue(static_cast<int>(v + 0.5f)));
 						++idx;
 					}
 					RefreshFilteredStackItems();
@@ -1340,37 +1353,42 @@ namespace BetterCheats::Panels::Inventory
 			}
 			imgui->Spacing();
 
-			// ---- global multiplier -------------------------------------------
-			float multiplier = g_stackMultiplier.load();
-			if (imgui->BeginTable("##stack_mult_table", 3, kTableFlags))
+			// ---- global size -----------------------------------------------------
+			int globalSize = g_stackSize.load();
+			if (imgui->BeginTable("##stack_size_table", 3, kTableFlags))
 			{
-				const float multLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
-					[](int) { return "Stack size multiplier"; });
+				const float sizeLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
+					[](int) { return "Stack size"; });
 
 				imgui->TableSetupColumn("Attribute", kColumnFixed,
-					BetterCheats::UI::GetReadoutColumnWidth(imgui, multLabelReserve));
+					BetterCheats::UI::GetReadoutColumnWidth(imgui, sizeLabelReserve));
 				imgui->TableSetupColumn("Value", 0, 0.54f);
 				imgui->TableSetupColumn("",      0, 0.10f);
 
 				imgui->TableNextRow(0, 0.0f);
 
+				float sizeValue = static_cast<float>(globalSize);
+
 				BetterCheats::UI::RowSpec spec;
-				spec.label        = "Stack size multiplier";
-				spec.tooltip      = "Multiplies every stackable item's captured original MaxStack.\n"
-				                    "A per-item override below replaces this for that one item.";
-				spec.value        = &multiplier;
-				spec.minValue     = kStackMultMin;
-				spec.maxValue     = kStackMultMax;
-				spec.step         = 0.10f;
-				spec.format       = "%.2fx";
-				spec.resetValue   = kStackMultDefault;
-				spec.active       = BetterCheats::DiffersFromDefault(multiplier, kStackMultDefault);
-				spec.labelReserve = multLabelReserve;
+				spec.label        = "Stack size";
+				spec.tooltip      = "Every stackable item stacks to at least this many.\n"
+				                    "Items that already stack higher keep their own size; 1 = off.\n"
+				                    "A category or per-item size below replaces this.";
+				spec.value        = &sizeValue;
+				spec.minValue     = static_cast<float>(kStackFloor);
+				spec.maxValue     = static_cast<float>(kStackCeiling);
+				spec.step         = 1.0f;
+				spec.format       = "%.0f";
+				spec.wholeNumbers = true;
+				spec.resetValue   = static_cast<float>(kStackSizeOff);
+				spec.active       = globalSize != kStackSizeOff;
+				spec.labelReserve = sizeLabelReserve;
 
 				if (BetterCheats::UI::BuildRow(imgui, spec).changed)
 				{
-					g_stackMultiplier.store(multiplier);
-					SessionConfig::Set("playerInventory.stacks.multiplier", multiplier);
+					globalSize = static_cast<int>(sizeValue);
+					g_stackSize.store(globalSize);
+					SessionConfig::Set("playerInventory.stacks.globalSize", globalSize);
 					RefreshFilteredStackItems();
 				}
 
@@ -1382,7 +1400,7 @@ namespace BetterCheats::Panels::Inventory
 			// ---- category tier --------------------------------------------------
 			// One row per category actually present in the scan (EUIItemType --
 			// the game's own item-type field, see the StackEntry::category
-			// comment). Inherits the global multiplier until explicitly
+			// comment). Inherits the global size until explicitly
 			// overridden; resetting a category drops it back to inheriting.
 			if (!g_stackCategories.empty() && imgui->BeginTable("##stack_category_table", 3, kTableFlags))
 			{
@@ -1395,7 +1413,7 @@ namespace BetterCheats::Panels::Inventory
 				imgui->TableSetupColumn("Value", 0, 0.54f);
 				imgui->TableSetupColumn("",      0, 0.10f);
 
-				std::unordered_map<int, float> categorySnapshot;
+				std::unordered_map<int, int> categorySnapshot;
 				{
 					std::lock_guard<std::mutex> lock(g_categoryMutex);
 					categorySnapshot = g_categoryOverrides;
@@ -1405,7 +1423,7 @@ namespace BetterCheats::Panels::Inventory
 				{
 					const auto  catIt        = categorySnapshot.find(static_cast<int>(cat));
 					const bool  hasOverride  = catIt != categorySnapshot.end();
-					float       catValue     = hasOverride ? catIt->second : multiplier;
+					float       catValue     = static_cast<float>(hasOverride ? catIt->second : globalSize);
 
 					int itemCount = 0;
 					for (const StackEntry& e : g_stackItems)
@@ -1417,28 +1435,30 @@ namespace BetterCheats::Panels::Inventory
 					char tooltip[192];
 					snprintf(tooltip, sizeof(tooltip),
 						"%d item%s. %s", itemCount, itemCount == 1 ? "" : "s",
-						hasOverride ? "Overrides the global multiplier for this category."
-						            : "Inherits the global multiplier until you change this row.");
+						hasOverride ? "Overrides the global stack size for this category."
+						            : "Inherits the global stack size until you change this row.");
 
 					BetterCheats::UI::RowSpec spec;
 					spec.label        = CategoryLabel(cat);
 					spec.tooltip      = tooltip;
 					spec.value        = &catValue;
-					spec.minValue     = kStackMultMin;
-					spec.maxValue     = kStackMultMax;
-					spec.step         = 0.10f;
-					spec.format       = "%.2fx";
-					spec.resetValue   = multiplier;   // reset = "go back to inheriting global"
+					spec.minValue     = static_cast<float>(kStackFloor);
+					spec.maxValue     = static_cast<float>(kStackCeiling);
+					spec.step         = 1.0f;
+					spec.format       = "%.0f";
+					spec.wholeNumbers = true;
+					spec.resetValue   = static_cast<float>(globalSize);   // reset = "go back to inheriting global"
 					spec.active       = hasOverride;
 					spec.labelReserve = catLabelReserve;
 
 					const BetterCheats::UI::RowResult result = BetterCheats::UI::BuildRow(imgui, spec);
 					if (result.changed)
 					{
-						if (result.resetClicked || BetterCheats::DiffersFromDefault(catValue, multiplier) == false)
+						const int size = static_cast<int>(catValue);
+						if (result.resetClicked || size == globalSize)
 							ClearCategoryOverride(cat);
 						else
-							SetCategoryOverride(cat, catValue);
+							SetCategoryOverride(cat, size);
 						RefreshFilteredStackItems();
 					}
 
@@ -1487,13 +1507,11 @@ namespace BetterCheats::Panels::Inventory
 				std::lock_guard<std::mutex> lock(g_overrideMutex);
 				overrides = g_stackOverrides;
 			}
-			std::unordered_map<int, float> categoryOverrides;
+			std::unordered_map<int, int> categoryOverrides;
 			{
 				std::lock_guard<std::mutex> lock(g_categoryMutex);
 				categoryOverrides = g_categoryOverrides;
 			}
-			const float mult = g_stackMultiplier.load();
-
 			if (imgui->BeginChild("##stack_item_list", -1.0f, listH, false))
 			{
 				const float itemLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui,
@@ -1521,22 +1539,22 @@ namespace BetterCheats::Panels::Inventory
 						// falls back to if its item-level override is reset. May
 						// itself be inheriting global (no category override) or an
 						// explicit category override.
-						const auto  catIt           = categoryOverrides.find(static_cast<int>(e.category));
-						const bool  categoryOverridden = catIt != categoryOverrides.end();
-						const float categoryMultiplier = categoryOverridden ? catIt->second : mult;
-						const int   inherited        = MultiplierDefaultFor(e.originalMaxStack, categoryMultiplier);
+						const bool  categoryOverridden = categoryOverrides.count(static_cast<int>(e.category)) != 0;
+						const int   inherited          = RaiseOnly(e.originalMaxStack,
+							CategorySizeFor(e, globalSize, categoryOverrides));
 
 						const auto  overrideIt   = overrides.find(e.uniqueName);
 						const bool  hasOverride  = overrideIt != overrides.end();
-						float       rowValue     = static_cast<float>(hasOverride ? overrideIt->second : inherited);
+						float       rowValue     = static_cast<float>(hasOverride
+							? RaiseOnly(e.originalMaxStack, overrideIt->second) : inherited);
 
 						imgui->PushIDStr(e.uniqueName.c_str());
 						imgui->TableNextRow(0, 0.0f);
 
 						char tooltip[384];
 						int n = snprintf(tooltip, sizeof(tooltip), "Original: %d", e.originalMaxStack);
-						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nGlobal: x%.2f -> %d",
-							mult, MultiplierDefaultFor(e.originalMaxStack, mult));
+						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nGlobal: %d -> %d",
+							globalSize, RaiseOnly(e.originalMaxStack, globalSize));
 						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nCategory (%s): %s -> %d",
 							CategoryLabel(e.category),
 							categoryOverridden ? "overridden" : "inherits global",
@@ -1551,10 +1569,11 @@ namespace BetterCheats::Panels::Inventory
 						spec.label        = e.name.c_str();
 						spec.tooltip      = tooltip;
 						spec.value        = &rowValue;
-						spec.minValue     = static_cast<float>(kStackFloor);
+						spec.minValue     = static_cast<float>((std::min)(e.originalMaxStack, kStackCeiling));   // raise-only
 						spec.maxValue     = static_cast<float>(kStackCeiling);
 						spec.step         = 1.0f;
 						spec.format       = "%.0f";
+						spec.wholeNumbers = true;
 						spec.resetValue   = static_cast<float>(inherited);
 						spec.active       = e.canStack && hasOverride;
 						spec.disableSlider = !e.canStack;
@@ -1563,7 +1582,7 @@ namespace BetterCheats::Panels::Inventory
 						const BetterCheats::UI::RowResult result = BetterCheats::UI::BuildRow(imgui, spec);
 						if (result.changed && e.canStack)
 						{
-							const int newInt = ClampStackValue(static_cast<int>(rowValue + 0.5f));
+							const int newInt = static_cast<int>(rowValue);
 							if (result.resetClicked || newInt == inherited)
 								ClearStackOverride(e.uniqueName);
 							else
@@ -1687,8 +1706,15 @@ namespace BetterCheats::Panels::Inventory
 		g_baseSlotHeight = 0.0f;
 		g_container.Reset();
 
-		// Item stack sizes.
-		g_stackMultiplier.store(SessionConfig::Get("playerInventory.stacks.multiplier", kStackMultDefault));
+		// Item stack sizes. Sizes replaced the old multipliers; a multiplier
+		// has no single size it maps to, so the old keys are dropped, not
+		// converted.
+		SessionConfig::Remove("playerInventory.stacks.multiplier");
+		SessionConfig::Remove("playerInventory.stacks.categoryOverrides");
+		{
+			const nlohmann::json saved = SessionConfig::Get("playerInventory.stacks.globalSize", kStackSizeOff);
+			g_stackSize.store(ClampStackValue(saved.is_number() ? saved.get<int>() : kStackSizeOff));
+		}
 
 		{
 			std::unordered_map<std::string, int> loaded;
@@ -1700,7 +1726,7 @@ namespace BetterCheats::Panels::Inventory
 					const std::string uniqueName = e.value("uniqueName", std::string());
 					if (uniqueName.empty() || !e.contains("value") || !e["value"].is_number())
 						continue;
-					loaded[uniqueName] = e["value"].get<int>();
+					loaded[uniqueName] = ClampStackValue(e["value"].get<int>());
 				}
 			}
 			std::lock_guard<std::mutex> lock(g_overrideMutex);
@@ -1708,8 +1734,8 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		{
-			std::unordered_map<int, float> loaded;
-			const nlohmann::json arr = SessionConfig::Get("playerInventory.stacks.categoryOverrides", nlohmann::json::array());
+			std::unordered_map<int, int> loaded;
+			const nlohmann::json arr = SessionConfig::Get("playerInventory.stacks.categorySizes", nlohmann::json::array());
 			if (arr.is_array())
 			{
 				for (const auto& e : arr)
@@ -1718,7 +1744,7 @@ namespace BetterCheats::Panels::Inventory
 					SDK::EUIItemType  cat{};
 					if (label.empty() || !e.contains("value") || !e["value"].is_number() || !CategoryFromLabel(label, cat))
 						continue;
-					loaded[static_cast<int>(cat)] = e["value"].get<float>();
+					loaded[static_cast<int>(cat)] = ClampStackValue(e["value"].get<int>());
 				}
 			}
 			std::lock_guard<std::mutex> lock(g_categoryMutex);

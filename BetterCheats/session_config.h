@@ -36,6 +36,11 @@ namespace BetterCheats::SessionConfig
 	// same lock Commit() uses.
 	void Set(const std::string& path, const nlohmann::json& value);
 
+	// Drops the value at a dot-separated path, in memory only, the same way
+	// Set() stages a write -- for a key a newer build no longer reads. No-op
+	// if the path doesn't exist or no session is loaded.
+	void Remove(const std::string& path);
+
 	// Persists the in-memory config to disk if something staged by Set() is
 	// still pending, atomically (temp file, then replace). Debounced so a
 	// slider held down for a second doesn't turn into a write per frame --

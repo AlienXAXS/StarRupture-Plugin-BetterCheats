@@ -287,6 +287,22 @@ namespace BetterCheats::SessionConfig
 		LOG_DEBUG("SessionConfig: staged '%s' = %s for the next commit.", path.c_str(), value.dump().c_str());
 	}
 
+	void Remove(const std::string& path)
+	{
+		std::lock_guard<std::mutex> lock(g_mutex);
+		if (!g_loaded)
+			return;
+
+		const auto pointer = ToJsonPointer(path);
+		if (!g_data.contains(pointer))
+			return;
+
+		g_data[pointer.parent_pointer()].erase(pointer.back());
+		g_dirty = true;
+
+		LOG_DEBUG("SessionConfig: staged removal of '%s' for the next commit.", path.c_str());
+	}
+
 	void Commit(bool force)
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
