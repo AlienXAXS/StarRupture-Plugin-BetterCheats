@@ -446,7 +446,7 @@ namespace BetterCheats::Panels::Movement
 		std::atomic<bool> g_loggedTickFill{ false };
 		std::atomic<bool> g_loggedRender{ false };
 
-		// Per-row "expected = game" / "expected != game" readout, indexed like
+		// Per-row expected/game live readout, indexed like
 		// kAttrs/g_composedAttrs. `game` is CurrentValue read fresh at the start of
 		// this tick, before we touch it; `expected` is what we intend it to be (the
 		// composed result while active, or `game` itself while inactive). Compared
@@ -470,7 +470,7 @@ namespace BetterCheats::Panels::Movement
 		std::atomic<float> g_dbgStaminaCurrent{ -1.0f };
 		std::atomic<float> g_dbgStaminaMax    { -1.0f };
 
-		// Applies one row and records its "expected = game" readout. Captures game
+		// Applies one row and records its expected/game live readout. Captures game
 		// (fresh CurrentValue) and, when the row was already active, the previous
 		// write BEFORE calling Apply -- comparing pre-write is what makes a lasting
 		// mismatch mean something instead of trivially matching what we just wrote.
@@ -601,7 +601,7 @@ namespace BetterCheats::Panels::Movement
 		std::atomic<bool>  g_rawValuesInit{ false };
 		std::atomic<bool>  g_rawBaselineReady{ false };
 
-		// "expected = game" readout for the raw rows, same contract as
+		// Expected/game live readout for the raw rows, same contract as
 		// g_dbgAttrGame/g_dbgAttrExpected above (see that comment). kRawMaxEnergy's
 		// slot is filled from g_composedMaxEnergy instead of baseline*multiplier,
 		// since that row composes rather than writing a captured baseline.
@@ -751,7 +751,7 @@ namespace BetterCheats::Panels::Movement
 
 			// Compared before every write below: once a row settles, re-deriving the
 			// same target value every tick is a write the game never asked for. Each
-			// row also records "expected = game" for the live-values readout --
+			// row also records expected/game for the live-values readout --
 			// `want` while active (what we intend), the field's own pre-write value
 			// while inactive (we intend nothing, so the game's own value IS expected).
 			for (int i = 0; i < kCompBindCount; ++i)

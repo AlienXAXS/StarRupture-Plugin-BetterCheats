@@ -455,7 +455,7 @@ namespace BetterCheats::Panels::Weapons
 		std::atomic<float> g_dbgWeaponBaseMagazine     { -1.0f };
 		std::atomic<float> g_dbgWeaponBaseRange        { -1.0f };
 
-		// Per-row "expected = game" / "expected != game" readout, indexed like
+		// Per-row expected/game live readout, indexed like
 		// kAttrs/g_composed. `game` is CurrentValue read fresh at the start of this
 		// tick, before we touch it; `expected` is what we intend it to be (the
 		// composed result while active, or `game` itself while inactive). Compared

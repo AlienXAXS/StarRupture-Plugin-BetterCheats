@@ -104,8 +104,17 @@ namespace BetterCheats::UI
 		}
 	}
 
-	// Draws "<expected> = <game>" in blue on a match, "<expected> != <game>" in
-	// red otherwise, plus a "+<tagWord>" note in accent orange when `hasBase` and
+	// Live-readout colours, pushed as ImGuiCol_Text around the one number
+	// RenderLiveValue draws. The blue is Dear ImGui's own stock accent (its
+	// default dark style's CheckMark/TextLink), the same one the Item
+	// Spawner's selected row uses.
+	constexpr int   kColText         = 0;   // ImGuiCol_Text
+	constexpr float kLiveBlue[3]     = { 0.26f,  0.59f,  0.98f  };
+	constexpr float kMismatchRed[3]  = { 0.878f, 0.282f, 0.282f };   // #E04848
+
+	// Draws one number: the live game value in blue while it matches what the
+	// row intends, in red while it doesn't, plus a "+<tagWord>" note in accent
+	// orange when `hasBase` and
 	// `base` (BaseValue, which we never write) differs from `unmodified` (the
 	// game's own aggregate, LEMs/buffs/attachments included, with our own change
 	// excluded) -- i.e. something external is contributing to this attribute.
@@ -146,49 +155,35 @@ namespace BetterCheats::UI
 	//   Live in game: <game>
 	//
 	// `estimate` (a weapon/item not currently equipped/active, so there is no
-	// live game read to compare against) swaps the blue/red match colour for
-	// the theme's own disabled-text colour (GetStyleColorVec4, not a
-	// hand-picked RGB -- see ImGuiCol_TextDisabled below) and drops the
-	// trailing "Live in game" tooltip line for a one-line "estimated" note.
+	// live game read to compare against) draws `expected` instead, in the
+	// theme's own disabled-text colour, and swaps the trailing "Live in game"
+	// tooltip line for a one-line "estimated" note.
 	// Every other line (Base/Mods & buffs/Ours/Result) is unchanged: callers
 	// feed `base`/`unmodified`/`ours` from the last mods this row saw while
 	// it WAS live, so the breakdown still adds up, just without a fresh game
 	// read to confirm it against.
-	//
-	// ASCII "!=" and "->" rather than U+2260/U+2192 -- the loader's baked font
-	// ranges (imgui_backend.cpp) stop at Latin-1/Cyrillic plus a CJK merge that
-	// doesn't cover Mathematical Operators or Arrows either, so the real glyphs
-	// would render as "?".
 	inline void RenderLiveValue(IModLoaderImGui* imgui, float expected, float game,
 	                             bool active, bool hasBase, float base, float unmodified,
 	                             const char* changeDesc, const char* tagWord, const char* baseLabel,
 	                             bool hasOurs = false, float ours = 0.0f, bool estimate = false)
 	{
-		char e[32], line[80];
-		FormatLiveValue(e, sizeof(e), expected);
-
 		const bool showTag = hasBase && !LiveValuesMatch(base, unmodified);
 
 		imgui->BeginGroup();
 		if (estimate)
 		{
-			// ImGuiCol_TextDisabled == 1 in every Dear ImGui version this loader
-			// has shipped -- the enum's first two entries (Text, TextDisabled)
-			// have never been reordered. Reusing the theme's own disabled-text
-			// colour here (rather than a hand-picked grey) is what keeps this
-			// "not live" tint matching whatever palette/theme is active.
-			float dr = 0.0f, dg = 0.0f, db = 0.0f, da = 1.0f;
-			imgui->GetStyleColorVec4(1, &dr, &dg, &db, &da);
-			imgui->TextColored(dr, dg, db, da, e);
+			char e[32];
+			FormatLiveValue(e, sizeof(e), expected);
+			imgui->TextDisabled(e);
 		}
 		else
 		{
 			char g[32];
 			FormatLiveValue(g, sizeof(g), game);
-			const bool match = LiveValuesMatch(expected, game);
-			snprintf(line, sizeof(line), "%s %s %s", e, match ? "=" : "!=", g);
-			if (match) imgui->TextColored(0.310f, 0.639f, 0.878f, 1.0f, line);   // #4FA3E0
-			else       imgui->TextColored(0.878f, 0.282f, 0.282f, 1.0f, line);   // #E04848
+			const float* col = LiveValuesMatch(expected, game) ? kLiveBlue : kMismatchRed;
+			imgui->PushStyleColor(kColText, col[0], col[1], col[2], 1.0f);
+			imgui->Text(g);
+			imgui->PopStyleColor(1);
 		}
 		if (showTag)
 		{
@@ -286,7 +281,7 @@ namespace BetterCheats::UI
 	constexpr int kColumnWidthFixed = 1 << 4;
 
 	// Column-0 (Attribute) width wide enough for the longest label AND the
-	// live-values readout next to it -- "<label>   <expected> = <game> +tag" --
+	// live-values readout next to it -- "<label>   <value> +tag" --
 	// so BuildRow's readout can never clip against column 1. `labelReserve` is
 	// PrescanLabelWidth's own result (where the readout starts); this adds room
 	// for a representative worst-case readout plus the tag word (RenderLiveValue
@@ -294,7 +289,7 @@ namespace BetterCheats::UI
 	inline float GetReadoutColumnWidth(IModLoaderImGui* imgui, float labelReserve)
 	{
 		float readoutW = 0.0f, tagW = 0.0f, h = 0.0f;
-		imgui->CalcTextSize("-888.88 = -888.88", &readoutW, &h, false, -1.0f);
+		imgui->CalcTextSize("-888.88", &readoutW, &h, false, -1.0f);
 		imgui->CalcTextSize(" +mods", &tagW, &h, false, -1.0f);   // same width as " +buff"
 		return labelReserve + readoutW + tagW + imgui->GetFrameHeight() * 0.5f;
 	}
