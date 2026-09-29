@@ -896,22 +896,17 @@ namespace BetterCheats::Panels::Weapons
 		// (see ResolveWeaponBaseFields) -- 0 if that hasn't happened yet, or if
 		// this row has no such field (kAttrHasRealBase false).
 		//
-		// Fire Rate: RoundsPerMinute.Value is a per-shot INTERVAL in seconds
-		// despite its name, not a literal rounds-per-minute count -- a rifle
-		// read back ~0.13 there, which is nonsensical as RPM (real rifles are
-		// several hundred) but exactly a plausible reload... no, fire interval
-		// (60 / 0.13 =~ 461 RPM, a believable rifle rate). Unverified against
-		// engine source (Dumper-7 gives signatures, not bodies); worth a
-		// once-over in game -- does raising the Fire Rate slider move this
-		// readout the direction you'd expect?
+		// Fire Rate: RoundsPerMinute.Value is a per-shot interval in seconds
+		// despite its name, not a rounds-per-minute count -- a rifle reads
+		// ~0.13 there, i.e. 60 / 0.13 =~ 461 RPM. The engine source isn't
+		// available (the SDK dump has signatures, not bodies), so this reading
+		// is inferred from observed values.
 		//
 		// Reload Speed: ReloadTime.Value is shown multiplied by the slider
-		// (real = base x effective multiplier) exactly like every other row
-		// here, per spec -- also unverified whether the game applies
-		// ReloadSpeedModMultiplier the same direction (a "higher is faster"
-		// tooltip on a value that reads as a duration would want an inverse
-		// relationship instead). Flagging both here rather than guessing;
-		// see the owner-facing report for what to check in game.
+		// (real = base x effective multiplier), like every other row here. It
+		// is not confirmed whether the game applies ReloadSpeedModMultiplier
+		// to the duration directly or inversely ("higher is faster" on a
+		// duration would want the inverse).
 		float RealBaseForAttr(const Profile& profile, int a)
 		{
 			if (!profile.baseResolved) return 0.0f;
