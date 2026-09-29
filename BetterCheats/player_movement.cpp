@@ -963,7 +963,7 @@ namespace BetterCheats::Panels::Movement
 		}
 
 		// ---------------------------------------------------------------------
-		// Saved presets (PresetStore-backed) -- the owner's own tweaks,
+		// Saved presets (PresetStore-backed) -- the player's own tweaks,
 		// named and kept apart from the built-in kPresets above. One "Movement"
 		// group covers every row, GAS and raw, in kAttrs/kRaws index order
 		// (GetLiveMovementFields/ApplyMovementFields must stay in that same
@@ -1621,6 +1621,7 @@ namespace BetterCheats::Panels::Movement
 			// Row 3: Fly Speed
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
+			imgui->AlignTextToFramePadding();
 			imgui->Text("Fly Speed Multiplier");
 			imgui->TableSetColumnIndex(1);
 			imgui->SetNextItemWidth(BetterCheats::UI::GetSliderWidthCap(imgui));

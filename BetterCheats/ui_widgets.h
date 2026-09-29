@@ -475,10 +475,15 @@ namespace BetterCheats::UI
 		// InputFloat draws [text][-][+]. Measure the widest value this row can
 		// actually show rather than guessing a pixel count -- the loader's
 		// FontScale is user-configurable, so anything hardcoded clips at some scale.
+		// Never narrower than a typical multiplier ("-88.88x"), so a whole-number
+		// row keeps its -/+ in the same column as the multiplier rows beside it.
 		char widest[32];
 		snprintf(widest, sizeof(widest), spec.format, (spec.maxValue >= 100.0f) ? -888.0f : -88.88f);
 		float textW = 0.0f, textH = 0.0f;
 		imgui->CalcTextSize(widest, &textW, &textH, false, -1.0f);
+		float typicalW = 0.0f;
+		imgui->CalcTextSize("-88.88x", &typicalW, &textH, false, -1.0f);
+		if (textW < typicalW) textW = typicalW;
 
 		const float numBoxW = textW + (frameH * 2.0f) + (frameH * 0.9f); // text + 2 steppers + padding
 		const float cap     = (spec.sliderWidthCap > 0.0f) ? spec.sliderWidthCap : GetSliderWidthCap(imgui);
