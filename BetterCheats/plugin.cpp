@@ -3,6 +3,7 @@
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "preset_store.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -12,15 +13,42 @@
 #include "player_movement.h"
 #include "player_skills.h"
 #include "player_tools.h"
+#include "player_weapons.h"
 #include "world_wave.h"
 #include "world_corporations.h"
 #include "machine_power.h"
 #include "enemies.h"
 #include "dev_menus.h"
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <cstdio>
+#include <cstring>
+
 static IPluginSelf* g_self = nullptr;
 
 IPluginSelf* GetSelf() { return g_self; }
+
+// Mirrors BetterDrone's own GetPresetsFilePath (drone_ui.cpp) -- resolves
+// this DLL's own directory (not the working directory, which the loader
+// doesn't guarantee) and appends config\BetterCheats-Presets.ini, matching
+// the sibling BetterDrone-Presets.ini path convention.
+static void GetPresetsFilePath(char* outPath, size_t outSize)
+{
+	HMODULE module = nullptr;
+	GetModuleHandleExA(
+		GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		reinterpret_cast<LPCSTR>(&GetPresetsFilePath), &module);
+
+	char path[MAX_PATH] = {};
+	GetModuleFileNameA(module, path, MAX_PATH);
+
+	char* lastSlash = strrchr(path, '\\');
+	if (lastSlash)
+		*lastSlash = '\0';
+
+	snprintf(outPath, outSize, "%s\\config\\BetterCheats-Presets.ini", path);
+}
 
 #ifndef MODLOADER_BUILD_TAG
 #define MODLOADER_BUILD_TAG "dev"
@@ -39,6 +67,17 @@ static PluginInfo s_pluginInfo = {
 static void OnToggleMenuPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 {
 	BetterCheats::CheatMenu::Toggle();
+}
+
+// Escape and Q (the game's own close/cancel key) both close the menu like any
+// other overlay's dismiss keys. Registered by enum, not RegisterKeybindByName:
+// they're a universal convention, not a user rebind, so neither should show up
+// as a setting on the loader's config page. Plain RegisterKeybind is
+// non-blocking by default (see keybind_registry.cpp's blocking map), so Q still
+// reaches the game whenever the panel is closed.
+static void OnCloseKeyPressed(EModKey /*key*/, EModKeyEvent /*event*/)
+{
+	BetterCheats::CheatMenu::RequestClose();
 }
 
 // Fires once a save is fully loaded into the world — reload this session's
@@ -60,15 +99,29 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Inventory::ApplySavedConfig();
 	BetterCheats::Panels::Movement::ApplySavedConfig();
 	BetterCheats::Panels::Tools::ApplySavedConfig();
+	BetterCheats::Panels::Weapons::ApplySavedConfig();
 	BetterCheats::Panels::Power::ApplySavedConfig();
 	BetterCheats::Panels::Wave::ApplySavedConfig();
 	BetterCheats::Panels::Enemies::ApplySavedConfig();
+}
+
+// PluginGameThreadCallback wrapper for the hot-reload path above.
+static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
+{
+	OnExperienceLoadComplete();
 }
 
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
 {
+	// Applies a pending Escape/Q close request. Must run here, on the game
+	// tick, never from inside the panel's own render callback -- see
+	// CheatMenu::TickPendingClose for why. Runs before the ChimeraMain/cheats
+	// gate below: closing the menu must still work even if the player left
+	// single-player or the world unloaded out from under an open panel.
+	BetterCheats::CheatMenu::TickPendingClose();
+
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
 
@@ -84,6 +137,7 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::Panels::Movement::Tick(deltaSeconds);
 	BetterCheats::Panels::Skills::Tick(deltaSeconds);
 	BetterCheats::Panels::Tools::Tick(deltaSeconds);
+	BetterCheats::Panels::Weapons::Tick(deltaSeconds);
 	BetterCheats::Panels::Wave::Tick(deltaSeconds);
 	BetterCheats::Panels::Corporations::Tick(deltaSeconds);
 	BetterCheats::Panels::Enemies::Tick(deltaSeconds);
@@ -91,6 +145,13 @@ static void OnEngineTick(float deltaSeconds)
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
 #endif
+
+	// Debounced: almost every call here is a no-op (nothing dirty, or the
+	// debounce window hasn't elapsed yet). See session_config.cpp -- this is
+	// what turns a slider held down for a second, or a stack-size apply
+	// pass touching every item, into at most one disk write per window
+	// instead of one per Set() call.
+	BetterCheats::SessionConfig::Commit();
 }
 
 extern "C" {
@@ -167,22 +228,37 @@ extern "C" {
 		BetterCheats::Panels::DevMenus::Initialize();
 #endif
 
+		LOG_INFO("Initializing saved presets store...");
+		char presetsPath[MAX_PATH] = {};
+		GetPresetsFilePath(presetsPath, sizeof(presetsPath));
+		BetterCheats::PresetStore::Init(presetsPath);
+
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
 
 		// Register the toggle keybind — modloader tracks rebinds automatically
 		const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 		self->hooks->Input->RegisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+		self->hooks->Input->RegisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
+		self->hooks->Input->RegisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
 		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 
 		// Hot-reload: experience-load-complete may have already fired before we
 		// registered, so if a session is already in progress, run the same setup now.
+		//
+		// It has to go through the game thread. SessionConfig::Reload() resolves the
+		// save name via UCrSaveSubsystem, which only works there -- called inline from
+		// PluginInit it returns false, OnExperienceLoadComplete() bails, and every
+		// panel's ApplySavedConfig is skipped. The failure is silent, and because
+		// SessionConfig::Set() no-ops while unloaded, NOTHING persists for the rest of
+		// the session. Same PostToGameThread pattern used by machine_power.cpp,
+		// player_attributes.cpp and player_items.cpp.
 		if (BetterCheats::GameContext::IsInChimeraMain())
 		{
-			LOG_INFO("BetterCheats: hot-reloaded into an active session — running experience-load setup now.");
-			OnExperienceLoadComplete();
+			LOG_INFO("BetterCheats: hot-reloaded into an active session — posting experience-load setup to the game thread.");
+			self->hooks->Engine->PostToGameThread(&OnExperienceLoadCompleteOnGameThread, nullptr);
 		}
 
 		LOG_INFO("BetterCheats initialized — toggle key: %s", toggleKey);
@@ -198,6 +274,8 @@ extern "C" {
 		{
 			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
 			g_self->hooks->Input->UnregisterKeybindByName(toggleKey, EModKeyEvent::Pressed, &OnToggleMenuPressed);
+			g_self->hooks->Input->UnregisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
+			g_self->hooks->Input->UnregisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
 			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 		}
@@ -220,6 +298,7 @@ extern "C" {
 		BetterCheats::Panels::Items::Shutdown();
 		BetterCheats::Panels::Inventory::Shutdown();
 		BetterCheats::Panels::Movement::Shutdown();
+		BetterCheats::Panels::Weapons::Shutdown();
 		BetterCheats::Panels::Wave::Shutdown();
 		BetterCheats::Panels::Corporations::Shutdown();
 		BetterCheats::Panels::Enemies::Shutdown();

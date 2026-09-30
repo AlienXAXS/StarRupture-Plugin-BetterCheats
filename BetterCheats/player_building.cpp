@@ -2,6 +2,7 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "ui_widgets.h"
 
 #include "AuActorPlacement_classes.hpp"
 #include "Chimera_classes.hpp"
@@ -350,6 +351,35 @@ namespace BetterCheats::Panels::Building
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags    = (1 << 6) | (1 << 9) | (3 << 13);
+
+		// No built-in presets here, so saved presets sit at the very top --
+		// same "above every control" position every group uses.
+		{
+			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			constexpr int kFieldCount = 4;
+			BetterCheats::PresetStore::Field fields[kFieldCount];
+
+			auto getLive = [](BetterCheats::PresetStore::Field* out)
+			{
+				out[0] = { "noBuildCost",         g_noBuildCost         ? 1.0f : 0.0f };
+				out[1] = { "noStabilityCheck",    g_noStabilityCheck    ? 1.0f : 0.0f };
+				out[2] = { "unlockAllBuildings",  g_unlockAllBuildings  ? 1.0f : 0.0f };
+				out[3] = { "unlockAllRecipes",    g_unlockAllRecipes    ? 1.0f : 0.0f };
+			};
+			auto applyFields = [](const BetterCheats::PresetStore::Field* f, int count)
+			{
+				if (count > 0) { g_noBuildCost        = f[0].value != 0.0f; SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost); }
+				if (count > 1) { g_noStabilityCheck   = f[1].value != 0.0f; SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck); }
+				if (count > 2) { g_unlockAllBuildings = f[2].value != 0.0f; SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings); }
+				if (count > 3) { g_unlockAllRecipes   = f[3].value != 0.0f; SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes); }
+			};
+			auto isBuiltin      = [](const char*) { return false; };
+			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+
+			BetterCheats::UI::RenderSavedPresetsRow(imgui, "building_saved_presets", "Building",
+				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+		}
+		imgui->Spacing();
 
 		imgui->SeparatorText("Placement");
 

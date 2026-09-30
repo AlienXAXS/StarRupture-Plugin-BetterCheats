@@ -2,6 +2,8 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "player_lookup.h"
+#include "ui_widgets.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
@@ -111,29 +113,10 @@ namespace BetterCheats::Panels::Attributes
 			imgui->SetItemTooltip(kLockTooltip);
 		}
 
-		// Only ever called from Tick() (the engine-tick callback, which runs on the
-		// game thread) — never from RenderImGui(), which runs on a different thread
-		// where UWorld::GetWorld() and UObject access intermittently crash inside the
+		// GetLocalCharacter (player_lookup.h) is game-thread only — never call it
+		// from RenderImGui(), which runs on a different thread where
+		// UWorld::GetWorld() and UObject access intermittently crash inside the
 		// renderer (FD3D12DynamicRHI::HandleFailedD3D12Result, no useful callstack).
-		SDK::ACrCharacterPlayerBase* GetLocalCharacter()
-		{
-			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
-			catch (...) { return nullptr; }
-			if (!world) return nullptr;
-
-			SDK::APlayerController* pc = SDK::UGameplayStatics::GetPlayerController(world, 0);
-			if (!pc || !pc->Pawn) return nullptr;
-
-			// The local pawn is only an ACrCharacterPlayerBase once the real character
-			// has been possessed. During a level transition or a multiplayer join it can
-			// still be some other pawn class, and the attribute-set pointers below then
-			// come from past the end of the object.
-			SDK::UClass* characterClass = SDK::ACrCharacterPlayerBase::StaticClass();
-			if (!characterClass || !pc->Pawn->IsA(characterClass)) return nullptr;
-
-			return static_cast<SDK::ACrCharacterPlayerBase*>(pc->Pawn);
-		}
 
 		// Sets both BaseValue and CurrentValue so the change survives gameplay-effect
 		// re-evaluation (e.g. survival ticks reapplying from the base attribute).
@@ -553,6 +536,60 @@ namespace BetterCheats::Panels::Attributes
 			imgui->TextDisabled("No local player character found.");
 			return;
 		}
+
+		// No built-in presets here, so saved presets sit at the very top --
+		// same "above every control" position every group uses. Field order
+		// is kAttrCount pairs of {locked, value} in AttrId order, then Max
+		// Health's own value -- GetLive/ApplyFields must agree on that order.
+		{
+			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			constexpr int kFieldCount = kAttrCount * 2 + 1;
+			BetterCheats::PresetStore::Field fields[kFieldCount];
+
+			// Distinct keys per field -- PresetStore::Load matches by exact key
+			// string, so "Health" used for both the locked flag and the value
+			// would make Load resolve both slots to whichever stored field it
+			// finds first.
+			static char s_lockedKeys[kAttrCount][40];
+			static char s_valueKeys[kAttrCount][40];
+			static bool s_keysBuilt = false;
+			if (!s_keysBuilt)
+			{
+				for (int i = 0; i < kAttrCount; ++i)
+				{
+					snprintf(s_lockedKeys[i], sizeof(s_lockedKeys[i]), "%s.locked", kAttrNames[i]);
+					snprintf(s_valueKeys[i],  sizeof(s_valueKeys[i]),  "%s.value",  kAttrNames[i]);
+				}
+				s_keysBuilt = true;
+			}
+
+			auto getLive = [](BetterCheats::PresetStore::Field* out)
+			{
+				for (int i = 0; i < kAttrCount; ++i)
+				{
+					out[i * 2]     = { s_lockedKeys[i], g_locks[i].locked ? 1.0f : 0.0f };
+					out[i * 2 + 1] = { s_valueKeys[i],  g_locks[i].value };
+				}
+				out[kAttrCount * 2] = { "maxHealth", SessionConfig::Get("playerAttributes.maxHealth.value", 0.0f) };
+			};
+			auto applyFields = [](const BetterCheats::PresetStore::Field* f, int count)
+			{
+				for (int i = 0; i < kAttrCount && (i * 2 + 1) < count; ++i)
+				{
+					g_locks[i].locked = f[i * 2].value != 0.0f;
+					g_locks[i].value  = f[i * 2 + 1].value;
+					PersistLock(static_cast<AttrId>(i), g_locks[i]);
+				}
+				if (count > kAttrCount * 2)
+					QueueMaxHealthEdit(f[kAttrCount * 2].value);
+			};
+			auto isBuiltin      = [](const char*) { return false; };
+			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+
+			BetterCheats::UI::RenderSavedPresetsRow(imgui, "self_saved_presets", "Self",
+				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+		}
+		imgui->Spacing();
 
 		imgui->TextWrapped("Tick \"Locked\" to continuously pin an attribute to the value "
 			"set on its slider, even while the menu is closed.");

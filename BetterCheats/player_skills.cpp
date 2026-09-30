@@ -1,5 +1,6 @@
 #include "player_skills.h"
 #include "plugin_helpers.h"
+#include "ui_widgets.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -230,8 +231,6 @@ namespace BetterCheats::Panels::Skills
 
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
-		imgui->SeparatorText("Skill Progression");
-
 		// RenderImGui() runs on the ImGui render thread, not the game thread —
 		// it must only ever read the snapshot Tick() refreshed, never touch
 		// SDK/UObjects directly (see GetLocalController()'s comment for why).
@@ -252,6 +251,38 @@ namespace BetterCheats::Panels::Skills
 			imgui->TextDisabled("Player has no skill data yet.");
 			return;
 		}
+
+		// No built-in presets here, so saved presets sit at the very top -- same
+		// "above every control" position every group uses. Fields are keyed by
+		// skill ID (not table position), so a load still lands on the right
+		// skill even if the game ever reorders PlayerSkills.
+		{
+			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			char keyBuf[kMaxSkills][16];
+			for (int i = 0; i < snapshot.count; ++i)
+				snprintf(keyBuf[i], sizeof(keyBuf[i]), "skill_%u", snapshot.skillIds[i]);
+
+			BetterCheats::PresetStore::Field fields[kMaxSkills];
+
+			auto getLive = [&](BetterCheats::PresetStore::Field* out)
+			{
+				for (int i = 0; i < snapshot.count; ++i)
+					out[i] = { keyBuf[i], static_cast<float>(snapshot.levels[i]) };
+			};
+			auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+			{
+				for (int i = 0; i < snapshot.count && i < count; ++i)
+					QueueLevelEdit(i, static_cast<int32_t>(f[i].value));
+			};
+			auto isBuiltin      = [](const char*) { return false; };
+			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+
+			BetterCheats::UI::RenderSavedPresetsRow(imgui, "skills_saved_presets", "Skills",
+				fields, snapshot.count, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+		}
+		imgui->Spacing();
+
+		imgui->SeparatorText("Skill Progression");
 
 		if (imgui->Button("Max All Skills"))
 			QueueMaxAllSkills();
