@@ -10,6 +10,8 @@
 #include "game_thread.h"
 #include "object_ref.h"
 
+#include <Windows.h>
+
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
 #include "WBP_InventorySlot_classes.hpp"
@@ -36,6 +38,8 @@
 // shrinking every slot widget by the same factor keeps the footprint. Do one
 // without the other and the grid overflows sideways instead of downwards.
 //
+// Tab or E scans for the inventory widget every engine tick for up to three
+// seconds. Once found, the queued resize and slot scaling are applied.
 // Everything that touches a UObject runs on the game thread — Tick(), or the
 // console handler, which is registered with gameThread = true. RenderImGui()
 // runs on the render thread and only ever reads the snapshot.
@@ -55,10 +59,10 @@ namespace BetterCheats::Panels::Inventory
 		// is allowed to overflow the frame rather than shrink any further.
 		constexpr float kMinSlotScale = 0.40f;
 
-		// Neither half stays applied on its own: the game rebuilds every slot
-		// widget whenever the inventory resizes, so the sizes have to be put back
-		// afterwards, and the widgets only exist once the inventory is opened.
+		// The game rebuilds every slot widget whenever the inventory resizes, and
+		// the widgets only exist once the inventory is opened.
 		constexpr float kMaintainInterval = 0.5f;
+		constexpr float kInventoryScanSeconds = 3.0f;
 
 		// ResizeInventory can refuse (see ResizeGrid). Retrying an RPC forever at
 		// 2 Hz is worse than leaving the grid the shape it is.
@@ -344,17 +348,28 @@ namespace BetterCheats::Panels::Inventory
 		// Applied state — game thread only.
 		// ---------------------------------------------------------------------
 		float g_maintainTimer    = 0.0f;
+		float g_inventoryScanRemaining = 0.0f;
 		float g_appliedSlotScale = 1.0f;
 		int   g_resizeAttempts   = 0;
 		int   g_resizeTarget     = 0; // the shape the attempts were counted for
+		bool g_tabWasDown = false;
+		bool g_eWasDown = false;
 
-		// A miss costs a full GObjects walk, and the widget does not exist at all
-		// until the inventory is opened for the first time, so a miss is the
-		// normal case for most of a session. Back off hard between attempts —
-		// see enemies.cpp, where walking GObjects too often was itself the
-		// framerate drop it looked like it was diagnosing.
-		constexpr float kRescanCooldown = 5.0f;
-		float g_rescanCooldown = 0.0f;
+		bool IsGameForeground()
+		{
+			HWND foreground = GetForegroundWindow();
+			if (!foreground)
+				return false;
+
+			DWORD pid = 0;
+			GetWindowThreadProcessId(foreground, &pid);
+			return pid == GetCurrentProcessId();
+		}
+
+		bool IsKeyHeld(int virtualKey)
+		{
+			return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+		}
 
 		void ApplyPendingResize()
 		{
@@ -406,18 +421,6 @@ namespace BetterCheats::Panels::Inventory
 				return;
 
 			const bool fit = g_wantFitToPanel.load();
-
-			// Nothing to find the widget for while the slots are already the size
-			// the game made them.
-			if ((fit || g_appliedSlotScale != 1.0f) && !ValidateContainer())
-			{
-				g_rescanCooldown -= kMaintainInterval;
-				if (g_rescanCooldown <= 0.0f)
-				{
-					g_rescanCooldown = kRescanCooldown;
-					RescanContainer();
-				}
-			}
 
 			int columns = g_wantColumns.load();
 			int rows    = g_wantRows.load();
@@ -1916,6 +1919,9 @@ namespace BetterCheats::Panels::Inventory
 
 		g_commandRegistered = false;
 
+		g_inventoryScanRemaining = 0.0f;
+		g_tabWasDown = false;
+		g_eWasDown = false;
 		ForgetWidgets();
 
 		// Item stack sizes: same render-thread-Shutdown hazard as the weapon
@@ -1946,8 +1952,40 @@ namespace BetterCheats::Panels::Inventory
 	{
 		BetterCheats::RecordGameThread();
 
-		ApplyPendingResize();
-		MaintainGrid(deltaSeconds);
+		const bool tabDown = IsKeyHeld(VK_TAB);
+		const bool eDown = IsKeyHeld('E');
+		const bool keyPressed =
+			(tabDown && !g_tabWasDown) || (eDown && !g_eWasDown);
+
+		g_tabWasDown = tabDown;
+		g_eWasDown = eDown;
+
+		if (keyPressed && IsGameForeground())
+			g_inventoryScanRemaining = kInventoryScanSeconds;
+
+		if (g_inventoryScanRemaining > 0.0f)
+		{
+			try
+			{
+				RescanContainer();
+				if (ValidateContainer())
+				{
+					ApplyPendingResize();
+					g_maintainTimer = kMaintainInterval;
+					MaintainGrid(deltaSeconds);
+					g_inventoryScanRemaining = 0.0f;
+				}
+			}
+			catch (...)
+			{
+				LOG_ERROR("Inventory: exception while scanning or applying the inventory resize.");
+			}
+
+			g_inventoryScanRemaining -= deltaSeconds;
+			if (g_inventoryScanRemaining < 0.0f)
+				g_inventoryScanRemaining = 0.0f;
+		}
+
 		RefreshSnapshot();
 
 		ApplyStackSizes();
@@ -2112,7 +2150,7 @@ namespace BetterCheats::Panels::Inventory
 			}
 			else
 			{
-				imgui->TextDisabled("Open the inventory once to scale it.");
+				imgui->TextDisabled("Press Tab or E, then open the inventory within 3 seconds.");
 			}
 
 			imgui->EndTable();
@@ -2184,6 +2222,11 @@ namespace BetterCheats::Panels::Inventory
 		imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
 			"The game will not shrink the grid below the slots you are already using. "
 			"Empty it out first if a smaller grid is refused.");
+
+		imgui->Spacing();
+		imgui->TextWrapped("Press Tab or E (alone or with other keys) to scan for the inventory "
+			"window for up to 3 seconds. The queued grid size and slot scale are applied as soon "
+			"as the window is detected; pressing either key again starts a new scan.");
 
 		imgui->Spacing();
 		imgui->TextDisabled("Console: bc_invsize <columns> <rows>");

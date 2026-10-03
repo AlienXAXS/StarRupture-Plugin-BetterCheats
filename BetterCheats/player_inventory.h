@@ -10,15 +10,14 @@ namespace BetterCheats::Panels::Inventory
 	// Unregisters the console command — call once during plugin shutdown.
 	void Shutdown();
 
-	// Applies any queued resize and refreshes the panel snapshot — call once per
-	// engine tick.
+	// Tab or E scans for the inventory widget for up to 3 seconds, applying the
+	// queued resize and slot scaling when it appears. Also refreshes the snapshot.
 	void Tick(float deltaSeconds);
 
 	void RenderImGui(IModLoaderImGui* imgui);
 
 	// Restores the target slot count persisted in the active session's JSON
-	// config (see session_config.h). Only seeds the UI field — growing the
-	// inventory already persists in the save itself, so nothing is re-applied.
-	// Call on the game thread after SessionConfig::Reload().
+	// config (see session_config.h). Queues the saved grid for the next Tab/E
+	// scan. Call on the game thread after SessionConfig::Reload().
 	void ApplySavedConfig();
 }
