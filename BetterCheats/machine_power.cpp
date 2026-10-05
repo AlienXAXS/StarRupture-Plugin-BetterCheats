@@ -2,6 +2,7 @@
 #include "aob_resolver.h"
 #include "plugin_helpers.h"
 #include "session_config.h"
+#include "ui_widgets.h"
 
 #include "Chimera_classes.hpp"
 #include "Chimera_parameters.hpp"
@@ -876,6 +877,45 @@ namespace BetterCheats::Panels::Power
 	{
 		AdoptPendingIfReady();
 
+		// No built-in presets here, so saved presets sit at the very top -- same
+		// "above every control" position every group uses. g_entries is a
+		// runtime-discovered, unbounded list, so the field array is sized to it
+		// each frame rather than a fixed cap; fields are keyed by
+		// "package.asset" (stable across a rescan) rather than table position.
+		{
+			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+
+			std::vector<std::string> keyStorage;
+			keyStorage.reserve(g_entries.size());
+			for (const auto& entry : g_entries)
+				keyStorage.push_back(entry.packageName + "." + entry.assetName);
+
+			std::vector<BetterCheats::PresetStore::Field> fields(g_entries.size());
+
+			auto getLive = [&](BetterCheats::PresetStore::Field* out)
+			{
+				for (size_t i = 0; i < g_entries.size(); ++i)
+					out[i] = { keyStorage[i].c_str(), g_entries[i].value };
+			};
+			auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+			{
+				std::vector<ApplyItem> items;
+				items.reserve(g_entries.size());
+				for (size_t i = 0; i < g_entries.size() && static_cast<int>(i) < count; ++i)
+				{
+					g_entries[i].value = f[i].value;
+					items.push_back(ApplyItem{ g_entries[i].packageName, g_entries[i].assetName, f[i].value, false });
+				}
+				RequestApply(std::move(items));
+			};
+			auto isBuiltin      = [](const char*) { return false; };
+			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
+
+			BetterCheats::UI::RenderSavedPresetsRow(imgui, "power_saved_presets", "Power",
+				fields.data(), static_cast<int>(fields.size()), getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+		}
+		imgui->Spacing();
+
 		imgui->SeparatorText("Power Output / Consumption");
 
 		if (!g_loaded)
@@ -900,8 +940,8 @@ namespace BetterCheats::Panels::Power
 		imgui->TextWrapped(
 			"Enter a value and click Apply to commit it. Applied edits update the "
 			"building's template for newly-placed buildings, and also patch "
-			"buildings already placed in the world. [R] restores that building's "
-			"default value.");
+			"buildings already placed in the world. The reset arrow restores that "
+			"building's default value.");
 
 		if (g_entries.empty())
 		{
@@ -911,19 +951,22 @@ namespace BetterCheats::Panels::Power
 
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags = (1 << 6) | (1 << 9) | (3 << 13);
-		// ImGuiTableColumnFlags_WidthFixed
-		constexpr int kColumnWidthFixed = 1 << 4;
+
+		// One label column width for both tables, sized to the longest building
+		// name, same as every other section's rows.
+		const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, static_cast<int>(g_entries.size()),
+			[](int i) { return g_entries[i].name.c_str(); });
 
 		auto renderSection = [&](const char* heading, const char* tableId, SDK::ECrMassElectricityAgentType filterType, const char* emptyText)
 		{
 			imgui->SeparatorText(heading);
 
-			if (imgui->BeginTable(tableId, 4, kTableFlags))
+			if (imgui->BeginTable(tableId, 3, kTableFlags))
 			{
-				imgui->TableSetupColumn("Building", 0, 0.0f);
-				imgui->TableSetupColumn("Type",     kColumnWidthFixed, 90.0f);
-				imgui->TableSetupColumn("Output",   kColumnWidthFixed, 140.0f);
-				imgui->TableSetupColumn("",         kColumnWidthFixed, 90.0f);
+				imgui->TableSetupColumn("Building", BetterCheats::UI::kColumnWidthFixed,
+					BetterCheats::UI::GetReadoutColumnWidth(imgui, labelReserve));
+				imgui->TableSetupColumn("Value", 0, 0.54f);
+				imgui->TableSetupColumn("",      0, 0.10f);
 
 				bool any = false;
 				for (auto& entry : g_entries)
@@ -936,23 +979,21 @@ namespace BetterCheats::Panels::Power
 					imgui->TableNextRow(0, 0.0f);
 
 					imgui->TableSetColumnIndex(0);
+					imgui->AlignTextToFramePadding();
 					imgui->Text(entry.name.c_str());
-
-					imgui->TableSetColumnIndex(1);
-					imgui->Text(AgentTypeName(entry.type));
 
 					imgui->PushIDStr(entry.name.c_str());
 
-					imgui->TableSetColumnIndex(2);
-					imgui->SetNextItemWidth(-1.0f);
+					imgui->TableSetColumnIndex(1);
+					imgui->SetNextItemWidth(BetterCheats::UI::GetSliderWidthCap(imgui));
 					imgui->InputFloat("##value", &entry.value, 0.0f, 0.0f, "%.2f");
 
-					imgui->TableSetColumnIndex(3);
+					imgui->SameLine(0.0f, -1.0f);
 					if (imgui->Button("Apply"))
 						RequestApplyValue(entry.packageName, entry.assetName, entry.value);
 
-					imgui->SameLine(0.0f, 4.0f);
-					if (imgui->Button("R"))
+					imgui->TableSetColumnIndex(2);
+					if (BetterCheats::UI::ResetButton(imgui, "##reset"))
 					{
 						entry.value = entry.defaultValue;
 						RequestResetValue(entry.packageName, entry.assetName, entry.defaultValue);

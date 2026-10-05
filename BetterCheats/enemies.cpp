@@ -1,4 +1,5 @@
 #include "enemies.h"
+#include "object_ref.h"
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
@@ -40,10 +41,13 @@ namespace BetterCheats::Panels::Enemies
 		// as a named field the way ACrCharacterPlayerBase does. Not every enemy
 		// subclass has one attached, so it's only ever a fallback now — see
 		// ResolveHealthFragment for the universal actor->entity path.
+		//
+		// Held across ticks until the next rescan, so both are ObjectRefs: an
+		// enemy can be destroyed, or the whole world torn down, in between.
 		struct TrackedEnemy
 		{
-			SDK::AMassEnemyCharacterBase* actor = nullptr;
-			SDK::UMassAgentComponent*     agent = nullptr;
+			ObjectRef<SDK::AMassEnemyCharacterBase> actor;
+			ObjectRef<SDK::UMassAgentComponent>     agent;
 		};
 
 		// Enemies are Mass Entity actors that pool in/out of existence constantly —
@@ -54,8 +58,7 @@ namespace BetterCheats::Panels::Enemies
 
 		// Tracks which actors we've already called UMassAgentComponent::KillEntity on,
 		// so One-Hit Kill fires exactly once per enemy instead of every tick. Cleared
-		// on Shutdown — fine to hold stale pointers briefly, every use is try/catch'd
-		// and the GObjects rescan naturally drops dead/freed actors from g_enemies.
+		// on Shutdown. Only ever used as a lookup key, never dereferenced.
 		std::unordered_set<SDK::AMassEnemyCharacterBase*> g_killedEnemies;
 
 		// Edge-detected so Disable()/Enable() (which likely does real work — removing
@@ -97,11 +100,10 @@ namespace BetterCheats::Panels::Enemies
 		InternalGetFragmentDataPtrFn g_getFragmentDataPtr = nullptr;
 		SDK::UScriptStruct*          g_healthFragmentStruct = nullptr;
 
-		// Re-resolved every rescan (cheap — both are per-world singletons) so a world
-		// reload doesn't leave these dangling.
-		SDK::UMassEntitySubsystem* g_entitySubsystem = nullptr;
-		SDK::UMassActorSubsystem*  g_actorSubsystem   = nullptr;
-		void*                      g_entityManager    = nullptr;
+		// Re-resolved every rescan (cheap — both are per-world singletons), and
+		// checked on every use, since a world travel frees both between rescans.
+		ObjectRef<SDK::UMassEntitySubsystem> g_entitySubsystem;
+		ObjectRef<SDK::UMassActorSubsystem>  g_actorSubsystem;
 
 		// Disable AI: UMassAgentComponent::Disable() alone has no visible effect (it's
 		// native and does run — see plugin.log — but apparently only affects
@@ -121,19 +123,26 @@ namespace BetterCheats::Panels::Enemies
 		std::mutex        g_snapshotMutex;
 		EnemiesSnapshot   g_snapshot;
 
-		FMassEnemyHealthFragmentView* ResolveHealthFragment(const TrackedEnemy& enemy);
+		FMassEnemyHealthFragmentView* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor);
 
-		// Re-finds the per-world UMassEntitySubsystem/UMassActorSubsystem singletons
-		// and re-reads the FMassEntityManager pointer cached inside the entity
-		// subsystem (TSharedPtr<FMassEntityManager> at +0x38 — see
-		// UMassEntitySubsystem's layout; Dumper-7 can't reflect it since
-		// FMassEntityManager isn't a UObject, so this offset came from a PDB-backed
-		// IDA inspection, not the SDK header). Only ever called from Tick().
+		// The FMassEntityManager the entity subsystem owns
+		// (TSharedPtr<FMassEntityManager> at +0x38 — see UMassEntitySubsystem's
+		// layout; Dumper-7 can't reflect it since FMassEntityManager isn't a
+		// UObject, so this offset came from a PDB-backed IDA inspection, not the
+		// SDK header). Read from the live subsystem on each use, never cached, so
+		// it can't outlive the subsystem that owns it.
+		void* GetEntityManager(SDK::UMassEntitySubsystem* entitySubsystem)
+		{
+			auto* base = reinterpret_cast<uint8_t*>(entitySubsystem);
+			return *reinterpret_cast<void**>(base + 0x38);
+		}
+
+		// Re-finds the per-world UMassEntitySubsystem/UMassActorSubsystem
+		// singletons. Only ever called from Tick().
 		void RescanMassSubsystems()
 		{
-			g_entitySubsystem = nullptr;
-			g_actorSubsystem  = nullptr;
-			g_entityManager   = nullptr;
+			g_entitySubsystem.Reset();
+			g_actorSubsystem.Reset();
 
 			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
 			if (!arr)
@@ -160,22 +169,16 @@ namespace BetterCheats::Panels::Enemies
 
 				if (!doneEntity && obj != entityCDO && obj->Class == entityClass)
 				{
-					g_entitySubsystem = static_cast<SDK::UMassEntitySubsystem*>(obj);
+					g_entitySubsystem.Set(static_cast<SDK::UMassEntitySubsystem*>(obj));
 					doneEntity = true;
 					continue;
 				}
 				if (!doneActor && obj != actorCDO && obj->Class == actorClass)
 				{
-					g_actorSubsystem = static_cast<SDK::UMassActorSubsystem*>(obj);
+					g_actorSubsystem.Set(static_cast<SDK::UMassActorSubsystem*>(obj));
 					doneActor = true;
 					continue;
 				}
-			}
-
-			if (g_entitySubsystem)
-			{
-				auto* base = reinterpret_cast<uint8_t*>(g_entitySubsystem);
-				g_entityManager = *reinterpret_cast<void**>(base + 0x38);
 			}
 		}
 
@@ -208,27 +211,29 @@ namespace BetterCheats::Panels::Enemies
 				if (enemy->bIsInPool) // pooled/inactive — not a live world actor
 					continue;
 
-				TrackedEnemy entry;
-				entry.actor = enemy;
-
+				SDK::UMassAgentComponent* agent = nullptr;
 				if (agentClass)
 				{
 					try
 					{
-						entry.agent = static_cast<SDK::UMassAgentComponent*>(enemy->GetComponentByClass(agentClass));
+						agent = static_cast<SDK::UMassAgentComponent*>(enemy->GetComponentByClass(agentClass));
 					}
 					catch (...)
 					{
-						entry.agent = nullptr;
+						agent = nullptr;
 					}
 				}
+
+				TrackedEnemy entry;
+				entry.actor.Set(enemy);
+				entry.agent.Set(agent);
 
 				// Top-up: while Disable AI is already on, newly-discovered enemies
 				// (just spawned since the last scan) need disabling too — the edge
 				// detector in Tick() only fires on the on/off transition itself.
-				if (disableAI && entry.agent)
+				if (disableAI && agent)
 				{
-					try { entry.agent->Disable(); }
+					try { agent->Disable(); }
 					catch (...) { LOG_WARN("Enemies: exception disabling a newly-found enemy's Mass agent."); }
 				}
 
@@ -245,46 +250,51 @@ namespace BetterCheats::Panels::Enemies
 		// UMassActorSubsystem::GetEntityHandleFromActor — the authority-side
 		// lookup, which works for every Mass actor regardless of replication
 		// state or whether it has a UMassAgentComponent attached.
-		FMassEnemyHealthFragmentView* ResolveHealthFragment(const TrackedEnemy& enemy)
+		FMassEnemyHealthFragmentView* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor)
 		{
-			if (!enemy.actor || !g_buildActorKey || !g_getEntityHandle || !g_getFragmentDataPtr
-				|| !g_healthFragmentStruct || !g_entityManager || !g_actorSubsystem)
+			if (!actor || !g_buildActorKey || !g_getEntityHandle || !g_getFragmentDataPtr || !g_healthFragmentStruct)
+				return nullptr;
+
+			SDK::UMassEntitySubsystem* entitySubsystem = g_entitySubsystem.Get();
+			SDK::UMassActorSubsystem*  actorSubsystem  = g_actorSubsystem.Get();
+			void* entityManager = entitySubsystem ? GetEntityManager(entitySubsystem) : nullptr;
+			if (!entityManager || !actorSubsystem)
 				return nullptr;
 
 			SDK::FWeakObjectPtr actorKey{};
-			void* actorPtr = enemy.actor;
+			void* actorPtr = actor;
 			g_buildActorKey(&actorKey, &actorPtr);
 
 			SDK::FMassEntityHandle handle{};
-			g_getEntityHandle(g_actorSubsystem, &handle, actorKey);
+			g_getEntityHandle(actorSubsystem, &handle, actorKey);
 			if (handle.Index == 0)
 				return nullptr;
 
-			void* fragmentPtr = g_getFragmentDataPtr(g_entityManager, handle, g_healthFragmentStruct);
+			void* fragmentPtr = g_getFragmentDataPtr(entityManager, handle, g_healthFragmentStruct);
 			return reinterpret_cast<FMassEnemyHealthFragmentView*>(fragmentPtr);
 		}
 
-		void EnforceDisableAI(const TrackedEnemy& enemy)
+		void EnforceDisableAI(SDK::AMassEnemyCharacterBase* actor)
 		{
-			if (auto* aiController = static_cast<SDK::AAIController*>(enemy.actor->Controller))
+			if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
 			{
 				if (aiController->BrainComponent)
 					aiController->BrainComponent->SetComponentTickEnabled(false);
 			}
 
-			auto it = g_attackRangeCache.find(enemy.actor);
+			auto it = g_attackRangeCache.find(actor);
 			if (it == g_attackRangeCache.end())
 			{
 				AttackRangeCache cache;
-				cache.distance         = enemy.actor->AllowedAttackDistance;
-				cache.coneHalfAngle    = enemy.actor->AllowedAttackConeHalfAngle;
-				cache.buildingDistance = enemy.actor->AllowedBuildingAttackDistance;
-				g_attackRangeCache.emplace(enemy.actor, cache);
+				cache.distance         = actor->AllowedAttackDistance;
+				cache.coneHalfAngle    = actor->AllowedAttackConeHalfAngle;
+				cache.buildingDistance = actor->AllowedBuildingAttackDistance;
+				g_attackRangeCache.emplace(actor, cache);
 			}
 
-			enemy.actor->AllowedAttackDistance         = 0.0f;
-			enemy.actor->AllowedAttackConeHalfAngle    = 0.0f;
-			enemy.actor->AllowedBuildingAttackDistance = 0.0f;
+			actor->AllowedAttackDistance         = 0.0f;
+			actor->AllowedAttackConeHalfAngle    = 0.0f;
+			actor->AllowedBuildingAttackDistance = 0.0f;
 		}
 
 		// Restores whatever EnforceDisableAI zeroed, for actors still in g_enemies
@@ -293,23 +303,24 @@ namespace BetterCheats::Panels::Enemies
 		{
 			for (const TrackedEnemy& enemy : g_enemies)
 			{
-				if (!enemy.actor)
+				SDK::AMassEnemyCharacterBase* actor = enemy.actor.Get();
+				if (!actor)
 					continue;
 
 				try
 				{
-					if (auto* aiController = static_cast<SDK::AAIController*>(enemy.actor->Controller))
+					if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
 					{
 						if (aiController->BrainComponent)
 							aiController->BrainComponent->SetComponentTickEnabled(true);
 					}
 
-					auto it = g_attackRangeCache.find(enemy.actor);
+					auto it = g_attackRangeCache.find(actor);
 					if (it != g_attackRangeCache.end())
 					{
-						enemy.actor->AllowedAttackDistance         = it->second.distance;
-						enemy.actor->AllowedAttackConeHalfAngle    = it->second.coneHalfAngle;
-						enemy.actor->AllowedBuildingAttackDistance = it->second.buildingDistance;
+						actor->AllowedAttackDistance         = it->second.distance;
+						actor->AllowedAttackConeHalfAngle    = it->second.coneHalfAngle;
+						actor->AllowedBuildingAttackDistance = it->second.buildingDistance;
 					}
 				}
 				catch (...)
@@ -337,10 +348,10 @@ namespace BetterCheats::Panels::Enemies
 		// help — the only real fix is to not hold the pointer across ticks.
 		// GetEntityHandleFromActor itself safely returns Index=0 for a destroyed
 		// entity, so re-resolving here is the actual safety net.
-		void EnforceOneHitKill(const TrackedEnemy& enemy)
+		void EnforceOneHitKill(SDK::AMassEnemyCharacterBase* actor, SDK::UMassAgentComponent* agent)
 		{
 			FMassEnemyHealthFragmentView* healthFragment = nullptr;
-			try { healthFragment = ResolveHealthFragment(enemy); }
+			try { healthFragment = ResolveHealthFragment(actor); }
 			catch (...) { healthFragment = nullptr; }
 
 			if (healthFragment)
@@ -352,18 +363,18 @@ namespace BetterCheats::Panels::Enemies
 				}
 				catch (...)
 				{
-					LOG_WARN("Enemies: exception writing to healthFragment for actor=%p.", enemy.actor);
+					LOG_WARN("Enemies: exception writing to healthFragment for actor=%p.", static_cast<void*>(actor));
 				}
 				return;
 			}
 
 			// Fallback for enemies whose fragment can't be resolved at all (e.g.
 			// AOB resolution failed at Initialize) — kills outright once per actor.
-			if (!enemy.agent || g_killedEnemies.count(enemy.actor))
+			if (!agent || g_killedEnemies.count(actor))
 				return;
 
-			enemy.agent->KillEntity(false);
-			g_killedEnemies.insert(enemy.actor);
+			agent->KillEntity(false);
+			g_killedEnemies.insert(actor);
 		}
 	}
 
@@ -439,10 +450,11 @@ namespace BetterCheats::Panels::Enemies
 		{
 			for (const TrackedEnemy& enemy : g_enemies)
 			{
-				if (!enemy.agent)
+				SDK::UMassAgentComponent* agent = enemy.agent.Get();
+				if (!agent)
 					continue;
 
-				try { disableAI ? enemy.agent->Disable() : enemy.agent->Enable(); }
+				try { disableAI ? agent->Disable() : agent->Enable(); }
 				catch (...) { LOG_WARN("Enemies: exception toggling a Mass agent's Disable/Enable state."); }
 			}
 
@@ -456,13 +468,14 @@ namespace BetterCheats::Panels::Enemies
 		{
 			for (const TrackedEnemy& enemy : g_enemies)
 			{
-				if (!enemy.actor)
+				SDK::AMassEnemyCharacterBase* actor = enemy.actor.Get();
+				if (!actor)
 					continue;
 
 				try
 				{
-					if (disableAI)   EnforceDisableAI(enemy);
-					if (oneHitKill)  EnforceOneHitKill(enemy);
+					if (disableAI)   EnforceDisableAI(actor);
+					if (oneHitKill)  EnforceOneHitKill(actor, enemy.agent.Get());
 				}
 				catch (...)
 				{
