@@ -37,7 +37,7 @@ namespace BetterCheats::AOB
 		uintptr_t HealthHud_SetupProgressBar = 0;
 
 		// Building
-		uintptr_t GetResourceConditionResult    = 0;
+		uintptr_t GetPlacementResourceConditionResult = 0;
 		uintptr_t CheckAvailableBuildings       = 0;
 		uintptr_t IsRecipeUnlocked              = 0;
 		uintptr_t CheckStability_Custom         = 0;

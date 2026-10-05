@@ -65,11 +65,12 @@ namespace BetterCheats::AOB
 	// Building
 	// -------------------------------------------------------------------------
 
-	// Class::Function  UCrBuildingComponent::GetResourceConditionResult
+	// Class::Function  UCrBuildingComponent::GetPlacementResourceConditionResult
 	// Parameters       (UCrBuildingComponent* this) -> EAuAPlacementConditionResult
 	// Hooked to return Valid (1) when no-build-cost cheat is active.
-	constexpr const char* GetResourceConditionResult =
-		"48 8B C4 53 57 48 83 EC ?? 48 89 68 ?? 48 8B D9 48 8B 89";
+	// Formerly GetResourceConditionResult — renamed by the game, same contract.
+	constexpr const char* GetPlacementResourceConditionResult =
+		"48 89 5C 24 ?? 48 89 6C 24 ?? 56 57 41 56 48 83 EC ?? 48 8B F9 48 8B 89";
 
 	// Class::Function  UAuActorPlacementComponent::AddPoint
 	// Parameters       (UAuActorPlacementComponent* this) -> FScriptContainerElement*

@@ -15,22 +15,22 @@ namespace BetterCheats::Panels::Building
 	{
 		// -------------------------------------------------------------------------
 		// No Build Cost
-		// Hook UCrBuildingComponent::GetResourceConditionResult to always return
+		// Hook UCrBuildingComponent::GetPlacementResourceConditionResult to always return
 		// Valid (1) when active, bypassing the inventory check entirely.
 		// -------------------------------------------------------------------------
 
-		using GetResourceConditionResultFn = int64_t(__fastcall*)(void* self);
+		using GetPlacementResourceConditionResultFn = int64_t(__fastcall*)(void* self);
 
-		GetResourceConditionResultFn g_originalGetResourceConditionResult = nullptr;
-		HookHandle                   g_hookGetResourceConditionResult      = nullptr;
-		bool                         g_noBuildCost                         = false;
+		GetPlacementResourceConditionResultFn g_originalGetPlacementResourceConditionResult = nullptr;
+		HookHandle                            g_hookGetPlacementResourceConditionResult     = nullptr;
+		bool                                  g_noBuildCost                                 = false;
 
-		int64_t __fastcall Detour_GetResourceConditionResult(void* self)
+		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
 			if (g_noBuildCost)
 				return 1; // EAuAPlacementConditionResult::Valid
 
-			return g_originalGetResourceConditionResult(self);
+			return g_originalGetPlacementResourceConditionResult(self);
 		}
 
 		// -------------------------------------------------------------------------
@@ -156,25 +156,25 @@ namespace BetterCheats::Panels::Building
 
 		const AOB::ResolvedAddresses& aob = AOB::Resolved();
 
-		uintptr_t addr = aob.GetResourceConditionResult;
+		uintptr_t addr = aob.GetPlacementResourceConditionResult;
 		if (!addr)
 		{
-			LOG_WARN("Building: GetResourceConditionResult unresolved");
+			LOG_WARN("Building: GetPlacementResourceConditionResult unresolved");
 		}
 		else
 		{
-			g_hookGetResourceConditionResult = hooks->Install(
+			g_hookGetPlacementResourceConditionResult = hooks->Install(
 				addr,
-				reinterpret_cast<void*>(&Detour_GetResourceConditionResult),
-				reinterpret_cast<void**>(&g_originalGetResourceConditionResult));
+				reinterpret_cast<void*>(&Detour_GetPlacementResourceConditionResult),
+				reinterpret_cast<void**>(&g_originalGetPlacementResourceConditionResult));
 
-			if (!g_hookGetResourceConditionResult)
+			if (!g_hookGetPlacementResourceConditionResult)
 			{
-				LOG_WARN("Building: failed to install GetResourceConditionResult hook");
+				LOG_WARN("Building: failed to install GetPlacementResourceConditionResult hook");
 			}
 			else
 			{
-				LOG_INFO("Building: GetResourceConditionResult hook installed");
+				LOG_INFO("Building: GetPlacementResourceConditionResult hook installed");
 			}
 		}
 
@@ -247,11 +247,11 @@ namespace BetterCheats::Panels::Building
 	void Shutdown()
 	{
 		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;
-		if (hooks && g_hookGetResourceConditionResult)
+		if (hooks && g_hookGetPlacementResourceConditionResult)
 		{
-			hooks->Remove(g_hookGetResourceConditionResult);
-			g_hookGetResourceConditionResult      = nullptr;
-			g_originalGetResourceConditionResult  = nullptr;
+			hooks->Remove(g_hookGetPlacementResourceConditionResult);
+			g_hookGetPlacementResourceConditionResult     = nullptr;
+			g_originalGetPlacementResourceConditionResult = nullptr;
 		}
 
 		if (hooks && g_hookIsRecipeUnlocked)
