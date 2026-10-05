@@ -9,6 +9,7 @@
 #include "ui_widgets.h"
 #include "game_thread.h"
 #include "object_ref.h"
+#include "aob_resolver.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
@@ -25,9 +26,11 @@
 #include <unordered_map>
 #include <vector>
 
-// Resizing the player inventory is generated-SDK only: no AOB patterns, no
-// detours. The grid itself is one UFUNCTION call; the slot widgets are plain
-// UMG field writes.
+// The grid itself is one UFUNCTION call; the slot widgets are plain UMG field
+// writes, made from a detour on UCrUW_InventoryContainer::InitInventorySlots so
+// they land the moment the game builds the slots — on the inventory screen, on
+// every machine screen (each one opens the same player inventory widget), and
+// after every in-game resize.
 //
 // Two halves that have to agree. The inventory frame has no scroll box anywhere
 // in it — the whole WBP_Inventory tree is GridPanel, Border and SizeBox — so a
@@ -36,8 +39,8 @@
 // shrinking every slot widget by the same factor keeps the footprint. Do one
 // without the other and the grid overflows sideways instead of downwards.
 //
-// Everything that touches a UObject runs on the game thread — Tick(), or the
-// console handler, which is registered with gameThread = true. RenderImGui()
+// Everything that touches a UObject runs on the game thread — Tick(), the
+// detour, or the console handler, which is registered with gameThread = true. RenderImGui()
 // runs on the render thread and only ever reads the snapshot.
 
 namespace BetterCheats::Panels::Inventory
@@ -54,15 +57,6 @@ namespace BetterCheats::Panels::Inventory
 		// Below this the icons and stack counts stop being readable, so the grid
 		// is allowed to overflow the frame rather than shrink any further.
 		constexpr float kMinSlotScale = 0.40f;
-
-		// Neither half stays applied on its own: the game rebuilds every slot
-		// widget whenever the inventory resizes, so the sizes have to be put back
-		// afterwards, and the widgets only exist once the inventory is opened.
-		constexpr float kMaintainInterval = 0.5f;
-
-		// ResizeInventory can refuse (see ResizeGrid). Retrying an RPC forever at
-		// 2 Hz is worse than leaving the grid the shape it is.
-		constexpr int kMaxResizeAttempts = 3;
 
 		constexpr const char* kCommandName  = "bc_invsize";
 		constexpr const char* kCommandAlias = "invsize";
@@ -164,50 +158,51 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		// ---------------------------------------------------------------------
-		// The live inventory widget. Game thread only.
+		// The player-inventory containers seen so far. Game thread only.
 		//
-		// GObjects has to be walked to find it — there is no path to the
-		// inventory widget from the player controller — so the result is cached
-		// as an ObjectRef, revalidated by its GObjects slot rather than by
-		// dereferencing a pointer that may belong to a destroyed widget.
+		// Each one is handed to us by the InitInventorySlots detour, which is
+		// what scales it. The list exists so a change made from the panel (the
+		// fit toggle) reaches containers that are already built, without waiting
+		// for them to be opened again. The main inventory and the machine
+		// screens are separate widget instances, so there is more than one.
+		// ObjectRef, because a widget is freed with its screen.
 		// ---------------------------------------------------------------------
-		ObjectRef<SDK::UCrUW_InventoryContainer> g_container;
+		std::vector<ObjectRef<SDK::UCrUW_InventoryContainer>> g_containers;
 
-		SDK::UCrUW_InventoryContainer* ValidateContainer()
+		void TrackContainer(SDK::UCrUW_InventoryContainer* container)
 		{
-			return g_container.Get();
+			bool known = false;
+			g_containers.erase(std::remove_if(g_containers.begin(), g_containers.end(),
+				[&](const ObjectRef<SDK::UCrUW_InventoryContainer>& ref)
+				{
+					SDK::UCrUW_InventoryContainer* live = ref.Get();
+					if (live == container) known = true;
+					return live == nullptr;
+				}), g_containers.end());
+
+			if (!known)
+				g_containers.emplace_back(container);
 		}
 
-		void RescanContainer()
+		bool AnyContainerLive()
 		{
-			g_container.Reset();
+			for (const auto& ref : g_containers)
+				if (ref.Get()) return true;
+			return false;
+		}
 
-			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
-			if (!arr)
-				return;
+		// UCrUW_InventoryContainer::InventoryComponent is a private
+		// TWeakObjectPtr<UCrInventoryComponent> the SDK dumps as padding —
+		// InitInventorySlots opens on `lea r12, [rcx+468h]` to read it. Only the
+		// index is compared, never resolved: InitPlayer can bind the character's
+		// hidden inventory instead, and that grid is not the one being resized.
+		constexpr size_t kContainerInventoryOffset = 0x468;
 
-			SDK::UClass* inventoryClass = SDK::UCrUW_Inventory::StaticClass();
-			if (!inventoryClass)
-				return;
-
-			// Newest first: a widget from a previous session sticks around until
-			// GC runs, and the live one is always the more recently created.
-			for (int i = arr->Num() - 1; i >= 0; --i)
-			{
-				SDK::UObject* obj = arr->GetByIndex(i);
-				if (!obj || !obj->Class) continue;
-				if (obj->IsDefaultObject()) continue;
-				if (!obj->IsA(inventoryClass)) continue;
-
-				SDK::UCrUW_InventoryContainer* container =
-					static_cast<SDK::UCrUW_Inventory*>(obj)->ItemsContainer;
-
-				if (!container || !container->ItemGridPanel)
-					continue;
-
-				g_container.Set(container);
-				return;
-			}
+		bool IsBoundTo(const SDK::UCrUW_InventoryContainer* container, const SDK::UCrInventoryComponent* inv)
+		{
+			const auto* weak = reinterpret_cast<const SDK::FWeakObjectPtr*>(
+				reinterpret_cast<const uint8_t*>(container) + kContainerInventoryOffset);
+			return weak->ObjectIndex == inv->Index;
 		}
 
 		// The designer slot size, captured from the first slot seen before
@@ -258,10 +253,9 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		// Returns the scale actually in force, or 0 when there was nothing to
-		// apply it to — the slot widgets only exist once the inventory is opened.
-		float ApplySlotScale(float scale)
+		// apply it to.
+		float ApplySlotScale(SDK::UCrUW_InventoryContainer* container, float scale)
 		{
-			SDK::UCrUW_InventoryContainer* container = ValidateContainer();
 			if (!container) return 0.0f;
 
 			SDK::UGridPanel* grid = container->ItemGridPanel;
@@ -310,7 +304,7 @@ namespace BetterCheats::Panels::Inventory
 				const float height = g_baseSlotHeight * scale;
 
 				// Every write invalidates layout, so skip the ones that would not
-				// change anything — this runs twice a second, forever.
+				// change anything — a reopened screen may reuse slots already sized.
 				if (box->WidthOverride == width && box->HeightOverride == height)
 				{
 					++touched;
@@ -331,30 +325,87 @@ namespace BetterCheats::Panels::Inventory
 		// Wanted state — written from the render thread and the console handler,
 		// read on the game thread.
 		// ---------------------------------------------------------------------
-		// Zero means "not decided yet": no saved grid for this session and the
-		// inventory component has not reported one either. The maintenance pass
-		// adopts whatever the game built rather than forcing a minimum onto a
+		// Zero means "not decided yet": no saved grid for this session, so the
+		// grid is left as the game built it rather than forcing a minimum onto a
 		// save that never asked for one.
 		std::atomic<int>  g_wantColumns{ 0 };
 		std::atomic<int>  g_wantRows{ 0 };
 		std::atomic<bool> g_wantFitToPanel{ true };
 		std::atomic<bool> g_pendingResize{ false };
 
+		// Set by the fit toggle: the slots already built need resizing without
+		// the game rebuilding them.
+		std::atomic<bool> g_rescaleBuilt{ false };
+
 		// ---------------------------------------------------------------------
 		// Applied state — game thread only.
 		// ---------------------------------------------------------------------
-		float g_maintainTimer    = 0.0f;
 		float g_appliedSlotScale = 1.0f;
-		int   g_resizeAttempts   = 0;
-		int   g_resizeTarget     = 0; // the shape the attempts were counted for
 
-		// A miss costs a full GObjects walk, and the widget does not exist at all
-		// until the inventory is opened for the first time, so a miss is the
-		// normal case for most of a session. Back off hard between attempts —
-		// see enemies.cpp, where walking GObjects too often was itself the
-		// framerate drop it looked like it was diagnosing.
-		constexpr float kRescanCooldown = 5.0f;
-		float g_rescanCooldown = 0.0f;
+		float WantedSlotScale(const SDK::UCrInventoryComponent* inv)
+		{
+			// Scaled against the grid the game actually built, not the one that
+			// was asked for — a refused resize should not shrink the slots.
+			return g_wantFitToPanel.load() ? SolveSlotScale(inv->GridColumns, inv->GridRows) : 1.0f;
+		}
+
+		// Game thread, straight after the game has built a container's slots.
+		void OnSlotsBuilt(SDK::UCrUW_InventoryContainer* container)
+		{
+			if (!container || !container->ItemGridPanel)
+				return;
+
+			SDK::UCrInventoryComponent* inv = GetLocalInventory();
+			if (!inv || !IsBoundTo(container, inv))
+				return;
+
+			TrackContainer(container);
+
+			// Freshly built slots are already at their designer size.
+			const float scale = WantedSlotScale(inv);
+			if (scale == 1.0f && g_baseSlotWidth <= 0.0f)
+				return;
+
+			const float applied = ApplySlotScale(container, scale);
+			if (applied > 0.0f)
+				g_appliedSlotScale = applied;
+		}
+
+		void RescaleBuiltContainers()
+		{
+			if (!g_rescaleBuilt.exchange(false))
+				return;
+
+			// No pawn, no grid to measure. Nothing is lost: the detour scales
+			// every container again as it is built.
+			SDK::UCrInventoryComponent* inv = GetLocalInventory();
+			if (!inv)
+				return;
+
+			const float scale = WantedSlotScale(inv);
+			for (const auto& ref : g_containers)
+			{
+				const float applied = ApplySlotScale(ref.Get(), scale);
+				if (applied > 0.0f)
+					g_appliedSlotScale = applied;
+			}
+		}
+
+		// ---------------------------------------------------------------------
+		// UCrUW_InventoryContainer::InitInventorySlots detour.
+		// ---------------------------------------------------------------------
+		using InitInventorySlotsFn = void(__fastcall*)(SDK::UCrUW_InventoryContainer* self);
+
+		InitInventorySlotsFn g_originalInitInventorySlots = nullptr;
+		HookHandle           g_hookInitInventorySlots     = nullptr;
+
+		void __fastcall Detour_InitInventorySlots(SDK::UCrUW_InventoryContainer* self)
+		{
+			g_originalInitInventorySlots(self);
+
+			try { OnSlotsBuilt(self); }
+			catch (...) { LOG_ERROR("Inventory: exception while scaling the inventory slots."); }
+		}
 
 		void ApplyPendingResize()
 		{
@@ -378,102 +429,29 @@ namespace BetterCheats::Panels::Inventory
 					return; // stays pending: the pawn may not be possessed yet
 
 				g_pendingResize.store(false);
-				g_resizeAttempts = 0;
-				g_resizeTarget   = columns * 1000 + rows;
 
-				if (ResizeGrid(inv, columns, rows))
-					LOG_INFO("Inventory: grid set to %d x %d (%d slots).", columns, rows, columns * rows);
+				if (!ResizeGrid(inv, columns, rows))
+					return;
+
+				// On a host the resize has already run; on a client it is still
+				// in flight, so a mismatch there means nothing yet.
+				SDK::AActor* owner = inv->GetOwner();
+				if (owner && owner->HasAuthority() && (inv->GridColumns != columns || inv->GridRows != rows))
+				{
+					LOG_WARN("Inventory: the game would not resize the grid to %d x %d "
+						"(currently %d x %d, %d slots) — it will not shrink below the "
+						"slots that are in use.",
+						columns, rows, inv->GridColumns, inv->GridRows, inv->Slots.Num());
+					return;
+				}
+
+				LOG_INFO("Inventory: grid set to %d x %d (%d slots).", columns, rows, columns * rows);
 			}
 			catch (...)
 			{
 				g_pendingResize.store(false);
 				LOG_ERROR("Inventory: exception while resizing the inventory.");
 			}
-		}
-
-		// Re-asserts both halves. The grid can be reshaped underneath us — the
-		// corporation-reward unlock path calls ResizeInventory itself — and the
-		// slot widgets are rebuilt at their designer size every time that happens.
-		void MaintainGrid(float deltaSeconds)
-		{
-			g_maintainTimer += deltaSeconds;
-			if (g_maintainTimer < kMaintainInterval)
-				return;
-			g_maintainTimer = 0.0f;
-
-			SDK::UCrInventoryComponent* inv = GetLocalInventory();
-			if (!inv)
-				return;
-
-			const bool fit = g_wantFitToPanel.load();
-
-			// Nothing to find the widget for while the slots are already the size
-			// the game made them.
-			if ((fit || g_appliedSlotScale != 1.0f) && !ValidateContainer())
-			{
-				g_rescanCooldown -= kMaintainInterval;
-				if (g_rescanCooldown <= 0.0f)
-				{
-					g_rescanCooldown = kRescanCooldown;
-					RescanContainer();
-				}
-			}
-
-			int columns = g_wantColumns.load();
-			int rows    = g_wantRows.load();
-
-			// Nothing has asked for a size, so the game's own grid becomes the
-			// target — and stays untouched.
-			if (columns <= 0 || rows <= 0)
-			{
-				if (inv->GridColumns <= 0 || inv->GridRows <= 0)
-					return;
-
-				columns = inv->GridColumns;
-				rows    = inv->GridRows;
-				g_wantColumns.store(columns);
-				g_wantRows.store(rows);
-			}
-
-			// Keyed on the shape, not the slot count: 16x8 and 8x16 are the same
-			// total but different requests, and the second one deserves its own
-			// attempts rather than inheriting the first one's.
-			if (g_resizeTarget != columns * 1000 + rows)
-			{
-				g_resizeTarget   = columns * 1000 + rows;
-				g_resizeAttempts = 0;
-			}
-
-			if (inv->GridColumns != columns || inv->GridRows != rows)
-			{
-				if (g_resizeAttempts < kMaxResizeAttempts)
-				{
-					++g_resizeAttempts;
-					ResizeGrid(inv, columns, rows);
-
-					if (g_resizeAttempts == kMaxResizeAttempts)
-					{
-						LOG_WARN("Inventory: the game would not resize the grid to %d x %d "
-							"(currently %d x %d, %d slots) — it will not shrink below the "
-							"slots that are in use.",
-							columns, rows, inv->GridColumns, inv->GridRows, inv->Slots.Num());
-					}
-				}
-			}
-			else
-			{
-				g_resizeAttempts = 0;
-			}
-
-			// Scaled against the grid the game actually built, not the one that
-			// was asked for — a refused resize should not shrink the slots.
-			const float scale = fit
-				? SolveSlotScale(inv->GridColumns, inv->GridRows)
-				: 1.0f;
-
-			const float applied = ApplySlotScale(scale);
-			if (applied > 0.0f)
-				g_appliedSlotScale = applied;
 		}
 
 		// Drops every cached pointer into the game's widgets.
@@ -494,7 +472,7 @@ namespace BetterCheats::Panels::Inventory
 			g_appliedSlotScale = 1.0f;
 			g_baseSlotWidth    = 0.0f;
 			g_baseSlotHeight   = 0.0f;
-			g_container.Reset();
+			g_containers.clear();
 		}
 
 		// ---------------------------------------------------------------------
@@ -528,7 +506,7 @@ namespace BetterCheats::Panels::Inventory
 					snap.slots          = inv->Slots.Num();
 				}
 
-				snap.widgetFound = ValidateContainer() != nullptr;
+				snap.widgetFound = AnyContainerLive();
 				snap.slotScale   = g_appliedSlotScale;
 			}
 			catch (...)
@@ -1656,7 +1634,7 @@ namespace BetterCheats::Panels::Inventory
 		// check of its own.
 		constexpr int kGatherResourceCeiling = 1000000;
 
-		// One GObjects pass, the same cost as RescanContainer's; enemies.cpp
+		// One full GObjects pass; enemies.cpp
 		// walks GObjects every 0.25s, so this cadence is well inside budget.
 		constexpr float kGatherRescanSeconds = 5.0f;
 		float           g_gatherRescanTimer  = 0.0f;
@@ -1878,6 +1856,30 @@ namespace BetterCheats::Panels::Inventory
 
 	void Initialize()
 	{
+		IPluginHookUtils* hookUtils = GetHooks() ? GetHooks()->Hooks : nullptr;
+		const uintptr_t initSlotsAddr = AOB::Resolved().InventoryContainer_InitInventorySlots;
+
+		if (!initSlotsAddr)
+		{
+			LOG_WARN("Inventory: InitInventorySlots unresolved - slots will not be scaled to fit.");
+		}
+		else if (!hookUtils)
+		{
+			LOG_WARN("Inventory: hook utils unavailable, InitInventorySlots hook skipped.");
+		}
+		else
+		{
+			g_hookInitInventorySlots = hookUtils->Install(
+				initSlotsAddr,
+				reinterpret_cast<void*>(&Detour_InitInventorySlots),
+				reinterpret_cast<void**>(&g_originalInitInventorySlots));
+
+			if (!g_hookInitInventorySlots)
+				LOG_WARN("Inventory: failed to install InitInventorySlots hook.");
+			else
+				LOG_INFO("Inventory: InitInventorySlots hook installed.");
+		}
+
 		IPluginSelf* self = GetSelf();
 		if (!self || !self->hooks || !self->hooks->Console)
 		{
@@ -1916,6 +1918,14 @@ namespace BetterCheats::Panels::Inventory
 
 		g_commandRegistered = false;
 
+		IPluginHookUtils* hookUtils = GetHooks() ? GetHooks()->Hooks : nullptr;
+		if (hookUtils && g_hookInitInventorySlots)
+		{
+			hookUtils->Remove(g_hookInitInventorySlots);
+			g_hookInitInventorySlots     = nullptr;
+			g_originalInitInventorySlots = nullptr;
+		}
+
 		ForgetWidgets();
 
 		// Item stack sizes: same render-thread-Shutdown hazard as the weapon
@@ -1947,7 +1957,7 @@ namespace BetterCheats::Panels::Inventory
 		BetterCheats::RecordGameThread();
 
 		ApplyPendingResize();
-		MaintainGrid(deltaSeconds);
+		RescaleBuiltContainers();
 		RefreshSnapshot();
 
 		ApplyStackSizes();
@@ -1973,8 +1983,8 @@ namespace BetterCheats::Panels::Inventory
 		}
 		else
 		{
-			// This save has never been resized. Leave the grid alone and let the
-			// maintenance pass adopt it as the target.
+			// This save has never been resized. Leave the grid alone; the panel
+			// shows whatever the game built.
 			g_wantColumns.store(0);
 			g_wantRows.store(0);
 			g_pendingResize.store(false);
@@ -1984,7 +1994,7 @@ namespace BetterCheats::Panels::Inventory
 		// is no longer something we know to be unscaled.
 		g_baseSlotWidth  = 0.0f;
 		g_baseSlotHeight = 0.0f;
-		g_container.Reset();
+		g_containers.clear();
 
 		// Item stack sizes. Sizes replaced the old multipliers; a multiplier
 		// has no single size it maps to, so the old keys are dropped, not
@@ -2162,6 +2172,7 @@ namespace BetterCheats::Panels::Inventory
 		if (imgui->Checkbox("Shrink slots to fit the inventory frame", &fit))
 		{
 			g_wantFitToPanel.store(fit);
+			g_rescaleBuilt.store(true);
 			SessionConfig::Set("playerInventory.fitToPanel", fit);
 		}
 

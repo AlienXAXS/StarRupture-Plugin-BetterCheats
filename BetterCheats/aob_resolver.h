@@ -50,6 +50,9 @@ namespace BetterCheats::AOB
 		// Items
 		uintptr_t AddNewItem                    = 0;
 
+		// Inventory UI
+		uintptr_t InventoryContainer_InitInventorySlots = 0;
+
 		// Machine power
 		uintptr_t FMassEntityConfig_DestroyEntityTemplate       = 0;
 		uintptr_t FMassEntityConfig_GetOrCreateEntityTemplate   = 0;

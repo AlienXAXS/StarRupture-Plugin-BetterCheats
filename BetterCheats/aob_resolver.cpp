@@ -94,6 +94,8 @@ namespace BetterCheats::AOB
 
 		ResolveFunction(self, scanner, g_resolved.AddNewItem,
 			"UAuItemsComponent::AddNewItem", AddNewItem);
+		ResolveFunction(self, scanner, g_resolved.InventoryContainer_InitInventorySlots,
+			"UCrUW_InventoryContainer::InitInventorySlots", InventoryContainer_InitInventorySlots);
 
 		ResolveFunction(self, scanner, g_resolved.FMassEntityConfig_DestroyEntityTemplate,
 			"FMassEntityConfig::DestroyEntityTemplate", FMassEntityConfig_DestroyEntityTemplate);
