@@ -3,6 +3,7 @@
 #include "plugin_interface.h"
 #include "json.hpp"
 
+#include <cstdint>
 #include <string>
 
 namespace BetterCheats::SessionConfig
@@ -22,6 +23,11 @@ namespace BetterCheats::SessionConfig
 
 	// True once Reload() has resolved a session and loaded (or created) its config.
 	bool IsLoaded();
+
+	// Bumped by every successful Reload(); 0 while no session is loaded. Lets a
+	// per-tick caller do a one-off config read once per loaded session instead
+	// of every frame.
+	uint32_t Generation();
 
 	std::string GetSessionName();
 

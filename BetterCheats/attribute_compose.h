@@ -2,6 +2,7 @@
 
 #include "Chimera_classes.hpp"
 
+#include <cstdint>
 #include <string>
 
 // Shared by player_weapons.cpp and player_movement.cpp: neither file can set a
@@ -68,11 +69,27 @@ namespace BetterCheats
 		float GetWritten() const { return m_written; }
 		bool  IsActive()   const { return m_active; }
 
+		// ApplyComposedRow's RestoreIfStale bookkeeping: a leftover can only
+		// predate this plugin instance, so one look per owner per loaded session
+		// is enough -- an idle row otherwise re-reads the config every tick.
+		bool NeedsStaleCheck(const void* owner, uint32_t generation) const
+		{
+			return m_staleOwner != owner || m_staleGeneration != generation;
+		}
+		void MarkStaleChecked(const void* owner, uint32_t generation)
+		{
+			m_staleOwner      = owner;
+			m_staleGeneration = generation;
+		}
+
 	private:
 		const void* m_owner   = nullptr;
 		float       m_game    = 0.0f;   // last known game-aggregated value (attachments/LEMs included)
 		float       m_written = 0.0f;   // last value we wrote, so a re-aggregation is detectable
 		bool        m_active  = false;
+
+		const void* m_staleOwner      = nullptr;
+		uint32_t    m_staleGeneration = 0;
 	};
 
 	// Survives a hot-reload that couldn't run Release() cleanly. The loader's own

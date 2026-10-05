@@ -66,6 +66,9 @@ namespace BetterCheats
 	void ComposedAttribute::Forget()
 	{
 		m_active = false;
+		// A new object can land at the same address.
+		m_staleOwner      = nullptr;
+		m_staleGeneration = 0;
 	}
 
 	void RestoreIfStale(const std::string& keyPrefix, float& value)
@@ -99,8 +102,19 @@ namespace BetterCheats
 	{
 		const bool  wasActive     = composed.IsActive();
 		const float previousWrite = composed.GetWritten();
+		bool staleChecked = false;
 		if (!wasActive)
-			RestoreIfStale(key, value);
+		{
+			// Generation 0 means no session yet -- the stored pair can't be read,
+			// so leave the check for the first tick after it loads.
+			const uint32_t generation = SessionConfig::Generation();
+			if (generation != 0 && composed.NeedsStaleCheck(owner, generation))
+			{
+				RestoreIfStale(key, value);
+				composed.MarkStaleChecked(owner, generation);
+				staleChecked = true;
+			}
+		}
 		const float gameBefore = value;
 
 		if (active)
@@ -113,7 +127,7 @@ namespace BetterCheats
 		// would otherwise be captured as the game's own value after a reload.
 		if (active && (!wasActive || gameBefore != previousWrite || composed.GetWritten() != previousWrite))
 			SaveComposeState(key, composed.GetGame(), composed.GetWritten());
-		else if (!active)
+		else if (!active && (wasActive || staleChecked))
 			ClearComposeState(key);
 
 		const float expected = active ? (wasActive ? previousWrite : gameBefore) : gameBefore;

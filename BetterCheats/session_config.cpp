@@ -33,6 +33,7 @@ namespace BetterCheats::SessionConfig
 		std::string    g_sessionName;
 		nlohmann::json g_data;
 		bool           g_loaded = false;
+		uint32_t       g_generation = 0;
 
 		// Set() only ever marks this; Commit() is the only thing that clears
 		// it, and the only thing that touches disk. Guarded by g_mutex, same
@@ -226,6 +227,7 @@ namespace BetterCheats::SessionConfig
 		}
 
 		g_loaded = true;
+		++g_generation;
 		LOG_INFO("SessionConfig: loaded session '%s' (%s).", g_sessionName.c_str(), configPath.c_str());
 		return true;
 	}
@@ -234,6 +236,12 @@ namespace BetterCheats::SessionConfig
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
 		return g_loaded;
+	}
+
+	uint32_t Generation()
+	{
+		std::lock_guard<std::mutex> lock(g_mutex);
+		return g_loaded ? g_generation : 0;
 	}
 
 	std::string GetSessionName()
