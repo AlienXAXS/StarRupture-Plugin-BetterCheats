@@ -161,6 +161,33 @@ namespace BetterCheats::AOB
 	constexpr const std::ptrdiff_t kHeatGateJumpOffset = 43;
 
 	// -------------------------------------------------------------------------
+	// Build Windows Anywhere
+	//
+	// Opt-in as well, and scanned the same way: a miss leaves the toggle doing
+	// nothing.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  ACrAPHelperActorCustom::CheckMainMeshCollision
+	// Parameters       (ACrAPHelperActorCustom* this, const UCrBuildingData* PlacementData) -> EAuAPlacementConditionResult
+	// Overlap test of the helper's main mesh. Overlapping actors are skipped when
+	// they are snapped to, connected to or ignored by the piece; any other
+	// building makes it BuildingColliding or IsColliding.
+	constexpr const char* CheckMainMeshCollision_Custom =
+		"40 55 53 56 57 41 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? 00 "
+		"4C 8B E9 48 8B 01 0F 84 ?? ?? ?? ?? 33 FF 48 89 7D ?? 48 89 7D ??";
+
+	// Class::Function  ACrAPHelper::GetBoxCollisionResult
+	// Parameters       (ACrAPHelper* this, const FVector& Min, const FVector& Max,
+	//                   const TArray<AActor*>& IgnoredActors, const TArray<TSubclassOf<ACrBuildingActorBase>>& IgnoredClasses,
+	//                   bool) -> EAuAPlacementConditionResult
+	// The box overlap pass GetHelperConditionResult runs once the main mesh has
+	// passed, skipping the same kinds of actor.
+	constexpr const char* GetBoxCollisionResult =
+		"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? "
+		"48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 8B 01 45 33 E4 48 8B B5 ?? ?? ?? ?? "
+		"4D 8B F1 4C 89 4C 24 ?? 49 8B D8 48 8B FA 48 89 4D ?? 4C 8B E9";
+
+	// -------------------------------------------------------------------------
 	// Mining
 	// -------------------------------------------------------------------------
 

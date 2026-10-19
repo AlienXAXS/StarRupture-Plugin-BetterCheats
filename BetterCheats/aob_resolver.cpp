@@ -98,6 +98,22 @@ namespace BetterCheats::AOB
 			g_resolved.FindDeconstructibleTarget_HeatGate = match + kHeatGateJumpOffset;
 		}
 
+		// Build Windows Anywhere is opt-in too, and its two hooks only make sense
+		// together, so they resolve as a pair or not at all.
+		void ResolveBuildWindowsAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t mainMesh = FindFunction(self, scanner, CheckMainMeshCollision_Custom);
+			const uintptr_t box      = FindFunction(self, scanner, GetBoxCollisionResult);
+			if (!mainMesh || !box)
+			{
+				LOG_WARN("AOB: ACrAPHelperActorCustom::CheckMainMeshCollision or ACrAPHelper::GetBoxCollisionResult "
+					"did not resolve - Build Windows Anywhere will do nothing.");
+				return;
+			}
+			g_resolved.CheckMainMeshCollision_Custom = mainMesh;
+			g_resolved.GetBoxCollisionResult         = box;
+		}
+
 #if BETTERCHEATS_DEV_BUILD
 		// The InitCheatManager prologue is generic enough to appear elsewhere in
 		// the image, which used to mean scanning for every match by hand and
@@ -155,6 +171,7 @@ namespace BetterCheats::AOB
 			"ACrAPHelperDynamicPillar::CheckStability", CheckStability_DynamicPillar);
 
 		ResolveDeconstructWindows(self, scanner);
+		ResolveBuildWindowsAnywhere(self, scanner);
 
 		ResolveFunction(self, scanner, g_resolved.GetMiningDamage,
 			"UCrMiningToolComponent::GetMiningDamage", GetMiningDamage);
