@@ -143,11 +143,6 @@ namespace BetterCheats::AOB
 	constexpr const char* GetMiningDamage =
 		"40 55 56 57 41 56 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8B B9";
 
-	// Class::Function  ACrCharacterPlayerBase::UpdateRepHarvesterHeatStack
-	// Parameters       (ACrCharacterPlayerBase* this)
-	constexpr const char* UpdateRepHarvesterHeatStack =
-		"40 57 48 81 EC ?? ?? ?? ?? 48 8B F9 E8 ?? ?? ?? ?? 83 F8";
-
 	// -------------------------------------------------------------------------
 	// Mass Entity Templates
 	// -------------------------------------------------------------------------

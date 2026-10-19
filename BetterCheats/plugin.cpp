@@ -287,7 +287,7 @@ extern "C" {
 		// regardless. With hook removal at the end of the list that turned any
 		// shutdown fault into a guaranteed second crash — the game kept calling
 		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
-		// two of them (UpdateRepHarvesterHeatStack, GetMiningDamage) every frame.
+		// GetMiningDamage every frame.
 		// Detached first, a fault below is survivable.
 		BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Building::Shutdown();

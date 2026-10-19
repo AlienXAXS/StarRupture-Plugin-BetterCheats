@@ -45,7 +45,6 @@ namespace BetterCheats::AOB
 
 		// Tools
 		uintptr_t GetMiningDamage               = 0;
-		uintptr_t UpdateRepHarvesterHeatStack   = 0;
 
 		// Items
 		uintptr_t AddNewItem                    = 0;

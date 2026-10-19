@@ -31,19 +31,33 @@ namespace BetterCheats::Panels::Tools
 		// What "One Hit Kill Laser" replaces mining damage with.
 		constexpr float kOneHitKillDamage = 10000.0f;
 
-		using GetMiningDamageFn            = float(__fastcall*)(void* self, bool isHittingWeakSpot);
-		using UpdateRepHarvesterHeatStackFn = void(__fastcall*)(void* self);
+		using GetMiningDamageFn = float(__fastcall*)(void* self, bool isHittingWeakSpot);
 
-		GetMiningDamageFn             g_originalGetMiningDamage            = nullptr;
-		HookHandle                    g_hookGetMiningDamage                 = nullptr;
+		GetMiningDamageFn g_originalGetMiningDamage = nullptr;
+		HookHandle        g_hookGetMiningDamage     = nullptr;
 
-		UpdateRepHarvesterHeatStackFn g_originalUpdateRepHarvesterHeatStack = nullptr;
-		HookHandle                    g_hookUpdateRepHarvesterHeatStack      = nullptr;
-
-		// Written from RenderImGui, read from Tick and the detours below.
+		// Written from RenderImGui, read from Tick and the detour below.
 		std::atomic<bool> g_overload{ false };   // One Hit Kill Laser
 		std::atomic<bool> g_noDrillOverheat{ false };
-		int32_t           g_overheatTickCounter = 0;
+
+		// ---------------------------------------------------------------------
+		// No Handheld Drill Overheat. The game's own heat logic (and its
+		// UnlimitedWeaponHeat cheat) stops heating a weapon while the player
+		// carries the Cheat.UnlimitedWeaponHeat gameplay tag, so the toggle
+		// just keeps that tag on the local character as a loose tag. Loose tag
+		// counts stack, so the tag is only added when the character has none,
+		// and only a tag we added is ever removed.
+		//
+		// All of this is game thread only (Tick, the world-end callback, and
+		// Shutdown when it runs there). The holder is a validated reference,
+		// not a raw pointer, because the character dies on respawn and travel.
+		// ---------------------------------------------------------------------
+		constexpr float kHeatTagRecheckSeconds = 1.0f;
+
+		SDK::FGameplayTag                       g_unlimitedHeatTag = {};
+		ObjectRef<SDK::ACrCharacterPlayerBase>  g_heatTagHolder;   // the character we added the tag to
+		bool                                    g_heatTagWanted    = false;
+		float                                   g_heatTagTimer     = 0.0f;
 
 		// ---------------------------------------------------------------------
 		// Mining tool stats. The tool's item data is a UCrWeaponItemDataBase,
@@ -356,11 +370,103 @@ namespace BetterCheats::Panels::Tools
 			g_toolEquipped.store(false);
 		}
 
+		// How many copies of the unlimited heat tag the character carries.
+		int32_t HeatTagCount(SDK::ACrCharacterPlayerBase* character)
+		{
+			if (g_unlimitedHeatTag.TagName.IsNone())
+				g_unlimitedHeatTag.TagName = SDK::BasicFilesImplUtils::StringToName(L"Cheat.UnlimitedWeaponHeat");
+
+			SDK::UCrAbilitySystemComponent* asc = character ? character->GetCrAbilitySystemComponent() : nullptr;
+			return (asc && !g_unlimitedHeatTag.TagName.IsNone()) ? asc->GetGameplayTagCount(g_unlimitedHeatTag) : 0;
+		}
+
+		void SetHeatTag(SDK::ACrCharacterPlayerBase* character, bool present)
+		{
+			SDK::FGameplayTagContainer tags;
+			tags.GameplayTags.Add(g_unlimitedHeatTag);
+
+			if (present)
+				SDK::UAbilitySystemBlueprintLibrary::AddLooseGameplayTags(character, tags, false);
+			else
+				SDK::UAbilitySystemBlueprintLibrary::RemoveLooseGameplayTags(character, tags, false);
+		}
+
+		// Takes the tag back off the character we added it to, if it is still
+		// there. Off the game thread (the stock loader's RELOAD button runs
+		// shutdown on the render thread) nothing is touched; the reference is
+		// just dropped.
+		void ReleaseHeatTag()
+		{
+			if (!BetterCheats::IsGameThread())
+			{
+				g_heatTagHolder.Reset();
+				return;
+			}
+
+			SDK::ACrCharacterPlayerBase* held = g_heatTagHolder.Get();
+			g_heatTagHolder.Reset();
+			if (!held)
+				return;
+
+			try
+			{
+				if (HeatTagCount(held) > 0)
+					SetHeatTag(held, false);
+			}
+			catch (...) {}
+		}
+
+		// Keeps the tag on `character` while the toggle is on, and off every
+		// other character. Toggling is picked up on the next tick; a new
+		// character, or a tag something else removed, within a second.
+		void UpdateHeatTag(float deltaSeconds, SDK::ACrCharacterPlayerBase* character)
+		{
+			const bool wanted = g_noDrillOverheat.load();
+			if (wanted != g_heatTagWanted)
+			{
+				g_heatTagWanted = wanted;
+				g_heatTagTimer  = 0.0f;
+			}
+
+			SDK::ACrCharacterPlayerBase* held = g_heatTagHolder.Get();
+			if (held && (held != character || !wanted))
+			{
+				ReleaseHeatTag();
+				held = nullptr;
+			}
+			if (!wanted || !character)
+				return;
+
+			g_heatTagTimer -= deltaSeconds;
+			if (g_heatTagTimer > 0.0f)
+				return;
+			g_heatTagTimer = kHeatTagRecheckSeconds;
+
+			try
+			{
+				// A count above zero on a character we did not tag means the
+				// game's own cheat holds it: nothing to add, nothing to remove.
+				const int32_t count = HeatTagCount(character);
+				if (held)
+				{
+					if (count == 0)
+						SetHeatTag(character, true);
+				}
+				else if (count == 0)
+				{
+					SetHeatTag(character, true);
+					g_heatTagHolder.Set(character);
+				}
+			}
+			catch (...) {}
+		}
+
 		void OnBeforeWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
 		{
 			if (!worldName || std::strcmp(worldName, kChimeraMainWorldName) != 0)
 				return;
 
+			ReleaseHeatTag();
 			ReleaseAllStats();
 			g_boostGame.store(-1.0f);
 			g_boostWasActive = false;
@@ -372,14 +478,6 @@ namespace BetterCheats::Panels::Tools
 				return kOneHitKillDamage;
 
 			return g_originalGetMiningDamage(self, isHittingWeakSpot);
-		}
-
-		void __fastcall Detour_UpdateRepHarvesterHeatStack(void* self)
-		{
-			if (g_noDrillOverheat.load())
-				return;
-
-			g_originalUpdateRepHarvesterHeatStack(self);
 		}
 
 		void InstallHook(uintptr_t addr, void* detour, void** original, HookHandle* outHandle, const char* name)
@@ -697,13 +795,6 @@ namespace BetterCheats::Panels::Tools
 			&g_hookGetMiningDamage,
 			"GetMiningDamage");
 
-		InstallHook(
-			AOB::Resolved().UpdateRepHarvesterHeatStack,
-			reinterpret_cast<void*>(&Detour_UpdateRepHarvesterHeatStack),
-			reinterpret_cast<void**>(&g_originalUpdateRepHarvesterHeatStack),
-			&g_hookUpdateRepHarvesterHeatStack,
-			"UpdateRepHarvesterHeatStack");
-
 		if (IPluginSelf* self = GetSelf())
 			self->hooks->World->RegisterOnBeforeWorldEndPlay(&OnBeforeWorldEndPlay);
 	}
@@ -713,9 +804,9 @@ namespace BetterCheats::Panels::Tools
 		if (IPluginSelf* self = GetSelf())
 			self->hooks->World->UnregisterOnBeforeWorldEndPlay(&OnBeforeWorldEndPlay);
 
-		RemoveHook(&g_hookGetMiningDamage,            reinterpret_cast<void**>(&g_originalGetMiningDamage),            "GetMiningDamage");
-		RemoveHook(&g_hookUpdateRepHarvesterHeatStack, reinterpret_cast<void**>(&g_originalUpdateRepHarvesterHeatStack), "UpdateRepHarvesterHeatStack");
+		RemoveHook(&g_hookGetMiningDamage, reinterpret_cast<void**>(&g_originalGetMiningDamage), "GetMiningDamage");
 
+		ReleaseHeatTag();
 		try { ReleaseAllStats(); }
 		catch (...) {}
 	}
@@ -735,6 +826,7 @@ namespace BetterCheats::Panels::Tools
 		catch (...) {}
 
 		SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
+		UpdateHeatTag(deltaSeconds, character);
 		if (!character)
 		{
 			g_toolEquipped.store(false);
@@ -784,43 +876,6 @@ namespace BetterCheats::Panels::Tools
 					boost->CurrentBoostMultiplierValue.CurrentValue = boostValue;
 				}
 				g_boostWasActive = boostActive;
-			}
-		}
-		catch (...) {}
-
-		SDK::UCrAbilitySystemComponent* asc = character->GetCrAbilitySystemComponent();
-		if (!asc)
-			return;
-
-		SDK::UOreDeveloperSettings* oreSettings = SDK::UOreDeveloperSettings::GetDefaultObj();
-		if (!oreSettings)
-			return;
-
-		SDK::FGameplayTagContainer tags;
-		tags.GameplayTags.Add(oreSettings->MiningHeatStackTag);
-
-		try
-		{
-			SDK::TArray<SDK::FActiveGameplayEffectHandle> effects = asc->GetActiveEffectsWithAllTags(tags);
-
-			if (g_noDrillOverheat.load())
-			{
-				++g_overheatTickCounter;
-				if (g_overheatTickCounter >= 300)
-				{
-					g_overheatTickCounter = 0;
-					for (int32_t i = 0; i < effects.Num(); ++i)
-					{
-						if (effects[i].Handle == -1)
-							continue;
-
-						const SDK::UGameplayEffect* ge = SDK::UAbilitySystemBlueprintLibrary::GetGameplayEffectFromActiveEffectHandle(effects[i]);
-						if (!ge || ge->GetName() != "Default__GE_WeaponHeatStackBase_C")
-							continue;
-
-						asc->RemoveActiveGameplayEffect(effects[i], -1);
-					}
-				}
 			}
 		}
 		catch (...) {}
