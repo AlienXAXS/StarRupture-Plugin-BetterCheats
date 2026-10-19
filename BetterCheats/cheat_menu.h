@@ -66,6 +66,10 @@ namespace BetterCheats
 		// game tick, never from OnRender -- see its definition for why.
 		static void TickPendingClose();
 
+		// Applies a pending open request from the pause menu row. Must be
+		// called from the game tick (OnEngineTick).
+		static void TickPendingOpen();
+
 	private:
 		static void OpenMenu();
 		static void CloseMenu();
@@ -78,6 +82,7 @@ namespace BetterCheats
 		static void ApplyMenuClosed(const char* reason);
 
 		static void OnPanelClosed(PanelHandle handle);
+		static void OnPauseMenuRowClicked(void* userData);
 		static void OnRender(IModLoaderImGui* imgui);
 		static void RenderSidebar(IModLoaderImGui* imgui, float navWidth);
 		static void RenderContent(IModLoaderImGui* imgui);
@@ -89,5 +94,6 @@ namespace BetterCheats
 		static std::atomic<bool> s_open;   // toggled from keybind callbacks, read on the render thread
 		static MenuCategory      s_activeCategory;
 		static std::atomic<bool> s_closeRequested;
+		static std::atomic<bool> s_openRequested;
 	};
 }

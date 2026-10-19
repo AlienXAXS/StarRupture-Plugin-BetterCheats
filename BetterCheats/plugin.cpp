@@ -120,7 +120,10 @@ static void OnEngineTick(float deltaSeconds)
 	// CheatMenu::TickPendingClose for why. Runs before the ChimeraMain/cheats
 	// gate below: closing the menu must still work even if the player left
 	// single-player or the world unloaded out from under an open panel.
+	// TickPendingOpen applies a click on the pause menu's BETTER CHEATS row,
+	// on the same tick for the same reason.
 	BetterCheats::CheatMenu::TickPendingClose();
+	BetterCheats::CheatMenu::TickPendingOpen();
 
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
