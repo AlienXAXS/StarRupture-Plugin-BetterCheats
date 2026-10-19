@@ -156,8 +156,8 @@ namespace BetterCheats::Panels::Building
 
 		// IPluginMemoryUtils::Patch logs every write, and this flips the jump on
 		// every call, so it writes the two bytes itself. The lock keeps Shutdown,
-		// which can run on the render thread, from interleaving its page-protection
-		// change with the game thread's.
+		// which can run off the game thread at process exit, from interleaving its
+		// page-protection change with the game thread's.
 		bool WriteHeatGate(const uint8_t (&bytes)[2])
 		{
 			std::lock_guard<std::mutex> lock(g_heatGateLock);

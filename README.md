@@ -125,7 +125,7 @@ Everything is off by default and saved per save. The Research options sit under 
 - **Build Windows Anywhere**: puts a window into a habitat or Hub wall slot even when a machine or other building is in it. <sup>[✦](#msantoro12)</sup>
 - **Build Benches Anywhere**: does the same for Analyzer, Armory, Cloning Bed, Food Processor, Item Printer, Recipe Table, Recycler, Research Terminal, Suit Workshop and Upgrade Station. The game only records that a slot is taken, so a bench can also go into a slot holding a window, airlock, bridge or personal storage. <sup>[✦](#msantoro12)</sup>
 
-The two "anywhere" options relax only the collision check for the piece you place, so the ghost goes green. Your own placements only; in multiplayer they need `EnableCheatsInMultiplayer`. Still refused:
+The two "anywhere" options relax only the collision check for the piece you place, so the ghost goes green. Your own placements only, also as a client in multiplayer. Like every Building option, a toggle left on stays on when you join someone else's game. Still refused:
 
 - a player or drone in the collision box;
 - a window not snapped to a habitat or the Hub, or into a slot already holding a window, airlock or bridge;
@@ -145,7 +145,7 @@ Creatures, characters and plants in the volume are let through only when a build
 
 **One Hit Kill Laser** is a flat 10000 mining damage and overrides Mining Damage. **No Handheld Drill Overheat** keeps the handheld drill from ever heating.
 
-- No Handheld Drill Overheat holds the game's own heat-immunity tag while on; a drill that is already hot cools normally. The tag comes off when you switch it off, the world ends or the plugin unloads (loader 1.22.0 or newer; an older loader leaves it on until you respawn).
+- No Handheld Drill Overheat holds the game's own heat-immunity tag while on; a drill that is already hot cools normally. The tag comes off when you switch it off, the world ends or the plugin unloads.
 
 #### Mining Power <sup>[✦](#msantoro12)</sup>
 

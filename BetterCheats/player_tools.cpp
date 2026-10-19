@@ -392,9 +392,8 @@ namespace BetterCheats::Panels::Tools
 		}
 
 		// Takes the tag back off the character we added it to, if it is still
-		// there. Off the game thread (the stock loader's RELOAD button runs
-		// shutdown on the render thread) nothing is touched; the reference is
-		// just dropped.
+		// there. Off the game thread (shutdown at process exit) nothing is
+		// touched; the reference is just dropped.
 		void ReleaseHeatTag()
 		{
 			if (!BetterCheats::IsGameThread())

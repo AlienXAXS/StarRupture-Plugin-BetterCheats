@@ -151,8 +151,8 @@ namespace BetterCheats::AOB
 		"48 8B C4 55 53 56 57 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? "
 		"4C 8B FA 44 0F 29 48 ?? 4C 8B F1 44 0F 29 90 ?? ?? ?? ?? 33 F6 48 8B 01 FF 90 D8 07 00 00 84 C0 0F";
 
-	// Inside FindDeconstructibleTarget: the infection gate
-	// (`comiss xmm6,[rax]; jb <return null>`), then the temperature fragment
+	// Class::Function  ACrPlayerControllerBase::FindDeconstructibleTarget (inside the body, not an entry)
+	// The infection gate (`comiss xmm6,[rax]; jb <return null>`), then the temperature fragment
 	// lookup and the heat gate, whose 2-byte `jb <return null>` sits
 	// kHeatGateJumpOffset bytes into the match. Any temperature above 0 takes it.
 	constexpr const char* FindDeconstructibleTarget_HeatGate =

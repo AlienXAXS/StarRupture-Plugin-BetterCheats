@@ -8,7 +8,7 @@ namespace BetterCheats::AOB
 	{
 		ResolvedAddresses g_resolved;
 
-		// Every address in this file is the entry point of a compiled function --
+		// Every address ResolveFunction resolves is the entry point of a compiled function --
 		// each one is either called directly or has a detour written over it --
 		// so they all declare PLUGIN_SCAN_FUNCTION_START. That is the whole point
 		// of the kind: a pattern that lands 0x37 bytes into an unrelated function
