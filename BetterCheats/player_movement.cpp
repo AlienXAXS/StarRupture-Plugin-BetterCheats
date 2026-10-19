@@ -929,20 +929,40 @@ namespace BetterCheats::Panels::Movement
 			}
 		}
 
-		// Changing the overall Move Speed carries the individual gait speeds with it.
-		// They are what the game actually reads, so a master multiplier that left them
-		// behind would look applied and do nothing. Each one stays editable afterwards.
-		void CascadeMoveSpeed(float value)
+		// A headline attribute whose game-side effect actually comes from raw fields
+		// carries those fields with it. Move Speed drives the gait speeds; Zipline
+		// Speed drives the rider's zipline speed, which the game takes from the
+		// movement component rather than from ZiplineSpeedMultiplier. A master
+		// multiplier that left them behind would look applied and do nothing. Each
+		// one stays editable afterwards.
+		const int kCascadeMoveSpeed[]    = { kRawNormalSpeed, kRawSprintSpeed, kRawCrouchSpeed, kRawADSSpeed };
+		const int kCascadeZiplineSpeed[] = { kRawZipSpeed };
+		constexpr int kCascadeMoveSpeedCount    = static_cast<int>(sizeof(kCascadeMoveSpeed) / sizeof(kCascadeMoveSpeed[0]));
+		constexpr int kCascadeZiplineSpeedCount = static_cast<int>(sizeof(kCascadeZiplineSpeed) / sizeof(kCascadeZiplineSpeed[0]));
+
+		void CascadeToRaws(float value, const int* raws, int count)
 		{
-			static const int kGaits[] = { kRawNormalSpeed, kRawSprintSpeed, kRawCrouchSpeed, kRawADSSpeed };
-			for (int g : kGaits)
+			for (int i = 0; i < count; ++i)
 			{
+				const int r = raws[i];
 				float v = value;
-				if (v < kRaws[g].minValue) v = kRaws[g].minValue;
-				if (v > kRaws[g].maxValue) v = kRaws[g].maxValue;
-				g_rawValues[g].store(v);
-				SessionConfig::Set(RawConfigKey(kRaws[g].key), v);
+				if (v < kRaws[r].minValue) v = kRaws[r].minValue;
+				if (v > kRaws[r].maxValue) v = kRaws[r].maxValue;
+				g_rawValues[r].store(v);
+				SessionConfig::Set(RawConfigKey(kRaws[r].key), v);
+				// Back at 1.0 the row stops writing, which would leave our last value
+				// in the field -- put the stock value back, as the row's own reset does.
+				if (!BetterCheats::DiffersFromDefault(v, 1.0f))
+					g_rawRestoreWanted[r].store(true);
 			}
+		}
+
+		void CascadeAttr(int attr, float value)
+		{
+			if (attr == kAttrMoveSpeed)
+				CascadeToRaws(value, kCascadeMoveSpeed, kCascadeMoveSpeedCount);
+			else if (attr == kAttrZiplineSpeed)
+				CascadeToRaws(value, kCascadeZiplineSpeed, kCascadeZiplineSpeedCount);
 		}
 
 		void ApplyPreset(const Preset& preset)
@@ -1115,9 +1135,7 @@ namespace BetterCheats::Panels::Movement
 			{
 				g_attrValues[attr].store(value);
 				SessionConfig::Set(AttrConfigKey(def.key), value);
-
-				if (attr == kAttrMoveSpeed)
-					CascadeMoveSpeed(value);
+				CascadeAttr(attr, value);
 			}
 
 			imgui->PopID();
