@@ -10,6 +10,8 @@ In-game cheat menu for [StarRupture](https://store.steampowered.com/app/1631270/
 
 Open it with **Esc** → **BETTER CHEATS**, or press **F10**, the shortcut (rebindable in the loader's keybind settings). **Esc** or **Q** closes it (not rebindable). The pages work only in a `ChimeraMain` world, single player or with `EnableCheatsInMultiplayer` on; elsewhere the window says so. Locks and overrides are enforced every engine tick, menu open or not. Power edits are applied on Apply and on save load.
 
+<img src="images/pause-menu.png" width="360" alt="The pause menu with the MOD LOADER, BETTER CHEATS and BETTER DRONE rows">
+
 Pages are grouped World, Player, Enemies and Machinery. Teleport, Crafters, Rail Drones and Misc are empty placeholders, and Logistic Drones points to `BetterDrone.ini`.
 
 Most settings are one row: label, live value (what the game uses now; red when it differs from your setting; **+buff** tag and a Base / Mods / Ours / Result tooltip), slider, typed box, **-/+** and a reset icon. A value that differs from its default is applied; reset turns it off. Multipliers act on base stats, attachments and buffs still add on top.
