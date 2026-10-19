@@ -135,6 +135,32 @@ namespace BetterCheats::AOB
 		"48 89 5C 24 ?? 57 48 83 EC ?? 80 B9 ?? ?? ?? ?? ?? 48 8B DA 48 8B F9 75 ?? 48 85 D2 0F 84";
 
 	// -------------------------------------------------------------------------
+	// Deconstruct Windows During Waves
+	//
+	// These back an opt-in toggle, so aob_resolver.cpp scans them without
+	// recording a miss: a pattern that stops matching leaves the toggle off
+	// instead of refusing the whole plugin.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  ACrPlayerControllerBase::FindDeconstructibleTarget
+	// Parameters       (ACrPlayerControllerBase* this, const FTraceDatum& TraceData) -> AActor*
+	// Scores the deconstruct trace's hits, then runs the winner through the
+	// tag, infection, heat, habitat-inside and airlock-inside gates; null when
+	// one of them refuses it. Reads nothing but its inputs and writes nothing.
+	constexpr const char* FindDeconstructibleTarget =
+		"48 8B C4 55 53 56 57 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? "
+		"4C 8B FA 44 0F 29 48 ?? 4C 8B F1 44 0F 29 90 ?? ?? ?? ?? 33 F6 48 8B 01 FF 90 D8 07 00 00 84 C0 0F";
+
+	// Inside FindDeconstructibleTarget: the infection gate
+	// (`comiss xmm6,[rax]; jb <return null>`), then the temperature fragment
+	// lookup and the heat gate, whose 2-byte `jb <return null>` sits
+	// kHeatGateJumpOffset bytes into the match. Any temperature above 0 takes it.
+	constexpr const char* FindDeconstructibleTarget_HeatGate =
+		"0F 2F 30 0F 82 ?? ?? ?? ?? 48 8B 9D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B C0 48 8B D3 48 8B CE "
+		"E8 ?? ?? ?? ?? 48 85 C0 74 05 0F 2F 30 72 ?? 48 8B 07 48 8B CF FF 90 00 08 00 00";
+	constexpr const std::ptrdiff_t kHeatGateJumpOffset = 43;
+
+	// -------------------------------------------------------------------------
 	// Mining
 	// -------------------------------------------------------------------------
 

@@ -31,6 +31,73 @@ namespace BetterCheats::AOB
 				LOG_WARN("AOB: %s did not resolve - the feature using it will be unavailable.", hookName);
 		}
 
+		// The start of the function addr belongs to, following chained unwind
+		// entries back to their parent the way the loader's FUNCTION_START check
+		// does, so a cold chunk does not pass for a function of its own. 0 when
+		// no unwind data covers addr.
+		uintptr_t OwningFunctionStart(uintptr_t addr)
+		{
+			DWORD64 imageBase = 0;
+			PRUNTIME_FUNCTION entry = RtlLookupFunctionEntry(addr, &imageBase, nullptr);
+			for (int depth = 0; entry && depth < 32; ++depth)
+			{
+				const auto* unwind = reinterpret_cast<const uint8_t*>(imageBase + entry->UnwindData);
+				if (((unwind[0] >> 3) & UNW_FLAG_CHAININFO) == 0)
+					return static_cast<uintptr_t>(imageBase + entry->BeginAddress);
+
+				// The parent entry follows the unwind codes, padded to an even count.
+				const size_t codeSlots = (unwind[2] + 1u) & ~1u;
+				entry = reinterpret_cast<PRUNTIME_FUNCTION>(const_cast<uint8_t*>(unwind) + 4 + codeSlots * 2);
+			}
+			return 0;
+		}
+
+		uintptr_t FindUnique(IPluginSelf* self, IPluginHookScanner* scanner, const char* pattern)
+		{
+			uintptr_t hits[2] = {};
+			return scanner->FindAllPatternsInMainModule(self, pattern, hits, 2) == 1 ? hits[0] : 0;
+		}
+
+		// A function pattern from the raw scan: it must match exactly once, at a
+		// function entry, the two verdicts Resolve applies. 0 otherwise.
+		uintptr_t FindFunction(IPluginSelf* self, IPluginHookScanner* scanner, const char* pattern)
+		{
+			const uintptr_t addr = FindUnique(self, scanner, pattern);
+			return addr && OwningFunctionStart(addr) == addr ? addr : 0;
+		}
+
+		// Deconstruct Windows During Waves is opt-in, so its patterns go through
+		// the raw scan, which records nothing with the loader: after a game update
+		// a miss turns that one toggle off instead of refusing the plugin. The same
+		// two verdicts as Resolve still apply. The function must match exactly once
+		// and be a function entry. The heat gate is a jump inside it, so it must
+		// sit in that function, and its short jb must land where the near jb
+		// opening the match (the infection gate) lands, which is the function's
+		// return-null path.
+		void ResolveDeconstructWindows(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t function = FindFunction(self, scanner, FindDeconstructibleTarget);
+			const uintptr_t match    = FindUnique(self, scanner, FindDeconstructibleTarget_HeatGate);
+
+			bool ok = function && match && OwningFunctionStart(match) == function;
+			if (ok)
+			{
+				const auto* code = reinterpret_cast<const uint8_t*>(match);
+				const uintptr_t nullPath   = match + 9 + *reinterpret_cast<const int32_t*>(code + 5);
+				const uintptr_t gateTarget = match + kHeatGateJumpOffset + 2 + static_cast<int8_t>(code[kHeatGateJumpOffset + 1]);
+				ok = gateTarget == nullPath;
+			}
+
+			if (!ok)
+			{
+				LOG_WARN("AOB: ACrPlayerControllerBase::FindDeconstructibleTarget or its heat gate did not resolve - "
+					"Deconstruct Windows During Waves stays off.");
+				return;
+			}
+			g_resolved.FindDeconstructibleTarget          = function;
+			g_resolved.FindDeconstructibleTarget_HeatGate = match + kHeatGateJumpOffset;
+		}
+
 #if BETTERCHEATS_DEV_BUILD
 		// The InitCheatManager prologue is generic enough to appear elsewhere in
 		// the image, which used to mean scanning for every match by hand and
@@ -86,6 +153,8 @@ namespace BetterCheats::AOB
 			"ACrAPHelperActorCustom::CheckStability", CheckStability_Custom);
 		ResolveFunction(self, scanner, g_resolved.CheckStability_DynamicPillar,
 			"ACrAPHelperDynamicPillar::CheckStability", CheckStability_DynamicPillar);
+
+		ResolveDeconstructWindows(self, scanner);
 
 		ResolveFunction(self, scanner, g_resolved.GetMiningDamage,
 			"UCrMiningToolComponent::GetMiningDamage", GetMiningDamage);
