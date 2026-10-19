@@ -2,7 +2,6 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
-#include "ui_widgets.h"
 
 #include "AuActorPlacement_classes.hpp"
 #include "Chimera_classes.hpp"
@@ -347,39 +346,21 @@ namespace BetterCheats::Panels::Building
 		LOG_INFO("Building: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
+	namespace
+	{
+		// The row's description, wrapped to its column, under the title.
+		void Description(IModLoaderImGui* imgui, const char* text)
+		{
+			imgui->PushTextWrapPos(0.0f);
+			imgui->TextDisabled(text);
+			imgui->PopTextWrapPos();
+		}
+	}
+
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags    = (1 << 6) | (1 << 9) | (3 << 13);
-
-		// No built-in presets here, so saved presets sit at the very top --
-		// same "above every control" position every group uses.
-		{
-			static BetterCheats::UI::SavedPresetRowState s_presetRow;
-			constexpr int kFieldCount = 4;
-			BetterCheats::PresetStore::Field fields[kFieldCount];
-
-			auto getLive = [](BetterCheats::PresetStore::Field* out)
-			{
-				out[0] = { "noBuildCost",         g_noBuildCost         ? 1.0f : 0.0f };
-				out[1] = { "noStabilityCheck",    g_noStabilityCheck    ? 1.0f : 0.0f };
-				out[2] = { "unlockAllBuildings",  g_unlockAllBuildings  ? 1.0f : 0.0f };
-				out[3] = { "unlockAllRecipes",    g_unlockAllRecipes    ? 1.0f : 0.0f };
-			};
-			auto applyFields = [](const BetterCheats::PresetStore::Field* f, int count)
-			{
-				if (count > 0) { g_noBuildCost        = f[0].value != 0.0f; SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost); }
-				if (count > 1) { g_noStabilityCheck   = f[1].value != 0.0f; SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck); }
-				if (count > 2) { g_unlockAllBuildings = f[2].value != 0.0f; SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings); }
-				if (count > 3) { g_unlockAllRecipes   = f[3].value != 0.0f; SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes); }
-			};
-			auto isBuiltin      = [](const char*) { return false; };
-			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
-
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "building_saved_presets", "Building",
-				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
-		}
-		imgui->Spacing();
 
 		imgui->SeparatorText("Placement");
 
@@ -391,6 +372,8 @@ namespace BetterCheats::Panels::Building
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Build Cost");
+			Description(imgui,
+				"Lets you place buildings without having the resources for them.");
 			imgui->TableSetColumnIndex(1);
 			if (imgui->Checkbox("##no_build_cost", &g_noBuildCost))
 				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
@@ -398,6 +381,8 @@ namespace BetterCheats::Panels::Building
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Stability Check");
+			Description(imgui,
+				"Lets you place buildings that the stability check would otherwise refuse.");
 			imgui->TableSetColumnIndex(1);
 			if (imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
 				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
@@ -419,6 +404,8 @@ namespace BetterCheats::Panels::Building
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlock All Buildings");
+			Description(imgui,
+				"Makes every building available in the build menu, without the research or reputation it needs.");
 			imgui->TableSetColumnIndex(1);
 			if (imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
 				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
@@ -426,6 +413,8 @@ namespace BetterCheats::Panels::Building
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlock All Recipes");
+			Description(imgui,
+				"Makes every crafting recipe available, researched or not.");
 			imgui->TableSetColumnIndex(1);
 			if (imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
 				SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes);
