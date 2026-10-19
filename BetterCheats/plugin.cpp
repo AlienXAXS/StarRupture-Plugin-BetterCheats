@@ -26,6 +26,7 @@
 #include <cstring>
 
 static IPluginSelf* g_self = nullptr;
+static bool g_enabled = true;
 
 IPluginSelf* GetSelf() { return g_self; }
 
@@ -183,14 +184,17 @@ extern "C" {
 
 		LOG_INFO("BetterCheats initializing...");
 
+		LOG_INFO("Initializing config...");
+		BetterCheatsConfig::Config::Initialize(self);
+
+		// Read only after Initialize: IsEnabled() has no plugin handle before it.
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
 			LOG_WARN("BetterCheats is disabled in config");
+			g_enabled = false;
 			return true;
 		}
 
-		LOG_INFO("Initializing config...");
-		BetterCheatsConfig::Config::Initialize(self);
 		BetterCheats::SessionConfig::Initialize(self);
 
 		LOG_INFO("Initializing game context and panels...");
@@ -272,6 +276,13 @@ extern "C" {
 	__declspec(dllexport) void PluginShutdown()
 	{
 		LOG_INFO("BetterCheats shutting down...");
+
+		// Disabled in config: PluginInit registered nothing, so there is nothing to undo.
+		if (!g_enabled)
+		{
+			g_self = nullptr;
+			return;
+		}
 
 		if (g_self)
 		{
