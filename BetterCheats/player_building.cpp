@@ -255,6 +255,31 @@ namespace BetterCheats::Panels::Building
 		HookHandle               g_hookGetBoxCollisionResult      = nullptr;
 		std::atomic<bool>        g_buildWindowsAnywhere{ false };
 
+		std::atomic<bool>        g_buildBenchesAnywhere{ false };
+
+		// The habitat machines, placed into wall slots like windows but not
+		// custom buildings. Personal storage is a module too, but it is a
+		// custom building and registers on the slot, so it is left out.
+		bool IsBenchId(SDK::ECrBuildingID id)
+		{
+			switch (id)
+			{
+			case SDK::ECrBuildingID::Analyzer:
+			case SDK::ECrBuildingID::Armory:
+			case SDK::ECrBuildingID::CloningBed:
+			case SDK::ECrBuildingID::FoodProcessor:
+			case SDK::ECrBuildingID::ItemPrinter:
+			case SDK::ECrBuildingID::RecipeTable:
+			case SDK::ECrBuildingID::Recycler:
+			case SDK::ECrBuildingID::ResearchTerminal:
+			case SDK::ECrBuildingID::SuitWorkshop:
+			case SDK::ECrBuildingID::UpgradeStation:
+				return true;
+			default:
+				return false;
+			}
+		}
+
 		bool IsHabitat(SDK::AActor* actor)
 		{
 			SDK::ECrBuildingID id{};
@@ -265,7 +290,8 @@ namespace BetterCheats::Panels::Building
 
 		bool IsRelaxedPiece(SDK::ECrBuildingID id)
 		{
-			return IsWindowId(id) && g_buildWindowsAnywhere.load();
+			return (IsWindowId(id) && g_buildWindowsAnywhere.load())
+			    || (IsBenchId(id) && g_buildBenchesAnywhere.load());
 		}
 
 		bool IsRelaxedPieceInHabitatSlot(SDK::ACrAPHelper* helper)
@@ -286,7 +312,7 @@ namespace BetterCheats::Panels::Building
 		uint8_t RelaxForHabitatPiece(SDK::ACrAPHelper* helper, uint8_t result)
 		{
 			if ((result != kBuildingColliding && result != kIsColliding)
-			    || !g_buildWindowsAnywhere.load())
+			    || (!g_buildWindowsAnywhere.load() && !g_buildBenchesAnywhere.load()))
 				return result;
 
 			try
@@ -320,6 +346,73 @@ namespace BetterCheats::Panels::Building
 			}
 			g_originalGetBoxCollisionResult  = nullptr;
 			g_originalCheckMainMeshCollision = nullptr;
+		}
+
+		// -------------------------------------------------------------------------
+		// Build Benches Anywhere
+		// A bench (the habitat machines in IsBenchId) uses the same wall-slot
+		// placement as a window. Next to a window, or overlapping a wall piece,
+		// it is refused by the same two collision checks, which relax it above.
+		// In a slot that already holds a window it never gets that far: the
+		// window is a custom building registered on the slot, so IsSocketFree
+		// reports the slot taken and the bench does not snap.
+		//
+		// So while a bench is being snapped to a habitat or the Hub, an occupied
+		// slot counts as free. IsSocketFree only records that something holds
+		// the slot, not what, so this also lets a bench into a slot holding an
+		// airlock, bridge or personal storage. Everything after the snap keeps
+		// the collision rules above.
+		// -------------------------------------------------------------------------
+
+		using GetSnappedSocketFn = void*(__fastcall*)(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
+			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10);
+		using IsSocketFreeFn = bool(__fastcall*)(void* self, SDK::AActor* building, const void* socket);
+
+		GetSnappedSocketFn g_originalGetSnappedSocket = nullptr;
+		IsSocketFreeFn     g_originalIsSocketFree     = nullptr;
+		HookHandle         g_hookGetSnappedSocket     = nullptr;
+		HookHandle         g_hookIsSocketFree         = nullptr;
+
+		// IsSocketFree's only caller is GetSnappedSocket, which runs inside the
+		// placement helper's tick.
+		thread_local bool t_snappingBench = false;
+
+		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
+			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
+		{
+			const bool bench = g_buildBenchesAnywhere.load() && data && IsBenchId(data->BuildingID);
+			t_snappingBench = bench;
+			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
+			t_snappingBench = false;
+			return socket;
+		}
+
+		bool __fastcall Detour_IsSocketFree(void* self, SDK::AActor* building, const void* socket)
+		{
+			const bool isFree = g_originalIsSocketFree(self, building, socket);
+			if (isFree || !t_snappingBench)
+				return isFree;
+
+			try
+			{
+				return IsHabitat(building);
+			}
+			catch (...)
+			{
+				return false;
+			}
+		}
+
+		void RemoveBenchesAnywhereHooks(IPluginHookUtils* hooks)
+		{
+			for (HookHandle* hook : { &g_hookIsSocketFree, &g_hookGetSnappedSocket })
+			{
+				if (*hook)
+					hooks->Remove(*hook);
+				*hook = nullptr;
+			}
+			g_originalIsSocketFree     = nullptr;
+			g_originalGetSnappedSocket = nullptr;
 		}
 
 		// -------------------------------------------------------------------------
@@ -492,7 +585,30 @@ namespace BetterCheats::Panels::Building
 			else
 			{
 				RemoveWindowsAnywhereHooks(hooks);
-				LOG_WARN("Building: failed to install the collision hooks - Build Windows Anywhere will do nothing");
+				LOG_WARN("Building: failed to install the collision hooks - Build Windows Anywhere and Build Benches Anywhere will do nothing");
+			}
+		}
+
+		// Benches need the collision hooks as well as these two.
+		if (g_hookCheckMainMeshCollision && aob.GetSnappedSocket)
+		{
+			g_hookGetSnappedSocket = hooks->Install(
+				aob.GetSnappedSocket,
+				reinterpret_cast<void*>(&Detour_GetSnappedSocket),
+				reinterpret_cast<void**>(&g_originalGetSnappedSocket));
+			g_hookIsSocketFree = hooks->Install(
+				aob.IsSocketFree,
+				reinterpret_cast<void*>(&Detour_IsSocketFree),
+				reinterpret_cast<void**>(&g_originalIsSocketFree));
+
+			if (g_hookGetSnappedSocket && g_hookIsSocketFree)
+			{
+				LOG_INFO("Building: GetSnappedSocket and IsSocketFree hooks installed");
+			}
+			else
+			{
+				RemoveBenchesAnywhereHooks(hooks);
+				LOG_WARN("Building: failed to install the socket hooks - Build Benches Anywhere will do nothing");
 			}
 		}
 	}
@@ -542,9 +658,11 @@ namespace BetterCheats::Panels::Building
 
 		if (hooks)
 		{
+			RemoveBenchesAnywhereHooks(hooks);
 			RemoveWindowsAnywhereHooks(hooks);
 		}
 		g_buildWindowsAnywhere = false;
+		g_buildBenchesAnywhere = false;
 
 		if (g_unlockAllBuildings)
 		{
@@ -613,6 +731,7 @@ namespace BetterCheats::Panels::Building
 		g_unlockAllRecipes   = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
 		g_deconstructWindowsDuringWaves = SessionConfig::Get("playerBuilding.deconstructWindowsDuringWaves", false);
 		g_buildWindowsAnywhere          = SessionConfig::Get("playerBuilding.buildWindowsAnywhere", false);
+		g_buildBenchesAnywhere          = SessionConfig::Get("playerBuilding.buildBenchesAnywhere", false);
 
 		LOG_INFO("Building: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
@@ -684,6 +803,21 @@ namespace BetterCheats::Panels::Building
 			{
 				g_buildWindowsAnywhere = buildWindowsAnywhere;
 				SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
+			}
+
+			imgui->TableNextRow(0, 0.0f);
+			imgui->TableSetColumnIndex(0);
+			imgui->Text("Build Benches Anywhere");
+			Description(imgui,
+				"Lets a habitat machine (Item Printer, Food Processor, Suit Workshop and the rest) go into a habitat or Hub "
+				"wall slot even when a window, another piece or anything else is in it, except players and drones in its collision box. "
+				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
+			imgui->TableSetColumnIndex(1);
+			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
+			if (imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
+			{
+				g_buildBenchesAnywhere = buildBenchesAnywhere;
+				SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
 			}
 
 			imgui->EndTable();

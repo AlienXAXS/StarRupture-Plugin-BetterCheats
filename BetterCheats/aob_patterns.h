@@ -188,6 +188,30 @@ namespace BetterCheats::AOB
 		"4D 8B F1 4C 89 4C 24 ?? 49 8B D8 48 8B FA 48 89 4D ?? 4C 8B E9";
 
 	// -------------------------------------------------------------------------
+	// Build Benches Anywhere
+	//
+	// Opt-in, scanned the same way as a pair: a miss leaves the toggle doing
+	// nothing.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UCrSocketSnapPlacementMethod::GetSnappedSocket
+	// Parameters       (UCrSocketSnapPlacementMethod* this, const UAuActorPlacementData* Data, const FHitResult& Hit,
+	//                   USceneComponent* Component, + 6 more on the stack) -> UStaticMeshSocket*
+	// Picks the free socket of the custom building under the cursor that a
+	// socket-snap piece (window, habitat machine) snaps to.
+	constexpr const char* GetSnappedSocket =
+		"4C 89 4C 24 20 48 89 54 24 10 48 89 4C 24 08 55 53 57 41 55 41 57 48 8D AC 24 ?? ?? ?? ?? "
+		"48 81 EC ?? ?? ?? ?? 48 8B 85 ?? ?? ?? ?? 33 FF 49 8B D9 4D 8B E8 4C 8B FA C6 40 08 00";
+
+	// Class::Function  UCrBuildingStabilitySubsystem::IsSocketFree
+	// Parameters       (UCrBuildingStabilitySubsystem* this, ACrCustomBuilding* Building, const UStaticMeshSocket* Socket) -> bool
+	// False when any custom building is registered on that socket. Its only
+	// caller is GetSnappedSocket.
+	constexpr const char* IsSocketFree =
+		"4C 89 44 24 18 55 53 56 57 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 4C 8B FA 48 8B F1 "
+		"E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 33 FF 4C 8B F0";
+
+	// -------------------------------------------------------------------------
 	// Mining
 	// -------------------------------------------------------------------------
 

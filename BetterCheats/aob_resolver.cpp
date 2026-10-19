@@ -114,6 +114,22 @@ namespace BetterCheats::AOB
 			g_resolved.GetBoxCollisionResult         = box;
 		}
 
+		// Build Benches Anywhere also needs the two Build Windows Anywhere hooks,
+		// which player_building.cpp checks before installing these.
+		void ResolveBuildBenchesAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t snapped    = FindFunction(self, scanner, GetSnappedSocket);
+			const uintptr_t socketFree = FindFunction(self, scanner, IsSocketFree);
+			if (!snapped || !socketFree)
+			{
+				LOG_WARN("AOB: UCrSocketSnapPlacementMethod::GetSnappedSocket or UCrBuildingStabilitySubsystem::IsSocketFree "
+					"did not resolve - Build Benches Anywhere will do nothing.");
+				return;
+			}
+			g_resolved.GetSnappedSocket = snapped;
+			g_resolved.IsSocketFree     = socketFree;
+		}
+
 #if BETTERCHEATS_DEV_BUILD
 		// The InitCheatManager prologue is generic enough to appear elsewhere in
 		// the image, which used to mean scanning for every match by hand and
@@ -172,6 +188,7 @@ namespace BetterCheats::AOB
 
 		ResolveDeconstructWindows(self, scanner);
 		ResolveBuildWindowsAnywhere(self, scanner);
+		ResolveBuildBenchesAnywhere(self, scanner);
 
 		ResolveFunction(self, scanner, g_resolved.GetMiningDamage,
 			"UCrMiningToolComponent::GetMiningDamage", GetMiningDamage);
