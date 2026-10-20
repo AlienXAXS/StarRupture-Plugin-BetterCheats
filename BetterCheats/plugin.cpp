@@ -215,6 +215,9 @@ extern "C" {
 		LOG_INFO("Initializing Movement panel...");
 		BetterCheats::Panels::Movement::Initialize();
 
+		LOG_INFO("Initializing Weapons panel...");
+		BetterCheats::Panels::Weapons::Initialize();
+
 		LOG_INFO("Initializing Tools panel...");
 		BetterCheats::Panels::Tools::Initialize();
 

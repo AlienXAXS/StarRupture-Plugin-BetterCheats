@@ -157,7 +157,7 @@ namespace BetterCheats::Panels::Weapons
 		// LastEquippedWeaponData/profile-discovery path as every gun -- this is
 		// what used to render the standard 10-row kAttrs table (Damage, Fire
 		// Rate, Recoil...) for a grenade, none of which mean anything for a
-		// thrown charge. This row replaces that table for any profile
+		// thrown charge. These rows replace that table for any profile
 		// whose Profile::isGrenade is set.
 		struct GrenadeRowDef
 		{
@@ -168,9 +168,14 @@ namespace BetterCheats::Panels::Weapons
 			const char* tooltip;
 		};
 
-		enum GrenadeRowIndex : int { kGrenadeCost = 0, kGrenadeRowCount };
+		enum GrenadeRowIndex : int { kGrenadeDamage = 0, kGrenadeCost, kGrenadeRowCount };
 
 		const GrenadeRowDef kGrenadeRows[kGrenadeRowCount] = {
+			// Damage scales BaseDamage.Value on the equipped grenade TYPE's data
+			// asset, the same per-type-CDO shape as Charge Cost.
+			{ "Damage", "grenadeDamage",
+			  1.0f, 0.10f, 100.0f, 0.5f, "%.2fx",
+			  "Multiplies the grenade's base damage. Applies to this grenade type only." },
 			// Charge Cost composes onto the equipped grenade TYPE's own data asset
 			// field (GrenadeThrowCostOfGrenadeCharge on UCrGrenadeWeaponItemDataBase,
 			// Chimera_classes.hpp:17303) -- same per-type-CDO shape as Magazine
@@ -182,12 +187,13 @@ namespace BetterCheats::Panels::Weapons
 		};
 
 		constexpr BetterCheats::ComposedAttribute::Mode kGrenadeModes[kGrenadeRowCount] = {
+			BetterCheats::ComposedAttribute::Mode::Multiply,  // Damage
 			BetterCheats::ComposedAttribute::Mode::Multiply,  // Charge Cost
 		};
 
 		// Built-in grenade presets, same shape as the weapon kPresets above but
 		// indexing into kGrenadeRows instead of kAttrs. Entries end at row < 0.
-		// Only the per-profile row above is reachable here -- Fuse,
+		// Only the per-profile rows above are reachable here -- Fuse,
 		// Blast Radius and Throw Force (kGrenadeGlobals) are one shared CDO for
 		// every grenade type, not part of this per-profile table, so a preset
 		// can't set them the same way it sets a profile's own rows.
@@ -379,12 +385,13 @@ namespace BetterCheats::Panels::Weapons
 		std::atomic<float> g_dbgAttrBuffed[kAttrCount];
 
 		// Grenade row readouts, parallel to g_dbgAttrGame/g_dbgAttrExpected
-		// above but indexed by GrenadeRowIndex instead of AttrIndex -- this
-		// row isn't part of the per-gun kAttrs table (Charge Cost lives on a
-		// different CDO type), so it gets its own small parallel arrays instead
-		// of a slot in that one. `unmod` is the same "captured original while active, live read
-		// while not" value g_dbgWeaponBaseMagazine already computes for Magazine
-		// Size, feeding RenderLiveValue's always-on "Unmodified" tooltip line.
+		// above but indexed by GrenadeRowIndex instead of AttrIndex -- these rows
+		// aren't part of the per-gun kAttrs table (they live on a grenade data
+		// asset, a different CDO type), so they get their own small parallel
+		// arrays instead of a slot in that one. `unmod` is the same "captured
+		// original while active, live read while not" value g_dbgWeaponBaseMagazine
+		// already computes for Magazine Size, feeding RenderLiveValue's always-on
+		// "Unmodified" tooltip line.
 		// Only ever populated while a grenade profile is the one equipped -- see
 		// Tick()'s grenade block.
 		std::atomic<float> g_dbgGrenadeGame[kGrenadeRowCount];
@@ -570,73 +577,13 @@ namespace BetterCheats::Panels::Weapons
 		// once the grenade leaves the player's hand (see Tick()).
 		ObjectRef<SDK::UCrGrenadeWeaponItemDataBase> g_lastGrenadeData;
 
-		// Forgets every composed slot the moment the attribute set instance changes
-		// (respawn, world change) -- before anything below tries to Apply/Release
-		// against what may already be gone. Also drops the magazine and grenade-
-		// cost slots: unlike `weapons`, their owners are per-weapon-TYPE data
-		// assets, not the character, but a respawn is exactly the kind of "can't
-		// trust what we think we own any more" event that should forget them too
-		// rather than try to Release() against a data asset we can no longer be
-		// sure is still valid.
-		void ForgetComposedIfOwnerChanged(SDK::UCrWeaponAttributeSet* current)
-		{
-			if (current == g_composedOwner) return;
-			for (int a = 0; a < kAttrCount; ++a)
-				g_composed[a].Forget();
-			g_composedOwner = current;
-
-			g_composedMagazine.Forget();
-			g_magazineOwner.Reset();
-
-			g_composedGrenadeCost.Forget();
-			g_grenadeCostOwner.Reset();
-
-		}
-
-		// Unlike `weapons` (one shared instance regardless of what's equipped),
-		// LastEquippedWeaponData is a different CDO per weapon TYPE -- switching
-		// weapons must restore the PREVIOUS one's magazine before adopting the new
-		// one's, or the old weapon stays offset forever (ComposedAttribute's own
-		// owner-change handling only ever recaptures on the new owner, it never
-		// writes back to an owner it's leaving).
-		//
-		// The previous owner is held across ticks and can be unloaded in the
-		// meantime, so it's an ObjectRef: gone means nothing to hand back.
-		void ReleaseMagazineIfOwnerChanged(SDK::UCrWeaponItemDataBase* current)
-		{
-			SDK::UCrWeaponItemDataBase* previous = g_magazineOwner.Get();
-			if (current == previous) return;
-			if (previous)
-			{
-				g_composedMagazine.Release(previous, previous->BaseMagazine.Value);
-				BetterCheats::ClearComposeState("playerWeapons.compose.magazine");
-			}
-			else
-			{
-				g_composedMagazine.Forget();
-			}
-			g_magazineOwner.Set(current);
-		}
-
-		// Same reasoning as ReleaseMagazineIfOwnerChanged: Charge Cost lives on the
-		// grenade TYPE's own CDO, not the character, so switching away from a
-		// grenade (to a gun, a tool, or a different grenade type) must restore the
-		// one being left before adopting the next.
-		void ReleaseGrenadeCostIfOwnerChanged(SDK::UCrGrenadeWeaponItemDataBase* current)
-		{
-			SDK::UCrGrenadeWeaponItemDataBase* previous = g_grenadeCostOwner.Get();
-			if (current == previous) return;
-			if (previous)
-			{
-				g_composedGrenadeCost.Release(previous, previous->GrenadeThrowCostOfGrenadeCharge);
-				BetterCheats::ClearComposeState("playerWeapons.compose.grenadeCost");
-			}
-			else
-			{
-				g_composedGrenadeCost.Forget();
-			}
-			g_grenadeCostOwner.Set(current);
-		}
+		// Grenade Damage row: scales BaseDamage.Value on the grenade TYPE's data
+		// asset (the explosion reads it).
+		// Same per-type-CDO shape as Charge Cost above.
+		BetterCheats::ComposedAttribute g_composedGrenadeBaseDamage;
+		ObjectRef<SDK::UCrGrenadeWeaponItemDataBase> g_grenadeBaseDamageOwner;
+		constexpr float kGrenadeBaseDamageFinalMax = 1000000.0f;
+		constexpr const char* kGrenadeBaseDamageKey = "playerWeapons.compose.grenadeBaseDamage";
 
 		// Earlier builds had Max Charges and Min Charge rows that wrote the
 		// player's grenade charge attributes. Those rows are gone; this undoes a
@@ -660,6 +607,119 @@ namespace BetterCheats::Panels::Weapons
 			};
 			restore("playerWeapons.compose.grenadeMax", attrs->MaxGrenadeCharge.CurrentValue);
 			restore("playerWeapons.compose.grenadeMin", attrs->MinGrenadeCharge.CurrentValue);
+		}
+
+		// Forgets every composed slot the moment the attribute set instance changes
+		// (respawn, world change) -- before anything below tries to Apply/Release
+		// against what may already be gone. Also drops the magazine and grenade-
+		// cost slots: unlike `weapons`, their owners are per-weapon-TYPE data
+		// assets, not the character, but a respawn is exactly the kind of "can't
+		// trust what we think we own any more" event that should forget them too
+		// rather than try to Release() against a data asset we can no longer be
+		// sure is still valid.
+		void ForgetComposedIfOwnerChanged(SDK::UCrWeaponAttributeSet* current)
+		{
+			if (current == g_composedOwner) return;
+			for (int a = 0; a < kAttrCount; ++a)
+				g_composed[a].Forget();
+			g_composedOwner = current;
+
+			g_composedMagazine.Forget();
+			g_magazineOwner.Reset();
+
+			g_composedGrenadeCost.Forget();
+			g_grenadeCostOwner.Reset();
+
+			g_composedGrenadeBaseDamage.Forget();
+			g_grenadeBaseDamageOwner.Reset();
+		}
+
+		// Unlike `weapons` (one shared instance regardless of what's equipped),
+		// LastEquippedWeaponData is a different CDO per weapon TYPE -- switching
+		// weapons must restore the PREVIOUS one's magazine before adopting the new
+		// one's, or the old weapon stays offset forever (ComposedAttribute's own
+		// owner-change handling only ever recaptures on the new owner, it never
+		// writes back to an owner it's leaving).
+		//
+		// The previous owner is held across ticks and can be unloaded in the
+		// meantime, so it's an ObjectRef: gone means nothing to hand back.
+		template <class Owner, class ValueOf>
+		void ReleaseComposedIfOwnerChanged(BetterCheats::ComposedAttribute& composed, ObjectRef<Owner>& ownerRef,
+			Owner* current, ValueOf valueOf, const char* key)
+		{
+			Owner* previous = ownerRef.Get();
+			if (current == previous) return;
+			if (previous)
+			{
+				composed.Release(previous, valueOf(previous));
+				BetterCheats::ClearComposeState(key);
+			}
+			else
+			{
+				composed.Forget();
+			}
+			ownerRef.Set(current);
+		}
+
+		void ReleaseMagazineIfOwnerChanged(SDK::UCrWeaponItemDataBase* current)
+		{
+			ReleaseComposedIfOwnerChanged(g_composedMagazine, g_magazineOwner, current,
+				[](SDK::UCrWeaponItemDataBase* owner) -> float& { return owner->BaseMagazine.Value; },
+				"playerWeapons.compose.magazine");
+		}
+
+		// Same reasoning as ReleaseMagazineIfOwnerChanged: Charge Cost lives on the
+		// grenade TYPE's own CDO, not the character, so switching away from a
+		// grenade (to a gun, a tool, or a different grenade type) must restore the
+		// one being left before adopting the next.
+		void ReleaseGrenadeCostIfOwnerChanged(SDK::UCrGrenadeWeaponItemDataBase* current)
+		{
+			ReleaseComposedIfOwnerChanged(g_composedGrenadeCost, g_grenadeCostOwner, current,
+				[](SDK::UCrGrenadeWeaponItemDataBase* owner) -> float& { return owner->GrenadeThrowCostOfGrenadeCharge; },
+				"playerWeapons.compose.grenadeCost");
+		}
+
+		// Same per-grenade-TYPE shape for the Damage row above.
+		void ReleaseGrenadeBaseDamageIfOwnerChanged(SDK::UCrGrenadeWeaponItemDataBase* current)
+		{
+			ReleaseComposedIfOwnerChanged(g_composedGrenadeBaseDamage, g_grenadeBaseDamageOwner, current,
+				[](SDK::UCrGrenadeWeaponItemDataBase* owner) -> float& { return owner->BaseDamage.Value; },
+				kGrenadeBaseDamageKey);
+		}
+
+		// Hands the stock BaseDamage back. The grenade data asset is shared by every
+		// holder of that grenade type and outlives the world, so a scaled value left
+		// in it would carry into the next session. Game thread only.
+		void ReleaseGrenadeBaseDamageNow()
+		{
+			if (SDK::UCrGrenadeWeaponItemDataBase* owner = g_grenadeBaseDamageOwner.Get())
+			{
+				g_composedGrenadeBaseDamage.Release(owner, owner->BaseDamage.Value);
+				BetterCheats::ClearComposeState(kGrenadeBaseDamageKey);
+			}
+			else
+			{
+				g_composedGrenadeBaseDamage.Forget();
+			}
+		}
+
+		constexpr const char* kChimeraMainWorldName = "ChimeraMain";
+
+		void OnBeforeWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
+		{
+			if (!worldName || std::strcmp(worldName, kChimeraMainWorldName) != 0)
+				return;
+
+			// Off the game thread there is nothing safe to write; SessionConfig keeps
+			// the pair RestoreIfStale needs to undo the leftover on the next activation.
+			if (!BetterCheats::IsGameThread())
+			{
+				g_composedGrenadeBaseDamage.Forget();
+				return;
+			}
+
+			try { ReleaseGrenadeBaseDamageNow(); }
+			catch (...) {}
 		}
 
 		bool IsActive(int attr, float value)
@@ -1125,10 +1185,8 @@ namespace BetterCheats::Panels::Weapons
 			// Grenade rows. Charge Cost lives on the equipped grenade
 			// TYPE's own data asset (UCrGrenadeWeaponItemDataBase extends
 			// UCrWeaponItemDataBase, so LastEquippedWeaponData covers it too) --
-			// same per-type-CDO shape as BaseMagazine above. Charge Cost applies
-			// only while a grenade profile is the one currently equipped, matching
-			// every other per-weapon row in this file: switching to a gun or tool
-			// releases it exactly like switching weapons releases Fire Rate/etc.
+			// same per-type-CDO shape as BaseMagazine above. Damage and Charge Cost
+			// are per grenade type and are released when the grenade type changes.
 			//
 			// Spending the last charge takes the grenade out of the player's hand, so
 			// "equipped" alone would drop every grenade row at 0 charges -- exactly
@@ -1159,9 +1217,23 @@ namespace BetterCheats::Panels::Weapons
 				}
 			}
 			ReleaseGrenadeCostIfOwnerChanged(grenadeData);
+			ReleaseGrenadeBaseDamageIfOwnerChanged(grenadeData);
 
 			if (grenadeData)
 			{
+				// Final clamp is not the slider range: it bounds the written BaseDamage,
+				// which has its own real-world magnitude.
+				const float damageScale = grenadeProfile.grenadeValues[kGrenadeDamage];
+				const bool  damageActive = BetterCheats::DiffersFromDefault(damageScale, kGrenadeRows[kGrenadeDamage].defaultValue);
+				const ComposeStep damageStep = ApplyComposedRow(g_composedGrenadeBaseDamage, grenadeData,
+					grenadeData->BaseDamage.Value, kGrenadeBaseDamageKey,
+					damageActive, damageScale,
+					kGrenadeModes[kGrenadeDamage], 0.0f, kGrenadeBaseDamageFinalMax);
+
+				g_dbgGrenadeGame[kGrenadeDamage].store(damageStep.game);
+				g_dbgGrenadeExpected[kGrenadeDamage].store(damageStep.expected);
+				g_dbgGrenadeUnmod[kGrenadeDamage].store(damageActive ? g_composedGrenadeBaseDamage.GetGame() : damageStep.game);
+
 				const bool active = BetterCheats::DiffersFromDefault(
 					grenadeProfile.grenadeValues[kGrenadeCost], kGrenadeRows[kGrenadeCost].defaultValue);
 				const ComposeStep step = ApplyComposedRow(g_composedGrenadeCost, grenadeData,
@@ -1267,8 +1339,17 @@ namespace BetterCheats::Panels::Weapons
 		catch (...) {}
 	}
 
+	void Initialize()
+	{
+		if (IPluginSelf* self = GetSelf())
+			self->hooks->World->RegisterOnBeforeWorldEndPlay(&OnBeforeWorldEndPlay);
+	}
+
 	void Shutdown()
 	{
+		if (IPluginSelf* self = GetSelf())
+			self->hooks->World->UnregisterOnBeforeWorldEndPlay(&OnBeforeWorldEndPlay);
+
 		// The loader's own RELOAD button runs PluginShutdown from its D3D Present
 		// hook, not the game thread Tick() recorded -- GetLocalCharacter() and
 		// every UObject touch below intermittently crash there (see player_lookup.h).
@@ -1280,6 +1361,7 @@ namespace BetterCheats::Panels::Weapons
 				g_composed[a].Forget();
 			g_composedMagazine.Forget();
 			g_composedGrenadeCost.Forget();
+			g_composedGrenadeBaseDamage.Forget();
 			for (int g = 0; g < kGrenadeGlobalCount; ++g)
 				g_composedGrenadeGlobal[g].Forget();
 			return;
@@ -1328,6 +1410,8 @@ namespace BetterCheats::Panels::Weapons
 			{
 				g_composedGrenadeCost.Forget();
 			}
+
+			ReleaseGrenadeBaseDamageNow();
 
 			// Fuse/Blast Radius/Throw Force: global CDOs, not tied to the local
 			// character at all, so no owner-swap check -- only whether the CDO
@@ -1591,9 +1675,8 @@ namespace BetterCheats::Panels::Weapons
 				// none of Damage/Fire Rate/Recoil/Spread/etc. mean anything for a
 				// thrown charge, and neither do the gun presets above (they index
 				// into kAttrs by attribute, all meaningless here).
-				imgui->TextDisabled("Damage isn't changeable yet -- its GameplayEffect modifier setup\n"
-				                    "isn't confirmed safe to write blind. Fuse, blast radius and throw\n"
-				                    "force are below.");
+				imgui->TextDisabled("Damage and charge cost are per grenade type. Fuse, blast radius and\n"
+				                    "throw force are below.");
 
 				// A preset writes only into THIS grenade profile's rows, same as the
 				// weapon presets above do for kAttrs.
