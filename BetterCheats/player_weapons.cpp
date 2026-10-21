@@ -876,7 +876,7 @@ namespace BetterCheats::Panels::Weapons
 						g_grenadeFalloff.written = 1.0f;
 					}
 					BetterCheats::ClearComposeState(kGrenadeFalloffKey);
-					LOG_WARN("Grenade falloff curve '%s' is also read by '%s'; the Damage row will not scale it.",
+					LOG_WARN("Weapons: grenade falloff curve '%s' is also read by '%s'; the Damage row will not scale it.",
 						curve->GetFullName().c_str(), other.c_str());
 				}
 			}
