@@ -93,7 +93,7 @@ Tabs for **Pistol**, **Rifle**, **Shotgun** and **Machine Gun**; any other weapo
 - Per weapon: **One Hit Kill** (flat 10000x damage, replaces Damage), **Infinite magazine**, and **Reset this weapon to stock**. Magazine Size is a flat -100 to +999 offset; Enemies Hit / Shot is a whole number, 1-10.
 - Presets: **Better Weapons**, **Hand Cannon** (pistol only, heavy damage, slow fire), **Piercing** (Enemies Hit 3), **Laser Beam** (no recoil, spread or sway) and **Bullet Hose** (fast fire, +100 magazine, quick reload, tight spread).
 - **Grenade tabs** swap the rows for Damage, Charge Cost and **Infinite charges**, which refills the charge bar when it drops. Settings keep applying at 0 charges. The **Less Cost Grenade** preset halves Charge Cost. Fuse Time, Blast Radius and Throw Force sit in a **Blast** section shared by every grenade type and are not reset by **Reset this weapon**.
-- **Grenade Damage**: 0.1x-100x, default 1x. Scales that grenade type's damage; 1x gives the game's own value back. <sup>[✦](#msantoro12)</sup>
+- **Grenade Damage**: 0.1x-100x, default 1x. Scales the real damage that grenade type's explosion deals, including its falloff with distance; 1x gives the game's own value back. <sup>[✦](#msantoro12)</sup>
 
 Better Weapons and Less Cost Grenade are modelled on pak mods Update 2 broke, by axbhub. Hand Cannon and Piercing are modelled on mods by SwiftstepsKR.
 
