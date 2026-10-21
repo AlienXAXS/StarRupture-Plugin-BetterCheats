@@ -796,20 +796,45 @@ namespace BetterCheats::Panels::Weapons
 			return {};
 		}
 
+		// What the Damage row's live readout shows for a falloff grenade: the
+		// curve's peak, its first key, as the game holds it now.
+		struct GrenadeFalloffReadout
+		{
+			bool  valid = false;   // false: no falloff curve to read, use BaseDamage
+			float game = 0.0f;     // live peak, read before this tick's write
+			float expected = 0.0f; // peak the keys should hold from our last write
+			float unmodified = 0.0f;
+		};
+
 		// Game thread only. `factor` is the row's value; 1 (or inactive) hands the
 		// originals back.
-		void ApplyGrenadeFalloff(SDK::UCrGrenadeWeaponItemDataBase* grenade, bool active, float factor)
+		GrenadeFalloffReadout ApplyGrenadeFalloff(SDK::UCrGrenadeWeaponItemDataBase* grenade, bool active, float factor)
 		{
 			SDK::UCurveFloat* curve = (grenade && grenade->bIsUsingDamageFalloff) ? grenade->BaseDamageFalloff : nullptr;
 			if (g_grenadeFalloff.captured
 				&& (curve != g_grenadeFalloff.curve.Get() || grenade != g_grenadeFalloff.owner.Get()))
 				ReleaseGrenadeFalloffNow();
 			if (!curve)
-				return;
+				return {};
+
+			GrenadeFalloffReadout readout;
+			if (curve->FloatCurve.Keys.Num() > 0)
+			{
+				readout.valid = true;
+				readout.game = curve->FloatCurve.Keys[0].Value;
+				readout.unmodified = readout.game;
+				readout.expected = readout.game;
+				if (g_grenadeFalloff.captured && !g_grenadeFalloff.shared
+					&& curve->FloatCurve.Keys.Num() == static_cast<int>(g_grenadeFalloff.orig.size()))
+				{
+					readout.expected   = g_grenadeFalloff.orig[0][0] * g_grenadeFalloff.written;
+					readout.unmodified = g_grenadeFalloff.orig[0][0];
+				}
+			}
 			// No session yet means the leftover check below can't read its pair:
 			// capture only once one is loaded.
 			if (!g_grenadeFalloff.captured && SessionConfig::Generation() == 0)
-				return;
+				return readout;
 
 			auto& keys = curve->FloatCurve.Keys;
 			if (!g_grenadeFalloff.captured)
@@ -857,20 +882,20 @@ namespace BetterCheats::Panels::Weapons
 			}
 
 			if (g_grenadeFalloff.shared)
-				return;
+				return readout;
 			if (keys.Num() != static_cast<int>(g_grenadeFalloff.orig.size()))
 			{
 				// Someone else rebuilt the curve: its keys are not what we captured.
 				ForgetGrenadeFalloff();
 				BetterCheats::ClearComposeState(kGrenadeFalloffKey);
-				return;
+				return readout;
 			}
 
 			const float want = active
 				? std::clamp(factor, kGrenadeRows[kGrenadeDamage].minValue, kGrenadeRows[kGrenadeDamage].maxValue)
 				: 1.0f;
 			if (want == g_grenadeFalloff.written)
-				return;
+				return readout;
 			WriteGrenadeFalloffKeys(curve, want);
 			g_grenadeFalloff.written = want;
 			if (want == 1.0f || g_grenadeFalloff.anchor < 0)
@@ -878,6 +903,7 @@ namespace BetterCheats::Panels::Weapons
 			else
 				BetterCheats::SaveComposeState(kGrenadeFalloffKey,
 					g_grenadeFalloff.orig[g_grenadeFalloff.anchor][0], keys[g_grenadeFalloff.anchor].Value);
+			return readout;
 		}
 
 		constexpr const char* kChimeraMainWorldName = "ChimeraMain";
@@ -1407,15 +1433,26 @@ namespace BetterCheats::Panels::Weapons
 				const bool  damageActive = BetterCheats::DiffersFromDefault(damageScale, kGrenadeRows[kGrenadeDamage].defaultValue);
 				// A falloff grenade never reads BaseDamage: the curve carries the row.
 				const bool  usesFalloff = grenadeData->bIsUsingDamageFalloff && grenadeData->BaseDamageFalloff;
-				ApplyGrenadeFalloff(grenadeData, damageActive, damageScale);
+				const GrenadeFalloffReadout falloff = ApplyGrenadeFalloff(grenadeData, damageActive, damageScale);
 				const ComposeStep damageStep = ApplyComposedRow(g_composedGrenadeBaseDamage, grenadeData,
 					grenadeData->BaseDamage.Value, kGrenadeBaseDamageKey,
 					damageActive && !usesFalloff, damageScale,
 					kGrenadeModes[kGrenadeDamage], 0.0f, kGrenadeBaseDamageFinalMax);
 
-				g_dbgGrenadeGame[kGrenadeDamage].store(damageStep.game);
-				g_dbgGrenadeExpected[kGrenadeDamage].store(damageStep.expected);
-				g_dbgGrenadeUnmod[kGrenadeDamage].store((damageActive && !usesFalloff) ? g_composedGrenadeBaseDamage.GetGame() : damageStep.game);
+				// A falloff grenade shows the curve's live peak: BaseDamage is not
+				// what the explosion reads.
+				if (usesFalloff && falloff.valid)
+				{
+					g_dbgGrenadeGame[kGrenadeDamage].store(falloff.game);
+					g_dbgGrenadeExpected[kGrenadeDamage].store(falloff.expected);
+					g_dbgGrenadeUnmod[kGrenadeDamage].store(falloff.unmodified);
+				}
+				else
+				{
+					g_dbgGrenadeGame[kGrenadeDamage].store(damageStep.game);
+					g_dbgGrenadeExpected[kGrenadeDamage].store(damageStep.expected);
+					g_dbgGrenadeUnmod[kGrenadeDamage].store((damageActive && !usesFalloff) ? g_composedGrenadeBaseDamage.GetGame() : damageStep.game);
+				}
 
 				const bool active = BetterCheats::DiffersFromDefault(
 					grenadeProfile.grenadeValues[kGrenadeCost], kGrenadeRows[kGrenadeCost].defaultValue);
