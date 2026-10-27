@@ -6,6 +6,10 @@ namespace BetterCheats::Panels::Weapons
 {
 	void RenderImGui(IModLoaderImGui* imgui);
 
+	// Registers the world-end callback that hands the grenade Damage row's
+	// BaseDamage back to the game -- call once during plugin init.
+	void Initialize();
+
 	// Re-applies enabled weapon attribute overrides every engine tick. There is
 	// no reflected way to set a GAS attribute's base value, so an active row
 	// composes onto CurrentValue every tick instead of writing it once -- see
@@ -17,7 +21,8 @@ namespace BetterCheats::Panels::Weapons
 	// SessionConfig::Reload(), e.g. from OnExperienceLoadComplete.
 	void ApplySavedConfig();
 
-	// Hands every composed attribute back to the game if the owning character is
-	// still valid -- call once from PluginShutdown.
+	// Unregisters the world-end callback and hands every composed attribute back to
+	// the game if the owning character is still valid -- call once from
+	// PluginShutdown.
 	void Shutdown();
 }

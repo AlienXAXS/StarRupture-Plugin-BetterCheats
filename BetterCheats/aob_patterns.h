@@ -135,6 +135,83 @@ namespace BetterCheats::AOB
 		"48 89 5C 24 ?? 57 48 83 EC ?? 80 B9 ?? ?? ?? ?? ?? 48 8B DA 48 8B F9 75 ?? 48 85 D2 0F 84";
 
 	// -------------------------------------------------------------------------
+	// Deconstruct Windows During Waves
+	//
+	// These back an opt-in toggle, so aob_resolver.cpp scans them without
+	// recording a miss: a pattern that stops matching leaves the toggle off
+	// instead of refusing the whole plugin.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  ACrPlayerControllerBase::FindDeconstructibleTarget
+	// Parameters       (ACrPlayerControllerBase* this, const FTraceDatum& TraceData) -> AActor*
+	// Scores the deconstruct trace's hits, then runs the winner through the
+	// tag, infection, heat, habitat-inside and airlock-inside gates; null when
+	// one of them refuses it. Reads nothing but its inputs and writes nothing.
+	constexpr const char* FindDeconstructibleTarget =
+		"48 8B C4 55 53 56 57 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 ?? "
+		"4C 8B FA 44 0F 29 48 ?? 4C 8B F1 44 0F 29 90 ?? ?? ?? ?? 33 F6 48 8B 01 FF 90 D8 07 00 00 84 C0 0F";
+
+	// Class::Function  ACrPlayerControllerBase::FindDeconstructibleTarget (inside the body, not an entry)
+	// The infection gate (`comiss xmm6,[rax]; jb <return null>`), then the temperature fragment
+	// lookup and the heat gate, whose 2-byte `jb <return null>` sits
+	// kHeatGateJumpOffset bytes into the match. Any temperature above 0 takes it.
+	constexpr const char* FindDeconstructibleTarget_HeatGate =
+		"0F 2F 30 0F 82 ?? ?? ?? ?? 48 8B 9D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B C0 48 8B D3 48 8B CE "
+		"E8 ?? ?? ?? ?? 48 85 C0 74 05 0F 2F 30 72 ?? 48 8B 07 48 8B CF FF 90 00 08 00 00";
+	constexpr const std::ptrdiff_t kHeatGateJumpOffset = 43;
+
+	// -------------------------------------------------------------------------
+	// Build Windows Anywhere
+	//
+	// Opt-in as well, and scanned the same way: a miss leaves the toggle doing
+	// nothing.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  ACrAPHelperActorCustom::CheckMainMeshCollision
+	// Parameters       (ACrAPHelperActorCustom* this, const UCrBuildingData* PlacementData) -> EAuAPlacementConditionResult
+	// Overlap test of the helper's main mesh. Overlapping actors are skipped when
+	// they are snapped to, connected to or ignored by the piece; any other
+	// building makes it BuildingColliding or IsColliding.
+	constexpr const char* CheckMainMeshCollision_Custom =
+		"40 55 53 56 57 41 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? 00 "
+		"4C 8B E9 48 8B 01 0F 84 ?? ?? ?? ?? 33 FF 48 89 7D ?? 48 89 7D ??";
+
+	// Class::Function  ACrAPHelper::GetBoxCollisionResult
+	// Parameters       (ACrAPHelper* this, const FVector& Min, const FVector& Max,
+	//                   const TArray<AActor*>& IgnoredActors, const TArray<TSubclassOf<ACrBuildingActorBase>>& IgnoredClasses,
+	//                   bool) -> EAuAPlacementConditionResult
+	// The box overlap pass GetHelperConditionResult runs once the main mesh has
+	// passed, skipping the same kinds of actor.
+	constexpr const char* GetBoxCollisionResult =
+		"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? "
+		"48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 85 ?? ?? ?? ?? 48 8B 01 45 33 E4 48 8B B5 ?? ?? ?? ?? "
+		"4D 8B F1 4C 89 4C 24 ?? 49 8B D8 48 8B FA 48 89 4D ?? 4C 8B E9";
+
+	// -------------------------------------------------------------------------
+	// Build Benches Anywhere
+	//
+	// Opt-in, scanned the same way as a pair: a miss leaves the toggle doing
+	// nothing.
+	// -------------------------------------------------------------------------
+
+	// Class::Function  UCrSocketSnapPlacementMethod::GetSnappedSocket
+	// Parameters       (UCrSocketSnapPlacementMethod* this, const UAuActorPlacementData* Data, const FHitResult& Hit,
+	//                   USceneComponent* Component, + 6 more on the stack) -> UStaticMeshSocket*
+	// Picks the free socket of the custom building under the cursor that a
+	// socket-snap piece (window, habitat machine) snaps to.
+	constexpr const char* GetSnappedSocket =
+		"4C 89 4C 24 20 48 89 54 24 10 48 89 4C 24 08 55 53 57 41 55 41 57 48 8D AC 24 ?? ?? ?? ?? "
+		"48 81 EC ?? ?? ?? ?? 48 8B 85 ?? ?? ?? ?? 33 FF 49 8B D9 4D 8B E8 4C 8B FA C6 40 08 00";
+
+	// Class::Function  UCrBuildingStabilitySubsystem::IsSocketFree
+	// Parameters       (UCrBuildingStabilitySubsystem* this, ACrCustomBuilding* Building, const UStaticMeshSocket* Socket) -> bool
+	// False when any custom building is registered on that socket. Its only
+	// caller is GetSnappedSocket.
+	constexpr const char* IsSocketFree =
+		"4C 89 44 24 18 55 53 56 57 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 4C 8B FA 48 8B F1 "
+		"E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 33 FF 4C 8B F0";
+
+	// -------------------------------------------------------------------------
 	// Mining
 	// -------------------------------------------------------------------------
 
@@ -142,11 +219,6 @@ namespace BetterCheats::AOB
 	// Parameters       (UCrMiningComponent* this, bool IsHittingWeakSpot)
 	constexpr const char* GetMiningDamage =
 		"40 55 56 57 41 56 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8B B9";
-
-	// Class::Function  ACrCharacterPlayerBase::UpdateRepHarvesterHeatStack
-	// Parameters       (ACrCharacterPlayerBase* this)
-	constexpr const char* UpdateRepHarvesterHeatStack =
-		"40 57 48 81 EC ?? ?? ?? ?? 48 8B F9 E8 ?? ?? ?? ?? 83 F8";
 
 	// -------------------------------------------------------------------------
 	// Mass Entity Templates

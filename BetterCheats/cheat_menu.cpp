@@ -63,6 +63,7 @@ namespace BetterCheats
 	std::atomic<bool> CheatMenu::s_open           { false };
 	MenuCategory      CheatMenu::s_activeCategory = MenuCategory::World_Environment;
 	std::atomic<bool> CheatMenu::s_closeRequested { false };
+	std::atomic<bool> CheatMenu::s_openRequested  { false };
 	void* g_inputCaptureToken				 = nullptr;
 
 	// -------------------------------------------------------------------------
@@ -80,6 +81,14 @@ namespace BetterCheats
 		ApplyMenuClosed("OnPanelClosed");
 	}
 
+	// The BETTER CHEATS row in the pause menu. onClick runs on the game thread
+	// inside the menu's click handler, so it only raises a flag; the panel is
+	// opened by TickPendingOpen on the next tick.
+	void CheatMenu::OnPauseMenuRowClicked(void*)
+	{
+		s_openRequested.store(true);
+	}
+
 	void CheatMenu::Initialize(IPluginSelf* self)
 	{
 		s_self = self;
@@ -91,10 +100,31 @@ namespace BetterCheats
 
 		s_panelHandle = self->hooks->UI->RegisterPanel(&desc);
 		s_self->hooks->UI->RegisterOnPanelWindowClosed(OnPanelClosed);
+
+		// Server builds have no game menu (hooks->GameMenu is null), and a
+		// client whose menu patterns did not resolve is not worth a row nobody
+		// will see; the toggle key still opens the panel either way.
+		if (self->hooks->GameMenu && self->hooks->GameMenu->IsAvailable())
+		{
+			PluginGameMenuEntryDesc row{};
+			row.id      = "bettercheats";
+			row.label   = "BETTER CHEATS";
+			row.targets = PLUGIN_GAME_MENU_PAUSE;
+			row.anchor  = PLUGIN_GAME_MENU_ANCHOR_AFTER_OPTIONS;
+			row.onClick = OnPauseMenuRowClicked;
+
+			if (!self->hooks->GameMenu->AddEntry(self, &row))
+				LOG_WARN("CheatMenu::Initialize: could not add the pause menu row");
+		}
 	}
 
 	void CheatMenu::Shutdown()
 	{
+		if (s_self && s_self->hooks && s_self->hooks->GameMenu)
+			s_self->hooks->GameMenu->RemoveAllEntries(s_self);
+
+		s_openRequested.store(false);
+
 		if (s_panelHandle && s_self)
 		{
 			s_self->hooks->UI->SetPanelClose(s_panelHandle);
@@ -201,6 +231,18 @@ namespace BetterCheats
 		{
 			LOG_DEBUG("CheatMenu::TickPendingClose: applying a pending close request");
 			CloseMenu();
+		}
+	}
+
+	// Applies a pending open request from the pause menu row. Opens (never
+	// toggles), so a click while the panel is already up, or a toggle key press
+	// in between, cannot close it. Called from the game tick (OnEngineTick).
+	void CheatMenu::TickPendingOpen()
+	{
+		if (s_openRequested.exchange(false))
+		{
+			LOG_DEBUG("CheatMenu::TickPendingOpen: opening from the pause menu row");
+			OpenMenu();
 		}
 	}
 

@@ -26,6 +26,7 @@
 #include <cstring>
 
 static IPluginSelf* g_self = nullptr;
+static bool g_enabled = true;
 
 IPluginSelf* GetSelf() { return g_self; }
 
@@ -120,7 +121,10 @@ static void OnEngineTick(float deltaSeconds)
 	// CheatMenu::TickPendingClose for why. Runs before the ChimeraMain/cheats
 	// gate below: closing the menu must still work even if the player left
 	// single-player or the world unloaded out from under an open panel.
+	// TickPendingOpen applies a click on the pause menu's BETTER CHEATS row,
+	// on the same tick for the same reason.
 	BetterCheats::CheatMenu::TickPendingClose();
+	BetterCheats::CheatMenu::TickPendingOpen();
 
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
@@ -180,14 +184,17 @@ extern "C" {
 
 		LOG_INFO("BetterCheats initializing...");
 
+		LOG_INFO("Initializing config...");
+		BetterCheatsConfig::Config::Initialize(self);
+
+		// Read only after Initialize: IsEnabled() has no plugin handle before it.
 		if (!BetterCheatsConfig::Config::IsEnabled())
 		{
 			LOG_WARN("BetterCheats is disabled in config");
+			g_enabled = false;
 			return true;
 		}
 
-		LOG_INFO("Initializing config...");
-		BetterCheatsConfig::Config::Initialize(self);
 		BetterCheats::SessionConfig::Initialize(self);
 
 		LOG_INFO("Initializing game context and panels...");
@@ -207,6 +214,9 @@ extern "C" {
 
 		LOG_INFO("Initializing Movement panel...");
 		BetterCheats::Panels::Movement::Initialize();
+
+		LOG_INFO("Initializing Weapons panel...");
+		BetterCheats::Panels::Weapons::Initialize();
 
 		LOG_INFO("Initializing Tools panel...");
 		BetterCheats::Panels::Tools::Initialize();
@@ -270,6 +280,13 @@ extern "C" {
 	{
 		LOG_INFO("BetterCheats shutting down...");
 
+		// Disabled in config: PluginInit registered nothing, so there is nothing to undo.
+		if (!g_enabled)
+		{
+			g_self = nullptr;
+			return;
+		}
+
 		if (g_self)
 		{
 			const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
@@ -287,7 +304,7 @@ extern "C" {
 		// regardless. With hook removal at the end of the list that turned any
 		// shutdown fault into a guaranteed second crash — the game kept calling
 		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
-		// two of them (UpdateRepHarvesterHeatStack, GetMiningDamage) every frame.
+		// GetMiningDamage every frame.
 		// Detached first, a fault below is survivable.
 		BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Building::Shutdown();

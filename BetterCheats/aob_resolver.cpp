@@ -8,7 +8,7 @@ namespace BetterCheats::AOB
 	{
 		ResolvedAddresses g_resolved;
 
-		// Every address in this file is the entry point of a compiled function --
+		// Every address ResolveFunction resolves is the entry point of a compiled function --
 		// each one is either called directly or has a detour written over it --
 		// so they all declare PLUGIN_SCAN_FUNCTION_START. That is the whole point
 		// of the kind: a pattern that lands 0x37 bytes into an unrelated function
@@ -29,6 +29,105 @@ namespace BetterCheats::AOB
 			out = scanner->Resolve(self, &req);
 			if (!out)
 				LOG_WARN("AOB: %s did not resolve - the feature using it will be unavailable.", hookName);
+		}
+
+		// The start of the function addr belongs to, following chained unwind
+		// entries back to their parent the way the loader's FUNCTION_START check
+		// does, so a cold chunk does not pass for a function of its own. 0 when
+		// no unwind data covers addr.
+		uintptr_t OwningFunctionStart(uintptr_t addr)
+		{
+			DWORD64 imageBase = 0;
+			PRUNTIME_FUNCTION entry = RtlLookupFunctionEntry(addr, &imageBase, nullptr);
+			for (int depth = 0; entry && depth < 32; ++depth)
+			{
+				const auto* unwind = reinterpret_cast<const uint8_t*>(imageBase + entry->UnwindData);
+				if (((unwind[0] >> 3) & UNW_FLAG_CHAININFO) == 0)
+					return static_cast<uintptr_t>(imageBase + entry->BeginAddress);
+
+				// The parent entry follows the unwind codes, padded to an even count.
+				const size_t codeSlots = (unwind[2] + 1u) & ~1u;
+				entry = reinterpret_cast<PRUNTIME_FUNCTION>(const_cast<uint8_t*>(unwind) + 4 + codeSlots * 2);
+			}
+			return 0;
+		}
+
+		uintptr_t FindUnique(IPluginSelf* self, IPluginHookScanner* scanner, const char* pattern)
+		{
+			uintptr_t hits[2] = {};
+			return scanner->FindAllPatternsInMainModule(self, pattern, hits, 2) == 1 ? hits[0] : 0;
+		}
+
+		// A function pattern from the raw scan: it must match exactly once, at a
+		// function entry, the two verdicts Resolve applies. 0 otherwise.
+		uintptr_t FindFunction(IPluginSelf* self, IPluginHookScanner* scanner, const char* pattern)
+		{
+			const uintptr_t addr = FindUnique(self, scanner, pattern);
+			return addr && OwningFunctionStart(addr) == addr ? addr : 0;
+		}
+
+		// Deconstruct Windows During Waves is opt-in, so its patterns go through
+		// the raw scan, which records nothing with the loader: after a game update
+		// a miss turns that one toggle off instead of refusing the plugin. The same
+		// two verdicts as Resolve still apply. The function must match exactly once
+		// and be a function entry. The heat gate is a jump inside it, so it must
+		// sit in that function, and its short jb must land where the near jb
+		// opening the match (the infection gate) lands, which is the function's
+		// return-null path.
+		void ResolveDeconstructWindows(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t function = FindFunction(self, scanner, FindDeconstructibleTarget);
+			const uintptr_t match    = FindUnique(self, scanner, FindDeconstructibleTarget_HeatGate);
+
+			bool ok = function && match && OwningFunctionStart(match) == function;
+			if (ok)
+			{
+				const auto* code = reinterpret_cast<const uint8_t*>(match);
+				const uintptr_t nullPath   = match + 9 + *reinterpret_cast<const int32_t*>(code + 5);
+				const uintptr_t gateTarget = match + kHeatGateJumpOffset + 2 + static_cast<int8_t>(code[kHeatGateJumpOffset + 1]);
+				ok = gateTarget == nullPath;
+			}
+
+			if (!ok)
+			{
+				LOG_WARN("AOB: ACrPlayerControllerBase::FindDeconstructibleTarget or its heat gate did not resolve - "
+					"Deconstruct Windows During Waves stays off.");
+				return;
+			}
+			g_resolved.FindDeconstructibleTarget          = function;
+			g_resolved.FindDeconstructibleTarget_HeatGate = match + kHeatGateJumpOffset;
+		}
+
+		// Build Windows Anywhere is opt-in too, and its two hooks only make sense
+		// together, so they resolve as a pair or not at all.
+		void ResolveBuildWindowsAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t mainMesh = FindFunction(self, scanner, CheckMainMeshCollision_Custom);
+			const uintptr_t box      = FindFunction(self, scanner, GetBoxCollisionResult);
+			if (!mainMesh || !box)
+			{
+				LOG_WARN("AOB: ACrAPHelperActorCustom::CheckMainMeshCollision or ACrAPHelper::GetBoxCollisionResult "
+					"did not resolve - Build Windows Anywhere will do nothing.");
+				return;
+			}
+			g_resolved.CheckMainMeshCollision_Custom = mainMesh;
+			g_resolved.GetBoxCollisionResult         = box;
+		}
+
+		// Build Benches Anywhere also needs the two Build Windows Anywhere hooks,
+		// which player_building.cpp checks before installing these.
+		void ResolveBuildBenchesAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
+		{
+			const uintptr_t snapped    = FindFunction(self, scanner, GetSnappedSocket);
+			const uintptr_t socketFree = FindFunction(self, scanner, IsSocketFree);
+			if (!snapped || !socketFree)
+			{
+				LOG_WARN("AOB: UCrSocketSnapPlacementMethod::GetSnappedSocket or UCrBuildingStabilitySubsystem::IsSocketFree "
+					"did not resolve - Build Benches Anywhere will do nothing.");
+				return;
+			}
+			g_resolved.GetSnappedSocket = snapped;
+			g_resolved.IsSocketFree     = socketFree;
 		}
 
 #if BETTERCHEATS_DEV_BUILD
@@ -87,10 +186,12 @@ namespace BetterCheats::AOB
 		ResolveFunction(self, scanner, g_resolved.CheckStability_DynamicPillar,
 			"ACrAPHelperDynamicPillar::CheckStability", CheckStability_DynamicPillar);
 
+		ResolveDeconstructWindows(self, scanner);
+		ResolveBuildWindowsAnywhere(self, scanner);
+		ResolveBuildBenchesAnywhere(self, scanner);
+
 		ResolveFunction(self, scanner, g_resolved.GetMiningDamage,
 			"UCrMiningToolComponent::GetMiningDamage", GetMiningDamage);
-		ResolveFunction(self, scanner, g_resolved.UpdateRepHarvesterHeatStack,
-			"UCrMiningToolComponent::UpdateRepHarvesterHeatStack", UpdateRepHarvesterHeatStack);
 
 		ResolveFunction(self, scanner, g_resolved.AddNewItem,
 			"UAuItemsComponent::AddNewItem", AddNewItem);
