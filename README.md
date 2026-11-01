@@ -252,6 +252,8 @@ This is a single-player cheat menu intended for personal use. Use at your own ri
 
 Original mod by [@AlienXAXS](https://github.com/AlienXAXS).
 
+Maintained by [@msantoro12](https://github.com/msantoro12).
+
 Contributors:
 
 - [@Lorke76](https://github.com/Lorke76)
