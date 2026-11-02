@@ -36,6 +36,7 @@ Watch and steer the heat wave. **Skip** force-advances the current stage; **Paus
 
 - **Cancel** ends the wave in progress, resets the Next Wave countdown and re-enables waves.
 - **Restart** re-arms the countdown and re-enables waves, for a rupture that never arrives after loading a save. The Next Wave readout shows m:ss, or the wave, disabled or stalled state.
+- **Cancel** and **Restart** set the countdown to the longest calm period seen since the plugin loaded. If you cancel before one has been seen, the countdown is left alone.
 - **Enable** / **Disable** switch the wave spawn timer on or off, saved with the game.
 
 ### Corporations
