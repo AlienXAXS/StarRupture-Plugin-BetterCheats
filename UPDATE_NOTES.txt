@@ -1,13 +1,2 @@
-Build Windows Anywhere toggle in the Building tab
-Build Benches Anywhere toggle in the Building tab
-Deconstruct Windows During Waves toggle in the Building tab
-BETTER CHEATS row added to the pause menu
-Building options now have descriptions, and the Building presets row is removed
-No Handheld Drill Overheat now stops the drill from overheating
-Zipline Speed now changes how fast you ride ziplines
-Enabled=false in the config file now turns the plugin off
-Grenade tab Damage row added (0.1x to 100x)
-Grenade tab settings now keep working at 0 charges
-Grenade Max Charges and Min Charge rows removed, the game's own values are restored
-No Build Cost, No Stability Check and the inventory grid size are ready for Update 3: their patterns match both the current game and the Update 3 test build
-Re-arming the wave timer after cancelling a wave now resets it to the longest calm period seen since the plugin loaded, because the wave-duration member it used to read is gone on newer game builds; if you load into a calm period and cancel before one has been seen, the timer is left alone
+- Ready for Update 3: build cost, stability and inventory size work on the current game and on Update 3
+- Cancelling a wave now resets the timer to the longest calm period seen since the game started
