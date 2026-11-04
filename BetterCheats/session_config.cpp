@@ -110,9 +110,6 @@ namespace BetterCheats::SessionConfig
 				// UCrGameInstance::ServerSessionName — not present in the generated SDK
 				// (folded into the trailing padding bytes), but populated on load even
 				// for single-player sessions. Read through its map field.
-				if (!BetterCheats::Features::SessionName.On())
-					return "";
-
 				const SDK::FString* serverSessionName = BetterCheats::Fields::CrGameInstance_ServerSessionName.In(gameInstance);
 				if (!serverSessionName)
 					return "";

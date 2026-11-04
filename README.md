@@ -224,7 +224,7 @@ Found a bug? [Report it on GitHub](https://github.com/AlienXAXS/StarRupture-Plug
 
 - **Menu opens but is empty:** load into a save. In multiplayer, set `EnableCheatsInMultiplayer=true`.
 - **Toggle key does nothing:** check the keybind in the modloader settings -- it may have been rebound.
-- **Saved cheat settings not restored:** check `modloader.log` for errors loading `Plugins\BetterCheats\<SessionName>.json`.
+- **Saved cheat settings not restored:** check `modloader.log` for errors loading `Plugins\BetterCheats\<SessionName>.json`. After a game update that hides the save's session name, per-save settings are neither saved nor restored until the loader learns the new build.
 - **Plugin not loading:** check `ModLoader.log` in `Binaries\Win64\ModLoader\Logs\` for errors.
 - **Game updated, plugin broken:** some features use byte-pattern scanning. A game update may shift the patterns -- wait for a plugin update. Patterns already known to change in an upcoming update carry both versions, so those features keep working through it.
 - **A Building option does nothing:** **Deconstruct Windows During Waves**, **Build Windows Anywhere** and **Build Benches Anywhere** each need byte patterns to match. If one misses after a game update, the plugin still loads, the option does nothing, and `modloader.log` has a line saying which one.
