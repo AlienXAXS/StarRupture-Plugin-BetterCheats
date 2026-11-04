@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Chimera_classes.hpp"
+#include "plugin_map.h"
 
 // Shared by every feature module that needs the local player character.
 // Game-thread only -- call this from Tick(), never from RenderImGui(), which
@@ -12,7 +13,7 @@ namespace BetterCheats
 	inline SDK::ACrCharacterPlayerBase* GetLocalCharacter()
 	{
 		SDK::UWorld* world = nullptr;
-		try { world = SDK::UWorld::GetWorld(); }
+		try { world = PluginSdkRuntime::GetWorld(); }
 		catch (...) { return nullptr; }
 		if (!world) return nullptr;
 

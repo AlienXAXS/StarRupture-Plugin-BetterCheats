@@ -11,6 +11,8 @@
 
 #include <cstring>
 #include <mutex>
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::Panels::Attributes
 {
@@ -126,25 +128,35 @@ namespace BetterCheats::Panels::Attributes
 			attribute.CurrentValue = value;
 		}
 
+		// The attribute data `member` of the character's attribute set `set`, or
+		// nullptr if the character has no such set or the member did not resolve.
+		template <class Set>
+		SDK::FGameplayAttributeData* AttrOf(const PluginField<Set*>& set, const PluginField<SDK::FGameplayAttributeData>& member,
+			SDK::ACrCharacterPlayerBase* character)
+		{
+			Set* attributes = Fields::ValueOr(set, character);
+			return attributes ? member.In(attributes) : nullptr;
+		}
+
 		// Resolves the live "Current*" attribute data for the given slot, or
 		// nullptr if that attribute set isn't present on the character.
 		SDK::FGameplayAttributeData* GetCurrentAttribute(SDK::ACrCharacterPlayerBase* character, AttrId id)
 		{
 			switch (id)
 			{
-				case AttrId::Health:      return character->HealthAttributes      ? &character->HealthAttributes->CurrentHealth           : nullptr;
-				case AttrId::Energy:      return character->EnergyAttributes      ? &character->EnergyAttributes->CurrentEnergy           : nullptr;
-				case AttrId::Shield:      return character->ShieldAttributes      ? &character->ShieldAttributes->CurrentShield           : nullptr;
-				case AttrId::Hydration:   return character->HydrationAttributes   ? &character->HydrationAttributes->CurrentHydration     : nullptr;
-				case AttrId::Calories:    return character->CaloriesAttributes    ? &character->CaloriesAttributes->CurrentCalories       : nullptr;
-				case AttrId::Oxygen:      return character->OxygenAttributes      ? &character->OxygenAttributes->CurrentOxygen           : nullptr;
-				case AttrId::Toxicity:    return character->ToxicityAttributes    ? &character->ToxicityAttributes->CurrentToxicity       : nullptr;
-				case AttrId::Radiation:   return character->RadiationAttributes   ? &character->RadiationAttributes->CurrentRadiation     : nullptr;
-				case AttrId::Heat:        return character->HeatAttributes        ? &character->HeatAttributes->CurrentHeat               : nullptr;
-				case AttrId::Drain:       return character->DrainAttributes       ? &character->DrainAttributes->CurrentDrain             : nullptr;
-				case AttrId::Corrosion:   return character->CorrosionAttributes   ? &character->CorrosionAttributes->CurrentCorrosion     : nullptr;
-				case AttrId::Infection:   return character->InfectionAttributes   ? &character->InfectionAttributes->CurrentInfection     : nullptr;
-				case AttrId::Temperature: return character->TemperatureAttributes ? &character->TemperatureAttributes->CurrentTemperature : nullptr;
+				case AttrId::Health:      return AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_CurrentHealth, character);
+				case AttrId::Energy:      return AttrOf(Fields::CrCharacterPlayerBase_EnergyAttributes, Fields::CrEnergyAttributeSet_CurrentEnergy, character);
+				case AttrId::Shield:      return AttrOf(Fields::CrCharacterPlayerBase_ShieldAttributes, Fields::CrShieldAttributeSet_CurrentShield, character);
+				case AttrId::Hydration:   return AttrOf(Fields::CrCharacterPlayerBase_HydrationAttributes, Fields::CrHydrationAttributeSet_CurrentHydration, character);
+				case AttrId::Calories:    return AttrOf(Fields::CrCharacterPlayerBase_CaloriesAttributes, Fields::CrCaloriesAttributeSet_CurrentCalories, character);
+				case AttrId::Oxygen:      return AttrOf(Fields::CrCharacterPlayerBase_OxygenAttributes, Fields::CrOxygenAttributeSet_CurrentOxygen, character);
+				case AttrId::Toxicity:    return AttrOf(Fields::CrCharacterPlayerBase_ToxicityAttributes, Fields::CrToxicityAttributeSet_CurrentToxicity, character);
+				case AttrId::Radiation:   return AttrOf(Fields::CrCharacterPlayerBase_RadiationAttributes, Fields::CrRadiationAttributeSet_CurrentRadiation, character);
+				case AttrId::Heat:        return AttrOf(Fields::CrCharacterPlayerBase_HeatAttributes, Fields::CrHeatAttributeSet_CurrentHeat, character);
+				case AttrId::Drain:       return AttrOf(Fields::CrCharacterPlayerBase_DrainAttributes, Fields::CrDrainAttributeSet_CurrentDrain, character);
+				case AttrId::Corrosion:   return AttrOf(Fields::CrCharacterPlayerBase_CorrosionAttributes, Fields::CrCorrosionAttributeSet_CurrentCorrosion, character);
+				case AttrId::Infection:   return AttrOf(Fields::CrCharacterPlayerBase_InfectionAttributes, Fields::CrInfectionAttributeSet_CurrentInfection, character);
+				case AttrId::Temperature: return AttrOf(Fields::CrCharacterPlayerBase_TemperatureAttributes, Fields::CrTemperatureAttributeSet_CurrentTemperature, character);
 				default:                  return nullptr;
 			}
 		}
@@ -153,13 +165,13 @@ namespace BetterCheats::Panels::Attributes
 		{
 			switch (id)
 			{
-				case AttrId::Toxicity:    return character->ToxicityAttributes    ? &character->ToxicityAttributes->MinToxicity       : nullptr;
-				case AttrId::Radiation:   return character->RadiationAttributes   ? &character->RadiationAttributes->MinRadiation     : nullptr;
-				case AttrId::Heat:        return character->HeatAttributes        ? &character->HeatAttributes->MinHeat               : nullptr;
-				case AttrId::Drain:       return character->DrainAttributes       ? &character->DrainAttributes->MinDrain             : nullptr;
-				case AttrId::Corrosion:   return character->CorrosionAttributes   ? &character->CorrosionAttributes->MinCorrosion     : nullptr;
-				case AttrId::Infection:   return character->InfectionAttributes   ? &character->InfectionAttributes->MinInfection     : nullptr;
-				case AttrId::Temperature: return character->TemperatureAttributes ? &character->TemperatureAttributes->MinTemperature : nullptr;
+				case AttrId::Toxicity:    return AttrOf(Fields::CrCharacterPlayerBase_ToxicityAttributes, Fields::CrToxicityAttributeSet_MinToxicity, character);
+				case AttrId::Radiation:   return AttrOf(Fields::CrCharacterPlayerBase_RadiationAttributes, Fields::CrRadiationAttributeSet_MinRadiation, character);
+				case AttrId::Heat:        return AttrOf(Fields::CrCharacterPlayerBase_HeatAttributes, Fields::CrHeatAttributeSet_MinHeat, character);
+				case AttrId::Drain:       return AttrOf(Fields::CrCharacterPlayerBase_DrainAttributes, Fields::CrDrainAttributeSet_MinDrain, character);
+				case AttrId::Corrosion:   return AttrOf(Fields::CrCharacterPlayerBase_CorrosionAttributes, Fields::CrCorrosionAttributeSet_MinCorrosion, character);
+				case AttrId::Infection:   return AttrOf(Fields::CrCharacterPlayerBase_InfectionAttributes, Fields::CrInfectionAttributeSet_MinInfection, character);
+				case AttrId::Temperature: return AttrOf(Fields::CrCharacterPlayerBase_TemperatureAttributes, Fields::CrTemperatureAttributeSet_MinTemperature, character);
 				default:                  return nullptr; // resource attributes floor at zero
 			}
 		}
@@ -168,19 +180,19 @@ namespace BetterCheats::Panels::Attributes
 		{
 			switch (id)
 			{
-				case AttrId::Health:      return character->HealthAttributes      ? &character->HealthAttributes->MaxHealth           : nullptr;
-				case AttrId::Energy:      return character->EnergyAttributes      ? &character->EnergyAttributes->MaxEnergy           : nullptr;
-				case AttrId::Shield:      return character->ShieldAttributes      ? &character->ShieldAttributes->MaxShield           : nullptr;
-				case AttrId::Hydration:   return character->HydrationAttributes   ? &character->HydrationAttributes->MaxHydration     : nullptr;
-				case AttrId::Calories:    return character->CaloriesAttributes    ? &character->CaloriesAttributes->MaxCalories       : nullptr;
-				case AttrId::Oxygen:      return character->OxygenAttributes      ? &character->OxygenAttributes->MaxOxygen           : nullptr;
-				case AttrId::Toxicity:    return character->ToxicityAttributes    ? &character->ToxicityAttributes->MaxToxicity       : nullptr;
-				case AttrId::Radiation:   return character->RadiationAttributes   ? &character->RadiationAttributes->MaxRadiation     : nullptr;
-				case AttrId::Heat:        return character->HeatAttributes        ? &character->HeatAttributes->MaxHeat               : nullptr;
-				case AttrId::Drain:       return character->DrainAttributes       ? &character->DrainAttributes->MaxDrain             : nullptr;
-				case AttrId::Corrosion:   return character->CorrosionAttributes   ? &character->CorrosionAttributes->MaxCorrosion     : nullptr;
-				case AttrId::Infection:   return character->InfectionAttributes   ? &character->InfectionAttributes->MaxInfection     : nullptr;
-				case AttrId::Temperature: return character->TemperatureAttributes ? &character->TemperatureAttributes->MaxTemperature : nullptr;
+				case AttrId::Health:      return AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character);
+				case AttrId::Energy:      return AttrOf(Fields::CrCharacterPlayerBase_EnergyAttributes, Fields::CrEnergyAttributeSet_MaxEnergy, character);
+				case AttrId::Shield:      return AttrOf(Fields::CrCharacterPlayerBase_ShieldAttributes, Fields::CrShieldAttributeSet_MaxShield, character);
+				case AttrId::Hydration:   return AttrOf(Fields::CrCharacterPlayerBase_HydrationAttributes, Fields::CrHydrationAttributeSet_MaxHydration, character);
+				case AttrId::Calories:    return AttrOf(Fields::CrCharacterPlayerBase_CaloriesAttributes, Fields::CrCaloriesAttributeSet_MaxCalories, character);
+				case AttrId::Oxygen:      return AttrOf(Fields::CrCharacterPlayerBase_OxygenAttributes, Fields::CrOxygenAttributeSet_MaxOxygen, character);
+				case AttrId::Toxicity:    return AttrOf(Fields::CrCharacterPlayerBase_ToxicityAttributes, Fields::CrToxicityAttributeSet_MaxToxicity, character);
+				case AttrId::Radiation:   return AttrOf(Fields::CrCharacterPlayerBase_RadiationAttributes, Fields::CrRadiationAttributeSet_MaxRadiation, character);
+				case AttrId::Heat:        return AttrOf(Fields::CrCharacterPlayerBase_HeatAttributes, Fields::CrHeatAttributeSet_MaxHeat, character);
+				case AttrId::Drain:       return AttrOf(Fields::CrCharacterPlayerBase_DrainAttributes, Fields::CrDrainAttributeSet_MaxDrain, character);
+				case AttrId::Corrosion:   return AttrOf(Fields::CrCharacterPlayerBase_CorrosionAttributes, Fields::CrCorrosionAttributeSet_MaxCorrosion, character);
+				case AttrId::Infection:   return AttrOf(Fields::CrCharacterPlayerBase_InfectionAttributes, Fields::CrInfectionAttributeSet_MaxInfection, character);
+				case AttrId::Temperature: return AttrOf(Fields::CrCharacterPlayerBase_TemperatureAttributes, Fields::CrTemperatureAttributeSet_MaxTemperature, character);
 				default:                  return nullptr;
 			}
 		}
@@ -201,7 +213,7 @@ namespace BetterCheats::Panels::Attributes
 		{
 			try
 			{
-				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 				if (!world)
 				{
 					LOG_DEBUG("RefreshHealthHud: no world loaded, skipping.");
@@ -306,10 +318,10 @@ namespace BetterCheats::Panels::Attributes
 
 			if (character)
 			{
-				if (SDK::UCrHealthAttributeSet* health = character->HealthAttributes)
+				if (SDK::FGameplayAttributeData* maxHealth = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character))
 				{
 					snapshot.hasHealth = true;
-					snapshot.maxHealth = health->MaxHealth.CurrentValue;
+					snapshot.maxHealth = maxHealth->CurrentValue;
 				}
 
 				for (int i = 0; i < kAttrCount; ++i)
@@ -362,10 +374,12 @@ namespace BetterCheats::Panels::Attributes
 
 				if (g_pendingMaxHealth.pending)
 				{
-					if (SDK::UCrHealthAttributeSet* health = character->HealthAttributes)
+					SDK::FGameplayAttributeData* maxHealth     = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character);
+					SDK::FGameplayAttributeData* currentHealth = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_CurrentHealth, character);
+					if (maxHealth && currentHealth)
 					{
-						SetAttributeValue(health->MaxHealth, g_pendingMaxHealth.value);
-						SetAttributeValue(health->CurrentHealth, g_pendingMaxHealth.value);
+						SetAttributeValue(*maxHealth, g_pendingMaxHealth.value);
+						SetAttributeValue(*currentHealth, g_pendingMaxHealth.value);
 						refreshHud = true;
 					}
 					g_pendingMaxHealth.pending = false;
@@ -450,7 +464,7 @@ namespace BetterCheats::Panels::Attributes
 			// for it, so probe the current world directly to pick up an in-progress session.
 			try
 			{
-				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 				if (world && world->GetName() == kChimeraMainWorldName)
 					g_inChimeraMain = true;
 			}

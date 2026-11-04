@@ -223,7 +223,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 - **Toggle key does nothing:** check the keybind in the modloader settings -- it may have been rebound.
 - **Saved cheat settings not restored:** check `modloader.log` for errors loading `Plugins\BetterCheats\<SessionName>.json`.
 - **Plugin not loading:** check `ModLoader.log` in `Binaries\Win64\ModLoader\Logs\` for errors.
-- **Game updated, plugin broken:** some features use byte-pattern scanning. A game update may shift the patterns -- wait for a plugin update.
+- **Game updated, plugin broken:** some features use byte-pattern scanning. A game update may shift the patterns -- wait for a plugin update. Patterns already known to change in an upcoming update carry both versions, so those features keep working through it.
 - **A Building option does nothing:** **Deconstruct Windows During Waves**, **Build Windows Anywhere** and **Build Benches Anywhere** each need byte patterns to match. If one misses after a game update, the plugin still loads, the option does nothing, and `modloader.log` has a line saying which one.
 
 ---

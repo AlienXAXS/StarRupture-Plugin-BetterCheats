@@ -4,6 +4,7 @@
 #include "Chimera_classes.hpp"
 
 #include <cstring>
+#include "plugin_map.h"
 
 namespace
 {
@@ -26,7 +27,7 @@ namespace BetterCheats
 		// so probe the current world directly to pick up an in-progress session.
 		try
 		{
-			SDK::UWorld* world = SDK::UWorld::GetWorld();
+			SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 			if (world && world->GetName() == kChimeraMainWorldName)
 				s_inChimeraMain = true;
 		}

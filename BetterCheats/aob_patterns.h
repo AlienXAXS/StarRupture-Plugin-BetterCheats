@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 
 // ---------------------------------------------------------------------------
 // AOB Pattern Registry
@@ -19,22 +20,17 @@
 namespace BetterCheats::AOB
 {
 
-	// UCrGameInstance::ServerSessionName — offset within UCrGameInstance,
-		// not exposed by the generated SDK (folded into trailing padding bytes).
-	constexpr const std::ptrdiff_t kServerSessionNameOffset = 0x290;
-
-	// UCrEnviroWaveTimerSubsystem — the countdown to the next rupture. The
-	// generated SDK folds everything before TimerActor into Pad_30, but these
-	// are what actually gate the cycle: Tick() only decrements NextWaveTimer
-	// while !bPause && bWaitingForNextWave, and the whole block is persisted
-	// into the save (FCrEnviroWaveTimerSaveData) so a bad value survives a
-	// reload. ACrWaveTimerActor::bPause is only a replicated HUD mirror.
-	constexpr const std::ptrdiff_t kWaveTimerWaitingDurationOffset    = 0x78; // float
-	constexpr const std::ptrdiff_t kWaveTimerNextWaveTimerOffset      = 0x7C; // float, seconds remaining
-	constexpr const std::ptrdiff_t kWaveTimerWaitingForNextWaveOffset = 0x80; // bool
-	constexpr const std::ptrdiff_t kWaveTimerPauseOffset              = 0x81; // bool
-	constexpr const std::ptrdiff_t kWaveTimerStopWavesOffset          = 0x83; // bool
-
+	// A function pattern that needs more than one string. followRel32At >= 0
+	// anchors it on a call to the function rather than its entry: the match is
+	// the call site and the rel32 at that offset gives the function. A list of
+	// them carries a function across a game update that changed its code, one
+	// pattern per build, the build players have now first. ResolveFunction
+	// resolves the first that matches exactly once at a function entry.
+	struct FunctionPattern
+	{
+		const char* pattern;
+		int32_t     followRel32At = -1;
+	};
 
 	// -------------------------------------------------------------------------
 	// Example / template (remove when first real pattern is added)
@@ -69,8 +65,10 @@ namespace BetterCheats::AOB
 	// Parameters       (UCrBuildingComponent* this) -> EAuAPlacementConditionResult
 	// Hooked to return Valid (1) when no-build-cost cheat is active.
 	// Formerly GetResourceConditionResult — renamed by the game, same contract.
-	constexpr const char* GetPlacementResourceConditionResult =
-		"48 89 5C 24 ?? 48 89 6C 24 ?? 56 57 41 56 48 83 EC ?? 48 8B F9 48 8B 89";
+	// Found through its call site (the call at +3), which is the same on the
+	// current build and CL-128786; the function's own entry differs between them.
+	constexpr FunctionPattern GetPlacementResourceConditionResult =
+		{ "48 8B C8 E8 ?? ?? ?? ?? 0F B6 D8 88 9F ?? ?? 00 00", 3 };
 
 	// Class::Function  UAuActorPlacementComponent::AddPoint
 	// Parameters       (UAuActorPlacementComponent* this) -> FScriptContainerElement*
@@ -97,10 +95,14 @@ namespace BetterCheats::AOB
 	// just re-compiled: the frame grew past 0x80, so `sub rsp, imm8` became
 	// `sub rsp, imm32`, and the two argument moves swapped registers. The old
 	// pattern pinned both the imm8 encoding and the modrm bytes of those moves,
-	// which is why it stopped matching. Register bytes and the frame size are
-	// wildcarded now so the next re-allocation does not break it again.
-	constexpr const char* CheckStability_Custom =
-		"40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0";
+	// which is why it stopped matching. The frame size is wildcarded. CL-128786
+	// re-allocated its registers again, so the second pattern is that build's;
+	// it matches nothing on the current build. The loader's map has no row for
+	// this function yet, so these stay the plugin's own fallback.
+	constexpr FunctionPattern CheckStability_Custom[] = {
+		{ "40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0" },
+		{ "40 53 55 56 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F1" },
+	};
 
 
 	// Class::Function  ACrAPHelperDynamicPillar::CheckStability
@@ -115,9 +117,14 @@ namespace BetterCheats::AOB
 	// Re-derived for CL-125897, same story as the Custom helper above: identical
 	// code, but rbx was re-allocated to rsi, so the push/pop and the `this` move
 	// all changed bytes. The register bytes and the member offset are wildcarded;
-	// the two register saves after the early-out keep the match unique.
-	constexpr const char* CheckStability_DynamicPillar =
-		"40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0";
+	// the two register saves after the early-out keep the match unique. The
+	// second pattern is CL-128786's, whose code differs; it matches nothing on
+	// the current build. The loader's map has no row for this function yet, so
+	// these stay the plugin's own fallback.
+	constexpr FunctionPattern CheckStability_DynamicPillar[] = {
+		{ "40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0" },
+		{ "48 89 74 24 18 57 48 83 EC 60 48 8B F1 E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 48 83 BE ?? ?? ?? ?? 00" },
+	};
 
 
 	// Class::Function  ACrTechnologyKeeper::CheckAvailableBuildings
@@ -324,10 +331,10 @@ namespace BetterCheats::AOB
 	// only two callers are InitPlayer (UCrUW_Inventory::InitOnShow, which every
 	// machine screen opens as well as the inventory itself) and
 	// HandleOnInventorySizeChanged, so it runs each time the grid is drawn or
-	// rebuilt. Ends on `lea r12, [rcx+468h]` -- the container's private
-	// TWeakObjectPtr<UCrInventoryComponent>.
-	constexpr const char* InventoryContainer_InitInventorySlots =
-		"48 89 5C 24 ?? 48 89 6C 24 ?? 56 57 41 54 41 56 41 57 48 83 EC 70 4C 8D A1";
+	// rebuilt. Found through a tail call to it (the jmp at +24) in a caller that
+	// is the same on the current build and CL-128786.
+	constexpr FunctionPattern InventoryContainer_InitInventorySlots =
+		{ "48 8B 89 60 04 00 00 48 8B 01 FF 90 10 03 00 00 48 8B CB 48 83 C4 20 5B E9", 24 };
 
 	// Class::Function  UE::StructUtils::GetStructInstanceCrc32
 	// Parameters       (const UScriptStruct* ScriptStruct, const uint8* StructMemory, uint32 CRC) -> uint32

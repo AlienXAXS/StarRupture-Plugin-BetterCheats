@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::Panels::Building
 {
@@ -83,8 +85,6 @@ namespace BetterCheats::Panels::Building
 		// so we pass nullptr/0 safely in both directions.
 		// This flag may be serialised into the save file — the UI warns accordingly.
 		// -------------------------------------------------------------------------
-
-		constexpr ptrdiff_t kBUnlockAllBuildingsOffset = 0x03A8;
 
 		bool g_unlockAllBuildings     = false;
 		bool g_prevUnlockAllBuildings = false;
@@ -296,10 +296,26 @@ namespace BetterCheats::Panels::Building
 
 		bool IsRelaxedPieceInHabitatSlot(SDK::ACrAPHelper* helper)
 		{
-			if (!helper || !helper->BuildingData || !IsRelaxedPiece(helper->BuildingData->BuildingID))
+			// SnappedActors, read below, is part of this feature: without it, or with the feature off, collision is left alone.
+			if (!Features::BuildAnywhere.On())
 				return false;
 
-			for (SDK::AActor* snapped : helper->SnappedActors)
+			SDK::UCrBuildingData* buildingData = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrAPHelper_BuildingData, helper);
+			const SDK::ECrBuildingID* const buildingId = buildingData ? BetterCheats::Fields::AuActorPlacementData_BuildingID.In(static_cast<const void*>(buildingData)) : nullptr;
+			if (!helper || !buildingId || !IsRelaxedPiece(*buildingId))
+				return false;
+
+			IPluginHooks* const pluginHooks = GetHooks();
+			const SDK::TArray<SDK::AActor*>* snappedActors = BetterCheats::Fields::CrAPHelper_SnappedActors.In(pluginHooks ? pluginHooks->ObjectProperties : nullptr, helper);
+			if (!snappedActors)
+			{
+				// This build's ACrAPHelper has no SnappedActors: leave collision alone.
+				static std::atomic<bool> s_logged{ false };
+				if (!s_logged.exchange(true))
+					LOG_WARN("Building: ACrAPHelper::SnappedActors not found on this game build; benches and windows anywhere will not relax collision");
+				return false;
+			}
+			for (SDK::AActor* snapped : *snappedActors)
 			{
 				if (IsHabitat(snapped))
 					return true;
@@ -380,7 +396,7 @@ namespace BetterCheats::Panels::Building
 		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
 			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
 		{
-			const bool bench = g_buildBenchesAnywhere.load() && data && IsBenchId(data->BuildingID);
+			const bool bench = g_buildBenchesAnywhere.load() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
 			t_snappingBench = bench;
 			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
 			t_snappingBench = false;
@@ -422,7 +438,7 @@ namespace BetterCheats::Panels::Building
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
+			try { world = PluginSdkRuntime::GetWorld(); }
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
@@ -440,14 +456,14 @@ namespace BetterCheats::Panels::Building
 		SDK::ACrTechnologyKeeper* GetTechnologyKeeper()
 		{
 			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
+			try { world = PluginSdkRuntime::GetWorld(); }
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
 			SDK::AGameStateBase* gs = SDK::UGameplayStatics::GetGameState(world);
 			if (!gs) return nullptr;
 
-			return static_cast<SDK::ACrGameStateBase*>(gs)->TechnologyKeeper;
+			return BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrGameStateBase_TechnologyKeeper, static_cast<SDK::ACrGameStateBase*>(gs));
 		}
 	}
 
@@ -461,7 +477,14 @@ namespace BetterCheats::Panels::Building
 			return;
 		}
 
-		const AOB::ResolvedAddresses& aob = AOB::Resolved();
+		// A feature that is off installs nothing: its addresses are cleared here.
+		AOB::ResolvedAddresses aob = AOB::Resolved();
+		if (!Features::BuildFree.On())
+			aob.GetPlacementResourceConditionResult = aob.CheckStability_Custom = aob.CheckStability_DynamicPillar = 0;
+		if (!Features::BuildUnlock.On())
+			aob.CheckAvailableBuildings = aob.IsRecipeUnlocked = 0;
+		if (!Features::BuildAnywhere.On())
+			aob.CheckMainMeshCollision_Custom = aob.GetBoxCollisionResult = aob.GetSnappedSocket = aob.IsSocketFree = 0;
 
 		uintptr_t addr = aob.GetPlacementResourceConditionResult;
 		if (!addr)
@@ -672,7 +695,8 @@ namespace BetterCheats::Panels::Building
 			{
 				if (SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper())
 				{
-					*reinterpret_cast<bool*>(reinterpret_cast<uint8_t*>(keeper) + kBUnlockAllBuildingsOffset) = false;
+					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+						*unlockAll = false;
 					if (g_checkAvailableBuildings)
 						g_checkAvailableBuildings(keeper, nullptr, 0);
 				}
@@ -691,7 +715,7 @@ namespace BetterCheats::Panels::Building
 		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
 		// Writing the flag alone is insufficient; the function must run to rebuild
 		// AvailableBuildings and fire the delegate that refreshes the build menu.
-		if (g_unlockAllBuildings != g_prevUnlockAllBuildings)
+		if (Features::BuildUnlock.On() && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 		{
 			g_prevUnlockAllBuildings = g_unlockAllBuildings;
 			LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
@@ -701,7 +725,8 @@ namespace BetterCheats::Panels::Building
 				LOG_DEBUG("Building: TechnologyKeeper = 0x%llx", reinterpret_cast<unsigned long long>(keeper));
 				if (keeper)
 				{
-					*reinterpret_cast<bool*>(reinterpret_cast<uint8_t*>(keeper) + kBUnlockAllBuildingsOffset) = g_unlockAllBuildings;
+					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+						*unlockAll = g_unlockAllBuildings;
 					if (g_checkAvailableBuildings)
 					{
 						LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx, bUnlockAll=%d)",
@@ -725,19 +750,37 @@ namespace BetterCheats::Panels::Building
 		if (!SessionConfig::IsLoaded())
 			return;
 
-		g_noBuildCost        = SessionConfig::Get("playerBuilding.noBuildCost", false);
-		g_noStabilityCheck   = SessionConfig::Get("playerBuilding.noStabilityCheck", false);
-		g_unlockAllBuildings = SessionConfig::Get("playerBuilding.unlockAllBuildings", false);
-		g_unlockAllRecipes   = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
+		if (Features::BuildFree.On())
+		{
+			g_noBuildCost      = SessionConfig::Get("playerBuilding.noBuildCost", false);
+			g_noStabilityCheck = SessionConfig::Get("playerBuilding.noStabilityCheck", false);
+		}
+		if (Features::BuildUnlock.On())
+		{
+			g_unlockAllBuildings = SessionConfig::Get("playerBuilding.unlockAllBuildings", false);
+			g_unlockAllRecipes   = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
+		}
 		g_deconstructWindowsDuringWaves = SessionConfig::Get("playerBuilding.deconstructWindowsDuringWaves", false);
-		g_buildWindowsAnywhere          = SessionConfig::Get("playerBuilding.buildWindowsAnywhere", false);
-		g_buildBenchesAnywhere          = SessionConfig::Get("playerBuilding.buildBenchesAnywhere", false);
+		if (Features::BuildAnywhere.On())
+		{
+			g_buildWindowsAnywhere = SessionConfig::Get("playerBuilding.buildWindowsAnywhere", false);
+			g_buildBenchesAnywhere = SessionConfig::Get("playerBuilding.buildBenchesAnywhere", false);
+		}
 
 		LOG_INFO("Building: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
 	namespace
 	{
+		// True when the feature behind a row is on; otherwise says so in the row's checkbox column.
+		bool RowOn(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
+		{
+			if (feature.On())
+				return true;
+			imgui->TextDisabled("Off");
+			return false;
+		}
+
 		// The row's description, wrapped to its column, under the title.
 		void Description(IModLoaderImGui* imgui, const char* text)
 		{
@@ -765,7 +808,7 @@ namespace BetterCheats::Panels::Building
 			Description(imgui,
 				"Lets you place buildings without having the resources for them.");
 			imgui->TableSetColumnIndex(1);
-			if (imgui->Checkbox("##no_build_cost", &g_noBuildCost))
+			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_build_cost", &g_noBuildCost))
 				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
 
 			imgui->TableNextRow(0, 0.0f);
@@ -774,7 +817,7 @@ namespace BetterCheats::Panels::Building
 			Description(imgui,
 				"Lets you place buildings that the stability check would otherwise refuse.");
 			imgui->TableSetColumnIndex(1);
-			if (imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
+			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
 				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
 
 			imgui->TableNextRow(0, 0.0f);
@@ -799,7 +842,7 @@ namespace BetterCheats::Panels::Building
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
-			if (imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
 			{
 				g_buildWindowsAnywhere = buildWindowsAnywhere;
 				SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
@@ -814,7 +857,7 @@ namespace BetterCheats::Panels::Building
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
-			if (imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
 			{
 				g_buildBenchesAnywhere = buildBenchesAnywhere;
 				SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
@@ -840,7 +883,7 @@ namespace BetterCheats::Panels::Building
 			Description(imgui,
 				"Makes every building available in the build menu, without the research or reputation it needs.");
 			imgui->TableSetColumnIndex(1);
-			if (imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
+			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
 				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
 
 			imgui->TableNextRow(0, 0.0f);
@@ -849,7 +892,7 @@ namespace BetterCheats::Panels::Building
 			Description(imgui,
 				"Makes every crafting recipe available, researched or not.");
 			imgui->TableSetColumnIndex(1);
-			if (imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
+			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
 				SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes);
 
 			imgui->EndTable();

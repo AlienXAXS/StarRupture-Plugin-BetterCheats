@@ -1,3 +1,4 @@
+#include "map_fields.h"
 #include "player_tools.h"
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
@@ -180,12 +181,12 @@ namespace BetterCheats::Panels::Tools
 		{
 			switch (s)
 			{
-			case kStatMiningDamage: return &cdo->MiningTypeDamage;
-			case kStatWeakpoint:    return &cdo->WeakpointDamageMultiplier;
-			case kStatEnemyDamage:  return &cdo->BaseDamage.Value;
-			case kStatRange:        return &cdo->BaseRange.Value;
-			case kStatHitRate:      return &cdo->RoundsPerMinute.Value;
-			case kStatAggro:        return &cdo->ShotAggro;
+			case kStatMiningDamage: return BetterCheats::Fields::CrWeaponItemDataBase_MiningTypeDamage.In(cdo);
+			case kStatWeakpoint:    return BetterCheats::Fields::CrWeaponItemDataBase_WeakpointDamageMultiplier.In(cdo);
+			case kStatEnemyDamage:  return BetterCheats::Fields::ScalableValue(BetterCheats::Fields::AuWeaponItemDataBase_BaseDamage, cdo);
+			case kStatRange:        return BetterCheats::Fields::ScalableValue(BetterCheats::Fields::AuWeaponItemDataBase_BaseRange, cdo);
+			case kStatHitRate:      return BetterCheats::Fields::ScalableValue(BetterCheats::Fields::AuWeaponItemDataBase_RoundsPerMinute, cdo);
+			case kStatAggro:        return BetterCheats::Fields::CrWeaponItemDataBase_ShotAggro.In(cdo);
 			default:                return nullptr;
 			}
 		}
@@ -257,8 +258,12 @@ namespace BetterCheats::Panels::Tools
 			g_toolCdoHeld = true;
 			LOG_INFO("Tools: resolved '%s' -- mining damage %.2f, weak spot x%.2f, enemy damage %.2f, "
 			         "range %.2f, %.3f s between hits, aggro %.3f.",
-				kToolCdoName, cdo->MiningTypeDamage, cdo->WeakpointDamageMultiplier, cdo->BaseDamage.Value,
-				cdo->BaseRange.Value, cdo->RoundsPerMinute.Value, cdo->ShotAggro);
+				kToolCdoName, BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrWeaponItemDataBase_MiningTypeDamage, cdo),
+				BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrWeaponItemDataBase_WeakpointDamageMultiplier, cdo),
+				BetterCheats::Fields::ScalableOr(BetterCheats::Fields::AuWeaponItemDataBase_BaseDamage, cdo),
+				BetterCheats::Fields::ScalableOr(BetterCheats::Fields::AuWeaponItemDataBase_BaseRange, cdo),
+				BetterCheats::Fields::ScalableOr(BetterCheats::Fields::AuWeaponItemDataBase_RoundsPerMinute, cdo),
+				BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrWeaponItemDataBase_ShotAggro, cdo));
 			return cdo;
 		}
 
@@ -309,11 +314,13 @@ namespace BetterCheats::Panels::Tools
 			const SDK::FGameplayAttributeData* attr = nullptr;
 			switch (source)
 			{
-			case ModsSource::Damage:   attr = &weapons->DamageModMultiplier;       break;
-			case ModsSource::FireRate: attr = &weapons->FireRateModMultiplier;     break;
-			case ModsSource::Aggro:    attr = &weapons->AggroPerShotModMultiplier; break;
+			case ModsSource::Damage:   attr = BetterCheats::Fields::CrWeaponAttributeSet_DamageModMultiplier.In(weapons);       break;
+			case ModsSource::FireRate: attr = BetterCheats::Fields::CrWeaponAttributeSet_FireRateModMultiplier.In(weapons);     break;
+			case ModsSource::Aggro:    attr = BetterCheats::Fields::CrWeaponAttributeSet_AggroPerShotModMultiplier.In(weapons); break;
 			case ModsSource::None:     return 1.0f;
 			}
+			if (!attr)
+				return 1.0f;
 			// Whatever the game adds over the attribute's own base, the same
 			// "buffed - base" delta the Weapons panel reads for guns.
 			return 1.0f + (attr->CurrentValue - attr->BaseValue);
@@ -838,11 +845,12 @@ namespace BetterCheats::Panels::Tools
 			// The data asset the weapon component last equipped IS this CDO
 			// while the mining tool is in hand (the Weapons panel keys its tabs
 			// off the same pointer).
-			SDK::UCrWeaponComponent* weaponSystem = character->WeaponSystem;
-			const bool equipped = cdo && weaponSystem && weaponSystem->LastEquippedWeaponData == cdo;
+			SDK::UCrWeaponComponent* weaponSystem = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_WeaponSystem, character);
+			const bool equipped = cdo && weaponSystem
+				&& BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrWeaponComponent_LastEquippedWeaponData, weaponSystem) == cdo;
 			g_toolEquipped.store(equipped);
 
-			SDK::UCrWeaponAttributeSet* weapons = character->WeaponAttributes;
+			SDK::UCrWeaponAttributeSet* weapons = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_WeaponAttributes, character);
 			if (equipped && weapons)
 			{
 				for (int s = 0; s < kStatCount; ++s)
@@ -857,22 +865,25 @@ namespace BetterCheats::Panels::Tools
 		const bool  boostActive = BetterCheats::DiffersFromDefault(boostValue, 1.0f);
 		try
 		{
-			if (SDK::UCrMiningBoostAttributeSet* boost = character->MiningBoostAttributes)
+			SDK::UCrMiningBoostAttributeSet* boost = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_MiningBoostAttributes, character);
+			SDK::FGameplayAttributeData* boostCurrent = BetterCheats::Fields::CrMiningBoostAttributeSet_CurrentBoostMultiplierValue.In(boost);
+			SDK::FGameplayAttributeData* boostMax     = BetterCheats::Fields::CrMiningBoostAttributeSet_MaxBoostMultiplierValue.In(boost);
+			if (boostCurrent && boostMax)
 			{
-				const float before = boost->CurrentBoostMultiplierValue.CurrentValue;
+				const float before = boostCurrent->CurrentValue;
 				g_boostGame.store(before);
 				if (!boostActive || !g_boostWasActive)
 					g_boostUnmodified.store(before);
 
 				if (boostActive)
 				{
-					if (boost->MaxBoostMultiplierValue.CurrentValue < boostValue)
+					if (boostMax->CurrentValue < boostValue)
 					{
-						boost->MaxBoostMultiplierValue.BaseValue    = boostValue;
-						boost->MaxBoostMultiplierValue.CurrentValue = boostValue;
+						boostMax->BaseValue    = boostValue;
+						boostMax->CurrentValue = boostValue;
 					}
-					boost->CurrentBoostMultiplierValue.BaseValue    = boostValue;
-					boost->CurrentBoostMultiplierValue.CurrentValue = boostValue;
+					boostCurrent->BaseValue    = boostValue;
+					boostCurrent->CurrentValue = boostValue;
 				}
 				g_boostWasActive = boostActive;
 			}

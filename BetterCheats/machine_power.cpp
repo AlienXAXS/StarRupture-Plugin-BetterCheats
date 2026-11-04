@@ -22,6 +22,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::Panels::Power
 {
@@ -312,10 +314,14 @@ namespace BetterCheats::Panels::Power
 
 				auto* building = static_cast<SDK::UCrBuildingData*>(obj);
 
-				const SDK::FName& cfgPackageName = building->EntityType.EntityConfig.ObjectID.AssetPath.PackageName;
+				const SDK::FAuAPMassSpawnedEntityType* entityType = BetterCheats::Fields::AuActorPlacementData_EntityType.In(static_cast<const void*>(building));
+				const auto* entityConfig = BetterCheats::Fields::AuAPMassSpawnedEntityType_EntityConfig.In(static_cast<const void*>(entityType));
+				const SDK::FText* buildingText = BetterCheats::Fields::CrBuildingData_BuildingName.In(static_cast<const void*>(building));
+				if (!entityConfig || !buildingText) continue;
+				const SDK::FName& cfgPackageName = entityConfig->ObjectID.AssetPath.PackageName;
 				if (cfgPackageName.IsNone()) continue;
 
-				std::string name = SDK::UKismetTextLibrary::Conv_TextToString(building->BuildingName).ToString();
+				std::string name = SDK::UKismetTextLibrary::Conv_TextToString(*buildingText).ToString();
 				if (name.empty() || name == "<MISSING STRING TABLE ENTRY>" || name == "None")
 					continue;
 
@@ -391,7 +397,10 @@ namespace BetterCheats::Panels::Power
 							auto* configAsset = static_cast<SDK::UMassEntityConfigAsset*>(obj);
 
 							SDK::UCrElectricityTrait* trait = FindElectricityTrait(configAsset);
-							if (!trait || trait->Parameters.Type == SDK::ECrMassElectricityAgentType::None)
+							SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+							const SDK::ECrMassElectricityAgentType* agentType = BetterCheats::Fields::CrElectricityParameters_Type.In(params);
+							float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
+							if (!params || !agentType || !electricity || *agentType == SDK::ECrMassElectricityAgentType::None)
 								continue;
 
 							PowerEntry entry{};
@@ -401,12 +410,12 @@ namespace BetterCheats::Panels::Power
 							auto it = configNames.find(packageName);
 							entry.name = (it != configNames.end()) ? it->second : PrettifyAssetName(assetName);
 
-							entry.type  = trait->Parameters.Type;
-							entry.value = trait->Parameters.ElectricityValue;
+							entry.type  = *agentType;
+							entry.value = *electricity;
 
 							auto defaultIt = g_defaults.find(entry.assetName);
 							if (defaultIt == g_defaults.end())
-								defaultIt = g_defaults.emplace(entry.assetName, trait->Parameters.ElectricityValue).first;
+								defaultIt = g_defaults.emplace(entry.assetName, *electricity).first;
 							entry.defaultValue = defaultIt->second;
 
 							// A building whose authored value is zero neither produces nor
@@ -426,13 +435,13 @@ namespace BetterCheats::Panels::Power
 							if (!overrideJson.is_null())
 							{
 								const float overrideValue = overrideJson.get<float>();
-								if (overrideValue != trait->Parameters.ElectricityValue)
+								if (overrideValue != *electricity)
 								{
 									LOG_DEBUG("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
-										entry.name.c_str(), trait->Parameters.ElectricityValue, overrideValue);
+										entry.name.c_str(), *electricity, overrideValue);
 
-									const SDK::FCrElectricityParameters oldParams = trait->Parameters;
-									trait->Parameters.ElectricityValue = overrideValue;
+									const SDK::FCrElectricityParameters oldParams = *params;
+									*electricity = overrideValue;
 
 									// Patch buildings already placed by this save's data so they
 									// don't sit on the default value until Apply is hit again.
@@ -568,7 +577,7 @@ namespace BetterCheats::Panels::Power
 
 			try
 			{
-				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 				if (!world)
 				{
 					LOG_WARN("Power: no world loaded - skipping template rebuild for '%s'.", assetName);
@@ -692,7 +701,7 @@ namespace BetterCheats::Panels::Power
 
 			try
 			{
-				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 				if (!world)
 				{
 					LOG_WARN("Power: no world loaded - skipping shared-fragment patch for '%s'.", assetName);
@@ -706,9 +715,8 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				// UMassEntitySubsystem::EntityManager is a TSharedPtr<FMassEntityManager>
-				// at offset 0x38; its first 8 bytes are the raw FMassEntityManager*.
-				void* entityManager = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(massEntitySubsystem) + 0x38);
+				// The raw FMassEntityManager* inside the subsystem's TSharedPtr.
+				void* entityManager = PluginMap::MassEntityManagerOf(massEntitySubsystem);
 				if (!entityManager)
 				{
 					LOG_WARN("Power: FMassEntityManager unavailable - skipping shared-fragment patch for '%s'.", assetName);
@@ -743,8 +751,11 @@ namespace BetterCheats::Panels::Power
 
 				auto* liveParams = reinterpret_cast<SDK::FCrElectricityParameters*>(reinterpret_cast<uint8_t*>(sharedMemory) + 0x08);
 
-				const float before = liveParams->ElectricityValue;
-				liveParams->ElectricityValue = newValue;
+				float* liveValue = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(liveParams);
+				if (!liveValue)
+					return;
+				const float before = *liveValue;
+				*liveValue = newValue;
 
 				LOG_DEBUG("Power: patched existing shared ElectricityValue %.2f -> %.2f for '%s' (hash=%08X, block=%p).",
 					before, newValue, assetName, oldHash, sharedMemory);
@@ -781,13 +792,16 @@ namespace BetterCheats::Panels::Power
 				SDK::UMassEntityConfigAsset* configAsset = ResolveConfigAsset(item.packageName, item.assetName);
 				SDK::UCrElectricityTrait*    trait        = configAsset ? FindElectricityTrait(configAsset) : nullptr;
 
-				if (trait)
+				SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+				float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
+				if (trait && params && electricity)
 				{
-					const SDK::FCrElectricityParameters oldParams = trait->Parameters;
+					const SDK::FCrElectricityParameters oldParams = *params;
+					const float oldValue = *electricity;
 
-					trait->Parameters.ElectricityValue = item.value;
+					*electricity = item.value;
 					LOG_INFO("Power: set ElectricityValue %.2f -> %.2f on trait %p ('%s')%s.",
-						oldParams.ElectricityValue, item.value, static_cast<void*>(trait), item.assetName.c_str(),
+						oldValue, item.value, static_cast<void*>(trait), item.assetName.c_str(),
 						item.clearOverride ? " [reset to default]" : "");
 
 					// Update buildings of this type already placed in the world -

@@ -1,6 +1,8 @@
 #include "panel_machines.h"
 #include "machine_power.h"
 
+#include "map_fields.h"
+
 namespace BetterCheats::Panels
 {
 	void RenderMachines_Crafters(IModLoaderImGui* imgui)
@@ -11,7 +13,10 @@ namespace BetterCheats::Panels
 
 	void RenderMachines_Power(IModLoaderImGui* imgui)
 	{
-		Power::RenderImGui(imgui);
+		if (Features::Power.On())
+			Power::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Power);
 	}
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)

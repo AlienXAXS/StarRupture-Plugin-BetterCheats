@@ -8,6 +8,8 @@
 #include <string>
 
 #include "Chimera_classes.hpp"
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::Panels::Skills
 {
@@ -35,7 +37,7 @@ namespace BetterCheats::Panels::Skills
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
+			try { world = PluginSdkRuntime::GetWorld(); }
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
@@ -165,15 +167,15 @@ namespace BetterCheats::Panels::Skills
 
 			if (pc)
 			{
-				SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
-				const SDK::FCrSkillData* data = skills.GetDataPtr();
+				const SDK::TArray<SDK::FCrSkillData>* skills = BetterCheats::Fields::CrPlayerControllerBase_PlayerSkills.In(static_cast<const void*>(pc));
+				const SDK::FCrSkillData* data = skills ? skills->GetDataPtr() : nullptr;
 
-				const int rawCount = data ? skills.Num() : 0;
+				const int rawCount = data ? skills->Num() : 0;
 				snapshot.count = rawCount < kMaxSkills ? rawCount : kMaxSkills;
 				for (int i = 0; i < snapshot.count; ++i)
 				{
-					snapshot.skillIds[i] = static_cast<uint8_t>(data[i].Skill);
-					snapshot.levels[i]   = data[i].Level;
+					snapshot.skillIds[i] = static_cast<uint8_t>(BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Skill, &data[i]));
+					snapshot.levels[i]   = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Level, &data[i]);
 				}
 			}
 
@@ -188,12 +190,12 @@ namespace BetterCheats::Panels::Skills
 			if (!pc)
 				return;
 
-			SDK::TArray<SDK::FCrSkillData>& skills = pc->PlayerSkills;
-			SDK::FCrSkillData* data = const_cast<SDK::FCrSkillData*>(skills.GetDataPtr());
+			SDK::TArray<SDK::FCrSkillData>* skills = BetterCheats::Fields::CrPlayerControllerBase_PlayerSkills.In(pc);
+			SDK::FCrSkillData* data = skills ? const_cast<SDK::FCrSkillData*>(skills->GetDataPtr()) : nullptr;
 			if (!data)
 				return;
 
-			const int count = skills.Num();
+			const int count = skills->Num();
 
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
 
@@ -201,8 +203,8 @@ namespace BetterCheats::Panels::Skills
 			{
 				for (int i = 0; i < count; ++i)
 				{
-					data[i].Level      = 999;
-					data[i].Experience = 0.0f;
+					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level, &data[i], 999);
+					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Experience, &data[i], 0.0f);
 				}
 				g_pendingMaxAll = false;
 			}
@@ -213,7 +215,7 @@ namespace BetterCheats::Panels::Skills
 				if (!edit.pending)
 					continue;
 
-				data[i].Level = edit.level;
+				BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level, &data[i], static_cast<int32_t>(edit.level));
 				edit.pending  = false;
 			}
 		}

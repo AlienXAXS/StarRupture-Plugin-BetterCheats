@@ -11,6 +11,7 @@
 
 #include "aob_resolver.h"
 #include "Chimera_classes.hpp"
+#include "plugin_map.h"
 
 namespace BetterCheats::Panels::DevMenus
 {
@@ -76,7 +77,7 @@ namespace BetterCheats::Panels::DevMenus
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
+			try { world = PluginSdkRuntime::GetWorld(); }
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
@@ -130,7 +131,7 @@ namespace BetterCheats::Panels::DevMenus
 						SDK::UClass* cheatClass = SDK::UCrCheatManager::StaticClass();
 						snap.isCrCheatManager = cheatClass && mgr->IsA(cheatClass);
 
-						try { snap.worldResolved = SDK::UWorld::GetWorld() != nullptr; }
+						try { snap.worldResolved = PluginSdkRuntime::GetWorld() != nullptr; }
 						catch (...) { snap.worldResolved = false; }
 					}
 				}

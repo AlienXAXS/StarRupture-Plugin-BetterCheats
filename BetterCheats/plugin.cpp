@@ -24,6 +24,9 @@
 #include <Windows.h>
 #include <cstdio>
 #include <cstring>
+#include "Engine_classes.hpp"
+#include "plugin_map.h"
+#include "map_fields.h"
 
 static IPluginSelf* g_self = nullptr;
 static bool g_enabled = true;
@@ -61,7 +64,9 @@ static PluginInfo s_pluginInfo = {
 	"AlienX",
 	"Modular in-game cheat menu for StarRupture",
 	PLUGIN_INTERFACE_VERSION,
-	PLUGIN_TARGET_CLIENT
+	PLUGIN_TARGET_CLIENT,
+	PLUGIN_GAME_BUILT_CL,
+	PLUGIN_MAP_MIGRATED
 };
 
 // Keybind callback — fires on key press to toggle the menu
@@ -95,15 +100,23 @@ static void OnExperienceLoadComplete()
 		return;
 	}
 
-	BetterCheats::Panels::Attributes::ApplySavedConfig();
+	if (BetterCheats::Features::Stats.On())
+		BetterCheats::Panels::Attributes::ApplySavedConfig();
 	BetterCheats::Panels::Building::ApplySavedConfig();
-	BetterCheats::Panels::Inventory::ApplySavedConfig();
-	BetterCheats::Panels::Movement::ApplySavedConfig();
-	BetterCheats::Panels::Tools::ApplySavedConfig();
-	BetterCheats::Panels::Weapons::ApplySavedConfig();
-	BetterCheats::Panels::Power::ApplySavedConfig();
-	BetterCheats::Panels::Wave::ApplySavedConfig();
-	BetterCheats::Panels::Enemies::ApplySavedConfig();
+	if (BetterCheats::Features::Inventory.On())
+		BetterCheats::Panels::Inventory::ApplySavedConfig();
+	if (BetterCheats::Features::Movement.On())
+		BetterCheats::Panels::Movement::ApplySavedConfig();
+	if (BetterCheats::Features::Mining.On())
+		BetterCheats::Panels::Tools::ApplySavedConfig();
+	if (BetterCheats::Features::Weapons.On())
+		BetterCheats::Panels::Weapons::ApplySavedConfig();
+	if (BetterCheats::Features::Power.On())
+		BetterCheats::Panels::Power::ApplySavedConfig();
+	if (BetterCheats::Features::Wave.On())
+		BetterCheats::Panels::Wave::ApplySavedConfig();
+	if (BetterCheats::Features::Enemies.On())
+		BetterCheats::Panels::Enemies::ApplySavedConfig();
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
@@ -135,16 +148,25 @@ static void OnEngineTick(float deltaSeconds)
 	if (!BetterCheats::GameContext::AreCheatsAllowed())
 		return;
 
-	BetterCheats::Panels::Attributes::Tick(deltaSeconds);
+	if (BetterCheats::Features::Stats.On())
+		BetterCheats::Panels::Attributes::Tick(deltaSeconds);
 	BetterCheats::Panels::Building::Tick(deltaSeconds);
-	BetterCheats::Panels::Inventory::Tick(deltaSeconds);
-	BetterCheats::Panels::Movement::Tick(deltaSeconds);
-	BetterCheats::Panels::Skills::Tick(deltaSeconds);
-	BetterCheats::Panels::Tools::Tick(deltaSeconds);
-	BetterCheats::Panels::Weapons::Tick(deltaSeconds);
-	BetterCheats::Panels::Wave::Tick(deltaSeconds);
-	BetterCheats::Panels::Corporations::Tick(deltaSeconds);
-	BetterCheats::Panels::Enemies::Tick(deltaSeconds);
+	if (BetterCheats::Features::Inventory.On())
+		BetterCheats::Panels::Inventory::Tick(deltaSeconds);
+	if (BetterCheats::Features::Movement.On())
+		BetterCheats::Panels::Movement::Tick(deltaSeconds);
+	if (BetterCheats::Features::Skills.On())
+		BetterCheats::Panels::Skills::Tick(deltaSeconds);
+	if (BetterCheats::Features::Mining.On())
+		BetterCheats::Panels::Tools::Tick(deltaSeconds);
+	if (BetterCheats::Features::Weapons.On())
+		BetterCheats::Panels::Weapons::Tick(deltaSeconds);
+	if (BetterCheats::Features::Wave.On())
+		BetterCheats::Panels::Wave::Tick(deltaSeconds);
+	if (BetterCheats::Features::Corporations.On())
+		BetterCheats::Panels::Corporations::Tick(deltaSeconds);
+	if (BetterCheats::Features::Enemies.On())
+		BetterCheats::Panels::Enemies::Tick(deltaSeconds);
 
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
@@ -175,11 +197,17 @@ extern "C" {
 		// loader hands PluginInit the same pointer.
 		g_self = self;
 
+		BetterCheats::Features::Declare(self, scanner);
 		BetterCheats::AOB::ResolveAll(self, scanner);
+		BetterCheats::Fields::Resolve(self, scanner);
 	}
 
 	__declspec(dllexport) bool PluginInit(IPluginSelf* self)
 	{
+		// First, before any early return (a disabled plugin included): off its game
+		// build the loader refuses a plugin whose PluginInit did not take the globals.
+		PluginSdkRuntime::Init(self->hooks);
+
 		g_self = self;
 
 		LOG_INFO("BetterCheats initializing...");
@@ -201,37 +229,47 @@ extern "C" {
 		BetterCheats::GameContext::Initialize(self);
 
 		LOG_INFO("Initializing Attribute panel...");
-		BetterCheats::Panels::Attributes::Initialize();
+		if (BetterCheats::Features::Stats.On())
+			BetterCheats::Panels::Attributes::Initialize();
 
 		LOG_INFO("Initializing Building panel...");
 		BetterCheats::Panels::Building::Initialize();
 
 		LOG_INFO("Initializing Item Spawner panel...");
-		BetterCheats::Panels::Items::Initialize();
+		if (BetterCheats::Features::Items.On())
+			BetterCheats::Panels::Items::Initialize();
 
 		LOG_INFO("Initializing Inventory panel...");
-		BetterCheats::Panels::Inventory::Initialize();
+		if (BetterCheats::Features::Inventory.On())
+			BetterCheats::Panels::Inventory::Initialize();
 
 		LOG_INFO("Initializing Movement panel...");
-		BetterCheats::Panels::Movement::Initialize();
+		if (BetterCheats::Features::Movement.On())
+			BetterCheats::Panels::Movement::Initialize();
 
 		LOG_INFO("Initializing Weapons panel...");
-		BetterCheats::Panels::Weapons::Initialize();
+		if (BetterCheats::Features::Weapons.On())
+			BetterCheats::Panels::Weapons::Initialize();
 
 		LOG_INFO("Initializing Tools panel...");
-		BetterCheats::Panels::Tools::Initialize();
+		if (BetterCheats::Features::Mining.On())
+			BetterCheats::Panels::Tools::Initialize();
 
 		LOG_INFO("Initializing Wave panel...");
-		BetterCheats::Panels::Wave::Initialize();
+		if (BetterCheats::Features::Wave.On())
+			BetterCheats::Panels::Wave::Initialize();
 
 		LOG_INFO("Initializing Power panel...");
-		BetterCheats::Panels::Power::Initialize();
+		if (BetterCheats::Features::Power.On())
+			BetterCheats::Panels::Power::Initialize();
 
 		LOG_INFO("Initializing Corporations panel...");
-		BetterCheats::Panels::Corporations::Initialize();
+		if (BetterCheats::Features::Corporations.On())
+			BetterCheats::Panels::Corporations::Initialize();
 
 		LOG_INFO("Initializing Enemies panel...");
-		BetterCheats::Panels::Enemies::Initialize();
+		if (BetterCheats::Features::Enemies.On())
+			BetterCheats::Panels::Enemies::Initialize();
 
 #if BETTERCHEATS_DEV_BUILD
 		LOG_INFO("Initializing Dev Cheat Manager panel (debug build)...");
@@ -306,19 +344,28 @@ extern "C" {
 		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
 		// GetMiningDamage every frame.
 		// Detached first, a fault below is survivable.
-		BetterCheats::Panels::Tools::Shutdown();
+		if (BetterCheats::Features::Mining.On())
+			BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Building::Shutdown();
 
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
-		BetterCheats::Panels::Attributes::Shutdown();
-		BetterCheats::Panels::Items::Shutdown();
-		BetterCheats::Panels::Inventory::Shutdown();
-		BetterCheats::Panels::Movement::Shutdown();
-		BetterCheats::Panels::Weapons::Shutdown();
-		BetterCheats::Panels::Wave::Shutdown();
-		BetterCheats::Panels::Corporations::Shutdown();
-		BetterCheats::Panels::Enemies::Shutdown();
+		if (BetterCheats::Features::Stats.On())
+			BetterCheats::Panels::Attributes::Shutdown();
+		if (BetterCheats::Features::Items.On())
+			BetterCheats::Panels::Items::Shutdown();
+		if (BetterCheats::Features::Inventory.On())
+			BetterCheats::Panels::Inventory::Shutdown();
+		if (BetterCheats::Features::Movement.On())
+			BetterCheats::Panels::Movement::Shutdown();
+		if (BetterCheats::Features::Weapons.On())
+			BetterCheats::Panels::Weapons::Shutdown();
+		if (BetterCheats::Features::Wave.On())
+			BetterCheats::Panels::Wave::Shutdown();
+		if (BetterCheats::Features::Corporations.On())
+			BetterCheats::Panels::Corporations::Shutdown();
+		if (BetterCheats::Features::Enemies.On())
+			BetterCheats::Panels::Enemies::Shutdown();
 #if BETTERCHEATS_DEV_BUILD
 		BetterCheats::Panels::DevMenus::Shutdown();
 #endif

@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::SessionConfig
 {
@@ -91,7 +93,7 @@ namespace BetterCheats::SessionConfig
 			{
 				LOG_DEBUG("Attempting to resolve current session name");
 
-				SDK::UWorld* world = SDK::UWorld::GetWorld();
+				SDK::UWorld* world = PluginSdkRuntime::GetWorld();
 				if (!world)
 				{
 					LOG_DEBUG("SessionConfig: ResolveSessionName - no world loaded.");
@@ -107,9 +109,10 @@ namespace BetterCheats::SessionConfig
 
 				// UCrGameInstance::ServerSessionName — not present in the generated SDK
 				// (folded into the trailing padding bytes), but populated on load even
-				// for single-player sessions. Read directly via its known offset.
-				auto* serverSessionName = reinterpret_cast<SDK::FString*>(
-					reinterpret_cast<std::uint8_t*>(gameInstance) + BetterCheats::AOB::kServerSessionNameOffset);
+				// for single-player sessions. Read through its map field.
+				const SDK::FString* serverSessionName = BetterCheats::Fields::CrGameInstance_ServerSessionName.In(gameInstance);
+				if (!serverSessionName)
+					return "";
 
 				std::string sessionName = serverSessionName->ToString();
 				LOG_DEBUG("SessionConfig: ResolveSessionName resolved '%s'.", sessionName.c_str());

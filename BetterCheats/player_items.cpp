@@ -15,6 +15,8 @@
 #include "Chimera_classes.hpp"
 #include "AuItems_classes.hpp"
 #include "Engine_classes.hpp"
+#include "plugin_map.h"
+#include "map_fields.h"
 
 namespace BetterCheats::Panels::Items
 {
@@ -146,7 +148,7 @@ namespace BetterCheats::Panels::Items
 		SDK::ACrPlayerControllerBase* GetLocalController()
 		{
 			SDK::UWorld* world = nullptr;
-			try { world = SDK::UWorld::GetWorld(); }
+			try { world = PluginSdkRuntime::GetWorld(); }
 			catch (...) { return nullptr; }
 			if (!world) return nullptr;
 
@@ -199,7 +201,8 @@ namespace BetterCheats::Panels::Items
 		{
 			// ResourceObject might be UTexture, UMaterialInterface, etc. — the IsA check
 			// at render time is the safe gate; just return it as UTexture2D* for storage.
-			return item ? reinterpret_cast<SDK::UTexture2D*>(item->ItemIcon.ResourceObject) : nullptr;
+			const SDK::FSlateBrush* brush = BetterCheats::Fields::AuItemDataBase_ItemIcon.In(static_cast<const void*>(item));
+			return brush ? reinterpret_cast<SDK::UTexture2D*>(brush->ResourceObject) : nullptr;
 		}
 
 		// Enumerates every item type by querying the asset registry for
@@ -270,9 +273,10 @@ namespace BetterCheats::Panels::Items
 						entry.assetData  = assetData[i];
 						entry.icon       = GetItemIconResource(item);
 						if (entry.icon) { try { entry.iconIsTexture2D = entry.icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
-						entry.maxStack   = item->MaxStack > 0 ? item->MaxStack : 1;
-						entry.uniqueName = item->UniqueItemName.ToString();
-						entry.name       = SDK::UKismetTextLibrary::Conv_TextToString(item->ItemName).ToString();
+						const int stackSize = BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuItemDataBase_MaxStack, item);
+						entry.maxStack   = stackSize > 0 ? stackSize : 1;
+						entry.uniqueName = BetterCheats::Fields::UniqueNameOf(item);
+						entry.name       = BetterCheats::Fields::DisplayNameOf(item);
 						if (entry.name.empty() || entry.name == "<MISSING STRING TABLE ENTRY>")
 							entry.name = entry.uniqueName;
 
@@ -407,12 +411,13 @@ namespace BetterCheats::Panels::Items
 				LOG_DEBUG("Item Spawner: controller=%p Pawn=%p", controller, controller->Pawn);
 
 				auto* character = static_cast<SDK::ACrCharacterPlayerBase*>(controller->Pawn);
-				if (!character || !character->InventoryComponent)
+				SDK::UCrInventoryComponent* inventory = character ? BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_InventoryComponent, character) : nullptr;
+				if (!inventory)
 				{
 					LOG_WARN("Item Spawner: no local inventory component found — cannot give item.");
 					return;
 				}
-				LOG_DEBUG("Item Spawner: character=%p InventoryComponent=%p", character, character->InventoryComponent);
+				LOG_DEBUG("Item Spawner: character=%p InventoryComponent=%p", character, inventory);
 
 				// Re-resolve the item CDO fresh, on the game thread, right before use — the CDO cached
 				// at scan-time can be garbage-collected if its Blueprint class/package gets unloaded
@@ -435,8 +440,8 @@ namespace BetterCheats::Panels::Items
 
 				SDK::TArray<SDK::FAuAddedItem> added{};
 				LOG_DEBUG("Item Spawner: calling AddNewItem(self=%p, result=%p, item=%p, amount=%u)...",
-					character->InventoryComponent, &added, itemData, static_cast<uint32_t>(ctx->amount));
-				addNewItem(character->InventoryComponent, &added, itemData, static_cast<uint32_t>(ctx->amount));
+					inventory, &added, itemData, static_cast<uint32_t>(ctx->amount));
+				addNewItem(inventory, &added, itemData, static_cast<uint32_t>(ctx->amount));
 				LOG_DEBUG("Item Spawner: AddNewItem returned, added.Num()=%d", added.Num());
 
 				if (added.Num() == 0)
@@ -449,7 +454,7 @@ namespace BetterCheats::Panels::Items
 
 				int32_t totalAdded = 0;
 				for (int32_t i = 0; i < added.Num(); ++i)
-					totalAdded += added[i].Amount;
+					totalAdded += BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuAddedItem_Amount, &added[i]);
 
 				LOG_INFO("Item Spawner: gave %d x \"%s\" [%s] (%d stack(s) of %d, %d entr%s added).",
 					totalAdded, ctx->displayName.c_str(), ctx->uniqueName.c_str(), ctx->stacks, ctx->maxStack,

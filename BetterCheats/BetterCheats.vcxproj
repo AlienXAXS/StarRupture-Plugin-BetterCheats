@@ -142,6 +142,7 @@
   <ItemGroup>
     <ClInclude Include="aob_patterns.h" />
     <ClInclude Include="aob_resolver.h" />
+    <ClInclude Include="map_fields.h" />
     <ClInclude Include="cheat_menu.h" />
     <ClInclude Include="game_context.h" />
     <ClInclude Include="attribute_compose.h" />

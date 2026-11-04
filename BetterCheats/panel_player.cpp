@@ -8,31 +8,48 @@
 #include "player_tools.h"
 #include "player_weapons.h"
 
+#include "map_fields.h"
+
 namespace BetterCheats::Panels
 {
 	void RenderPlayer_Self(IModLoaderImGui* imgui)
 	{
-		Attributes::RenderImGui(imgui);
+		if (Features::Stats.On())
+			Attributes::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Stats);
 	}
 
 	void RenderPlayer_ItemSpawner(IModLoaderImGui* imgui)
 	{
-		Items::RenderImGui(imgui);
+		if (Features::Items.On())
+			Items::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Items);
 	}
 
 	void RenderPlayer_Inventory(IModLoaderImGui* imgui)
 	{
-		Inventory::RenderImGui(imgui);
+		if (Features::Inventory.On())
+			Inventory::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Inventory);
 	}
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)
 	{
-		Weapons::RenderImGui(imgui);
+		if (Features::Weapons.On())
+			Weapons::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Weapons);
 	}
 
 	void RenderPlayer_Movement(IModLoaderImGui* imgui)
 	{
-		Movement::RenderImGui(imgui);
+		if (Features::Movement.On())
+			Movement::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Movement);
 	}
 
 	void RenderPlayer_Teleport(IModLoaderImGui* imgui)
@@ -48,11 +65,17 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_Skills(IModLoaderImGui* imgui)
 	{
-		Skills::RenderImGui(imgui);
+		if (Features::Skills.On())
+			Skills::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Skills);
 	}
 
 	void RenderPlayer_Tools(IModLoaderImGui* imgui)
 	{
-		Tools::RenderImGui(imgui);
+		if (Features::Mining.On())
+			Tools::RenderImGui(imgui);
+		else
+			Features::RenderOff(imgui, Features::Mining);
 	}
 }

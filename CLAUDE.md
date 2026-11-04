@@ -105,9 +105,15 @@ anything in the loader's startup failure report as build-breaking. Never install
 a hook or detour from `OnPluginLoadHooks`.
 
 After a game update, re-check every pattern against the new build before
-shipping: the loader pins one game version (`version_check.cpp`), so patterns
-only ever need to match the current one, and a re-compiled function that merely
-swapped registers or grew its stack frame is the usual cause of a miss.
+shipping: a re-compiled function that merely swapped registers or grew its
+stack frame is the usual cause of a miss. The loader pins one game version
+(`version_check.cpp`), but a plugin can be ready for the next build before it
+ships. Where the two builds need different patterns, make the entry a
+`FunctionPattern` list (`aob_patterns.h`), the pattern for the build players
+have now first: `ResolveFunction` resolves the first that matches exactly once
+at a function entry, so today's build keeps the pattern it always had. A
+`FunctionPattern` with `followRel32At` set anchors on a call to the function
+instead of its entry.
 
 ## 4. General Coding Conventions
 

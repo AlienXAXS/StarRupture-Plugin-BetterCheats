@@ -2,6 +2,7 @@
 #include "plugin_helpers.h"
 #include "session_config.h"
 #include "aob_patterns.h"
+#include "map_fields.h"
 
 #include "Chimera_classes.hpp"
 
@@ -22,6 +23,11 @@ namespace BetterCheats::Panels::Wave
 		static SDK::UCrEnviroWaveSubsystem*      g_waveSubsys  = nullptr;
 		static SDK::UCrEnviroWaveTimerSubsystem* g_timerSubsys = nullptr;
 		static bool                              g_scanned     = false;
+
+		// The configured calm length. The game assigns NextWaveTimer from its
+		// WaitingDuration and the cheat only ever writes it back, so the largest
+		// value seen between waves is that length. Zero until one is seen.
+		static float                             g_calmLength  = 0.0f;
 
 		// The subsystems don't necessarily exist on the first tick after world begin
 		// play, and giving up after a single miss left the panel dead for the rest of
@@ -85,6 +91,7 @@ namespace BetterCheats::Panels::Wave
 		{
 			g_waveSubsys  = nullptr;
 			g_timerSubsys = nullptr;
+			g_calmLength  = 0.0f;
 			++g_scanAttempts;
 
 			FindWaveSubsystems();
@@ -125,11 +132,19 @@ namespace BetterCheats::Panels::Wave
 		};
 
 		// The fields that drive the countdown sit inside the SDK's Pad_30 on the
-		// timer subsystem, so they are addressed by offset (see aob_patterns.h).
+		// timer subsystem, so they are map fields (see map_fields.h).
 		template <typename T>
-		T& TimerField(std::ptrdiff_t offset)
+		T TimerRead(const PluginField<T>& field, T fallback)
 		{
-			return *reinterpret_cast<T*>(reinterpret_cast<std::uint8_t*>(g_timerSubsys) + offset);
+			const T* value = field.In(g_timerSubsys);
+			return value ? *value : fallback;
+		}
+
+		template <typename T>
+		void TimerWrite(const PluginField<T>& field, T value)
+		{
+			if (T* slot = field.In(g_timerSubsys))
+				*slot = value;
 		}
 
 		// The game pushes the subsystem's bPause to the actor via
@@ -137,9 +152,9 @@ namespace BetterCheats::Panels::Wave
 		// view model, which reads the actor, agrees with the real state.
 		void WriteTimerPause(bool paused)
 		{
-			TimerField<bool>(AOB::kWaveTimerPauseOffset) = paused;
-			if (g_timerSubsys->TimerActor)
-				g_timerSubsys->TimerActor->bPause = paused;
+			TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, paused);
+			SDK::ACrWaveTimerActor* timerActor = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_TimerActor, g_timerSubsys);
+			BetterCheats::Fields::Store(BetterCheats::Fields::CrWaveTimerActor_bPause, timerActor, paused);
 		}
 
 		std::mutex   g_snapshotMutex;
@@ -169,10 +184,12 @@ namespace BetterCheats::Panels::Wave
 				snap.timerFound = true;
 				try
 				{
-					snap.waitingForNextWave = TimerField<bool>(AOB::kWaveTimerWaitingForNextWaveOffset);
-					snap.timerPaused        = TimerField<bool>(AOB::kWaveTimerPauseOffset);
-					snap.stopWaves          = TimerField<bool>(AOB::kWaveTimerStopWavesOffset);
-					snap.secondsRemaining   = TimerField<float>(AOB::kWaveTimerNextWaveTimerOffset);
+					snap.waitingForNextWave = TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bWaitingForNextWave, false);
+					snap.timerPaused        = TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, false);
+					snap.stopWaves          = TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bStopWaves, false);
+					snap.secondsRemaining   = TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_NextWaveTimer, 0.0f);
+					if (!snap.inProgress && snap.secondsRemaining > g_calmLength)
+						g_calmLength = snap.secondsRemaining;
 				}
 				catch (...)
 				{
@@ -234,7 +251,8 @@ namespace BetterCheats::Panels::Wave
 			if (!g_timerSubsys)
 				return;
 
-			TimerField<float>(AOB::kWaveTimerNextWaveTimerOffset) = TimerField<float>(AOB::kWaveTimerWaitingDurationOffset);
+			if (g_calmLength > 0.0f)
+				TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_NextWaveTimer, g_calmLength);
 			// Sets bWaitingForNextWave, clears bStopWaves and re-arms the HUD's NextTime.
 			g_timerSubsys->WavesActive(true);
 			const bool paused = g_pauseWavesEnabled.load();
@@ -325,6 +343,7 @@ namespace BetterCheats::Panels::Wave
 		{
 			g_waveSubsys     = nullptr;
 			g_timerSubsys    = nullptr;
+			g_calmLength     = 0.0f;
 			g_pauseWritten   = false;
 			g_scanned        = false;
 			g_scanRetryTimer = 0.0f;
