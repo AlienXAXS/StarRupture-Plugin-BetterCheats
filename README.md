@@ -214,7 +214,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)** to be installed first.
+> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.23.0 or later** to be installed first.
 
 ---
 
