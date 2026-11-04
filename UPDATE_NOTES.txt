@@ -1,3 +1,3 @@
 - Ready for Update 3: build cost, stability and inventory size work on the current game and on Update 3
 - Cancelling a wave now resets the timer to the longest wait between waves seen in the current world; just after loading a save it can be shorter than the full wait
-- BetterCheats now loads on the Steam test branch; the session name shows when the game build supports it
+- BetterCheats keeps loading after a game update that hides the save's session name; its per-save settings are then neither saved nor restored until the loader learns the new build
