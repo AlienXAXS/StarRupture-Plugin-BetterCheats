@@ -1,0 +1,176 @@
+[size=6][b]BetterCheats — Cheat Menu for StarRupture[/b][/size]
+
+Adds a powerful in-game cheat menu with categories covering player abilities, world settings, machinery, enemies, item spawning, weapons, movement, and more.
+
+[b]Client-side only[/b]
+
+[b]Open it:[/b] press [b]Esc[/b] and pick [b]BETTER CHEATS[/b], or press [b]F10[/b] (rebindable in the ModLoader keybind settings). [b]Esc[/b] or [b]Q[/b] closes it.
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/pause-menu.png[/img]
+
+[b]This mod is being actively developed, not all cheat options are ready. Teleport, Crafters, Rail Drones and Misc are empty placeholders for now.[/b]
+
+[line]
+
+[size=5][b]What It Does[/b][/size]
+
+BetterCheats adds an in-game menu that provides access to a wide range of cheats and gameplay modifiers.
+
+The menu works in a single-player world, or in multiplayer with EnableCheatsInMultiplayer on (unsupported, may crash). Elsewhere the window tells you so.
+
+Most settings are one row: live value (red when it differs from your setting, hover for a buff breakdown), slider, typed box, -/+ and a reset icon. A value that differs from its default is applied; reset turns it off.
+
+Available categories include:
+
+[list]
+[*]World — Environment: skip, pause, cancel or restart waves (Cancel and Restart set the countdown to the longest calm period seen since load), next wave countdown, wave timer on or off. Corporations: set your Data Points.
+[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack. Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
+[*]Enemies — Disable AI and One-Hit Kill
+[*]Machinery — Power: edit every generator and consumer. Logistic Drones is set in BetterDrone.
+[/list]
+
+Many cheats remain active even after closing the menu, allowing continuous effects such as stat locks, power overrides, and world modifications.
+
+[size=4][b]Inventory[/b][/size]
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/inventory.png[/img]
+
+[list]
+[*][b]Grid size[/b] — any Columns x Rows from 8 x 8 to 40 x 40, also via [b]bc_invsize[/b]. Empty it before shrinking. Slots scale down to fit the frame (option, on by default); grids past 20 x 20 overflow.
+[*][b]Item Stack Sizes[/b] — raise stack caps from 1 to 9999: one global value, per category or per item. New stacks only, never lowers a cap. ✦
+[*][b]Plant Pickup[/b] — 1x to 5x from wild plants, mushrooms and rocks. Crops are not covered. ✦
+[/list]
+
+[size=4][b]Weapon ✦[/b][/size]
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/weapons.png[/img]
+
+[list]
+[*]Tabs for Pistol, Rifle, Shotgun and Machine Gun. Any other weapon or grenade gets one when first equipped.
+[*][b]Infinite clip[/b] for all weapons, or [b]Keep ammo stocked[/b] to top up the equipped weapon's ammo (you still reload), keeping 1 to 100 clips in reserve (default 3).
+[*]Per weapon: One Hit Kill, Infinite magazine, Magazine Size, Enemies Hit / Shot, Reset this weapon to stock.
+[*]Presets: Better Weapons, Hand Cannon (pistol only), Piercing, Laser Beam, Bullet Hose. Better Weapons follows a pak mod by axbhub; Hand Cannon and Piercing follow mods by SwiftstepsKR.
+[*]Grenades: Charge Cost, Infinite charges (refills the charge bar), and shared Fuse Time, Blast Radius, Throw Force. Settings keep applying at 0 charges. The Less Cost Grenade preset follows a pak mod by axbhub.
+[*][b]Grenade Damage[/b] — 0.1x to 100x, default 1x. Scales the real damage the explosion deals, falloff included; 1x is the game's own value. ✦
+[/list]
+
+[size=4][b]Movement[/b][/size]
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/movement.png[/img]
+
+[list]
+[*][b]Fly mode (No Clip)[/b] — [b]Space[/b] rises, [b]Ctrl[/b] descends. Toggle with [b]F9[/b] (rebindable on this page or in the ModLoader keybind settings). Fly Speed 1x to 25x, default 3x.
+[*][b]Pass Through Walls[/b] is on by default. Turning Fly off inside terrain drops you through the world; untick it to keep collision.
+[*][b]Tuning rows[/b] — move speed, acceleration, jump height, double jump and dodge cost, stamina regen, zipline speed, fall damage and finer rows behind an arrow. Reset all movement attributes clears them. ✦
+[*][b]Presets[/b] — My Player Enhancements, Sonic Mode, Moon Hop, Endless Momentum. ✦
+[/list]
+
+[size=4][b]Building[/b][/size]
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/building.png[/img]
+
+Everything is off by default.
+
+[list]
+[*]No Build Cost, No Stability Check (zoop and dynamic pillars too), Unlock All Buildings, Unlock All Recipes. The unlocks may still end up in your save.
+[*][b]Deconstruct Windows During Waves[/b] — deconstruct a habitat window a wave has heated. Other heated buildings stay protected. ✦
+[*][b]Build Windows Anywhere[/b] — a window into a habitat or Hub wall slot even when a machine or other building is in it. A slot holding a window, airlock or bridge is still refused. ✦
+[*][b]Build Benches Anywhere[/b] — the same for Analyzer, Armory, Cloning Bed, Food Processor, Item Printer, Recipe Table, Recycler, Research Terminal, Suit Workshop and Upgrade Station. These can also go into a slot holding a window, airlock, bridge or personal storage. ✦
+[/list]
+
+The two "anywhere" options only relax the collision check, for your own placements. A player or drone in the way still blocks.
+
+[size=4][b]Tools[/b][/size]
+
+[img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/tools.png[/img]
+
+[list]
+[*][b]One Hit Kill Laser[/b] — flat 10000 mining damage.
+[*][b]No Handheld Drill Overheat[/b] — the drill never heats.
+[*][b]Mining Power[/b] — Mining Damage, Weak Spot Multiplier, Enemy Damage, Range, Hit Rate, Aggro, Overheat Cooldown, Mining Boost. Presets Better Mining and Better Mining OP follow Better Mining Tool by astroboy314. ✦
+[/list]
+
+[size=4][b]Saved Presets ✦[/b][/size]
+
+Power, Self, Inventory (Item Stack Sizes), Movement, Skills, Tools and each weapon tab have a Saved Presets row: pick one to load, Save, Rename, Delete. Up to 16 per page, shared by every save.
+
+[line]
+
+[size=5][b]Persistent Save Settings[/b][/size]
+
+Cheat settings are saved separately for each save game.
+
+When you load a world, BetterCheats automatically restores any previously saved cheat settings for that session.
+
+This allows different saves to maintain different cheat configurations.
+
+Corporations Data Points and Skills are written to the save itself, so they stay if BetterCheats is removed.
+
+[line]
+
+[size=5][b]Installation[/b][/size]
+
+[list=1]
+[*]Download the latest file from the [b]Files[/b] tab
+[*]Open the ZIP file
+[*]Copy the contents of the included Plugins folder into:
+[i]"StarRupture\Binaries\Win64\ModLoader\Plugins"[/i]
+[*]Launch the game
+[*]Press [b]Esc[/b] and pick [b]BETTER CHEATS[/b], or press [b]F10[/b] (default), while in a single-player world
+[/list]
+
+Requires [url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url], v1.22.0 or newer.
+
+[line]
+
+[size=5][b]Configuration[/b][/size]
+
+Config file:
+[i]"Plugins\config\BetterCheats.ini"[/i]
+
+[list]
+[*]Enabled — set to false to turn the plugin off (default: true)
+[*]EnableCheatsInMultiplayer — lets the menu open in multiplayer (default: false). Unsupported, may cause crashes
+[*]ToggleKey — key used to open and close the menu (default: F10)
+[*]NoClipKey — key that toggles No Clip without opening the menu (default: F9)
+[/list]
+
+Both keys can also be changed through the ModLoader keybind settings, and the No Clip key on the Movement page. Changes apply immediately.
+
+[size=4][b]Console commands[/b][/size]
+
+[list]
+[*][b]bc_invsize <columns> <rows>[/b] (alias invsize) — resize the inventory grid, 8 to 40. No arguments prints the current grid.
+[/list]
+
+[line]
+
+[size=5][b]Troubleshooting[/b][/size]
+
+[list]
+[*][b]Menu does not appear[/b] — the menu only works while loaded into a save; also ensure the plugin is loaded (ModLoader F2, Plugins tab). In multiplayer, set EnableCheatsInMultiplayer=true
+[*][b]Hotkey does nothing[/b] — check the configured keybind in the ModLoader settings
+[*][b]Saved cheat settings are not restored[/b] — check [i]"modloader.log"[/i] for errors loading [i]"Plugins\BetterCheats\<SessionName>.json"[/i]
+[*][b]Plugin not loading[/b] — check [i]"ModLoader.log in Binaries\Win64\ModLoader\Logs\"[/i]
+[*][b]Issues after a game update[/b] — some features may require a plugin update after major game patches. Patterns already known to change in an upcoming update carry both versions, so those features keep working through it
+[*][b]A Building option does nothing[/b] — after a game update one of the three window and bench options may miss its patterns. The plugin still loads and [i]"modloader.log"[/i] names the one
+[/list]
+
+[line]
+
+[size=5][b]Disclaimer[/b][/size]
+
+This is intended for single-player use. Use at your own risk. The authors are not responsible for any damage caused by using this software, including save corruption or issues resulting from using cheats in multiplayer environments.
+
+[line]
+
+[size=5][b]Credits[/b][/size]
+
+Original mod by [url=https://github.com/AlienXAXS]@AlienXAXS[/url]
+
+✦ [url=https://github.com/msantoro12]@msantoro12[/url] (maintainer), creator of [url=https://starrupture.goodstuff.software]StarRupture Planner[/url]
+
+Contributors:
+[list]
+[*][url=https://github.com/Lorke76]@Lorke76[/url]
+[/list]

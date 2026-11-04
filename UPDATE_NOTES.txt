@@ -1,2 +1,2 @@
 - Ready for Update 3: build cost, stability and inventory size work on the current game and on Update 3
-- Cancelling a wave now resets the timer to the longest calm period seen since the game started
+- Cancelling a wave now resets the timer to the longest calm period seen since the plugin loaded
