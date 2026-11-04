@@ -16,6 +16,10 @@ namespace BetterCheats
 
 		// Any thread: the menu reads it on the render thread.
 		static bool IsInChimeraMain() { return s_inChimeraMain; }
+
+		// Any thread. On the game thread it asks the loader for the net mode
+		// now; elsewhere (the menu on the render thread, keybind callbacks) it
+		// returns the game thread's last answer, since the query reads UObjects.
 		static bool IsSinglePlayer();
 
 		// Single gate for "may this build touch game state?". Every path that reads
@@ -30,5 +34,6 @@ namespace BetterCheats
 
 		static IPluginSelf*      s_self;
 		static std::atomic<bool> s_inChimeraMain;
+		static std::atomic<bool> s_singlePlayer;
 	};
 }

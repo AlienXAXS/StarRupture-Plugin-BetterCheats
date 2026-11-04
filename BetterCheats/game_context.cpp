@@ -1,5 +1,6 @@
 #include "game_context.h"
 #include "plugin_config.h"
+#include "plugin_helpers.h"
 
 #include "Chimera_classes.hpp"
 
@@ -9,6 +10,7 @@ namespace BetterCheats
 {
 	IPluginSelf*      GameContext::s_self          = nullptr;
 	std::atomic<bool> GameContext::s_inChimeraMain{ false };
+	std::atomic<bool> GameContext::s_singlePlayer{ false };
 
 	void GameContext::Initialize(IPluginSelf* self)
 	{
@@ -30,11 +32,17 @@ namespace BetterCheats
 			s_self->hooks->GameMenu->UnregisterOnUIStateChanged(&GameContext::OnUIStateChanged, nullptr);
 		s_self = nullptr;
 		s_inChimeraMain = false;
+		s_singlePlayer = false;
 	}
 
 	void GameContext::OnUIStateChanged(uint64_t /*oldState*/, uint64_t newState, void* /*userData*/)
 	{
 		s_inChimeraMain = (newState & PLUGIN_UI_IN_GAMEPLAY) != 0;
+
+		// A new world starts refused until the game thread has asked for its
+		// net mode, so the menu never shows a previous session's answer.
+		if (!s_inChimeraMain)
+			s_singlePlayer = false;
 	}
 
 	bool GameContext::IsSinglePlayer()
@@ -42,7 +50,15 @@ namespace BetterCheats
 		if (!s_self || !s_self->hooks->NetMode)
 			return false;
 
-		return s_self->hooks->NetMode->GetNetMode() == EPluginNetMode::Standalone;
+		if (!s_self->hooks->Engine->IsGameThread())
+			return s_singlePlayer;
+
+		const EPluginNetMode mode = s_self->hooks->NetMode->GetNetMode();
+		const bool singlePlayer = mode == EPluginNetMode::Standalone;
+		if (s_singlePlayer.exchange(singlePlayer) != singlePlayer)
+			LOG_INFO("GameContext: net mode %d, cheats %s.", static_cast<int>(mode),
+				singlePlayer ? "allowed" : "refused (single player only)");
+		return singlePlayer;
 	}
 
 	bool GameContext::AreCheatsAllowed()
