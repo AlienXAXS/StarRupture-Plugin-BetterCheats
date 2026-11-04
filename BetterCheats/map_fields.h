@@ -628,13 +628,17 @@ namespace BetterCheats::Features
 		Fields::CrEnviroWaveTimerSubsystem_TimerActor.key, Fields::CrWaveTimerActor_bPause.key
 	} };
 
+	inline PluginMap::Feature SessionName{ "session-name", "Session name for per-session settings", {
+		Fields::CrGameInstance_ServerSessionName.key
+	} };
+
 	// Declares every feature. Call before the resolves, so a miss lands on the
 	// feature, not on the plugin.
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
 			Stats, Movement, Weapons, Mining, Inventory, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, Enemies, Power, Corporations, Wave);
+			BuildFree, BuildUnlock, BuildAnywhere, Enemies, Power, Corporations, Wave, SessionName);
 	}
 
 	// What an off feature shows in place of its menu page.
