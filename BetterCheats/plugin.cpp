@@ -350,8 +350,6 @@ extern "C" {
 
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
-		if (BetterCheats::Features::Stats.On())
-			BetterCheats::Panels::Attributes::Shutdown();
 		if (BetterCheats::Features::Items.On())
 			BetterCheats::Panels::Items::Shutdown();
 		if (BetterCheats::Features::Inventory.On())

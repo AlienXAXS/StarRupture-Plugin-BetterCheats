@@ -3,57 +3,38 @@
 
 #include "Chimera_classes.hpp"
 
-#include <cstring>
 #include "plugin_map.h"
-
-namespace
-{
-	constexpr const char* kChimeraMainWorldName = "ChimeraMain";
-}
 
 namespace BetterCheats
 {
-	IPluginSelf* GameContext::s_self          = nullptr;
-	bool         GameContext::s_inChimeraMain = false;
+	IPluginSelf*      GameContext::s_self          = nullptr;
+	std::atomic<bool> GameContext::s_inChimeraMain{ false };
 
 	void GameContext::Initialize(IPluginSelf* self)
 	{
 		s_self = self;
 
-		self->hooks->World->RegisterOnWorldBeginPlay(&GameContext::OnWorldBeginPlay);
-		self->hooks->World->RegisterOnAfterWorldEndPlay(&GameContext::OnWorldEndPlay);
+		if (!self->hooks->GameMenu)
+			return;
 
-		// Hot-reload: world begin-play may have already fired before we registered,
-		// so probe the current world directly to pick up an in-progress session.
-		try
-		{
-			SDK::UWorld* world = PluginSdkRuntime::GetWorld();
-			if (world && world->GetName() == kChimeraMainWorldName)
-				s_inChimeraMain = true;
-		}
-		catch (...) {}
+		// Hot-reload: the world may already be running, and PluginInit asks
+		// IsInChimeraMain right after this, so read the state once now. The
+		// callback keeps it current from here on.
+		s_inChimeraMain = (self->hooks->GameMenu->GetUIState() & PLUGIN_UI_IN_GAMEPLAY) != 0;
+		self->hooks->GameMenu->RegisterOnUIStateChanged(PLUGIN_UI_IN_GAMEPLAY, &GameContext::OnUIStateChanged, nullptr);
 	}
 
 	void GameContext::Shutdown()
 	{
-		if (s_self)
-		{
-			s_self->hooks->World->UnregisterOnWorldBeginPlay(&GameContext::OnWorldBeginPlay);
-			s_self->hooks->World->UnregisterOnAfterWorldEndPlay(&GameContext::OnWorldEndPlay);
-		}
+		if (s_self && s_self->hooks->GameMenu)
+			s_self->hooks->GameMenu->UnregisterOnUIStateChanged(&GameContext::OnUIStateChanged, nullptr);
 		s_self = nullptr;
 		s_inChimeraMain = false;
 	}
 
-	void GameContext::OnWorldBeginPlay(SDK::UWorld* /*world*/)
+	void GameContext::OnUIStateChanged(uint64_t /*oldState*/, uint64_t newState, void* /*userData*/)
 	{
-		s_inChimeraMain = true;
-	}
-
-	void GameContext::OnWorldEndPlay(SDK::UWorld* /*world*/, const char* worldName)
-	{
-		if (worldName && std::strcmp(worldName, kChimeraMainWorldName) == 0)
-			s_inChimeraMain = false;
+		s_inChimeraMain = (newState & PLUGIN_UI_IN_GAMEPLAY) != 0;
 	}
 
 	bool GameContext::IsSinglePlayer()

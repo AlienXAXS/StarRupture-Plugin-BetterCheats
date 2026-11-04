@@ -2,6 +2,8 @@
 
 #include "plugin_interface.h"
 
+#include <atomic>
+
 namespace BetterCheats
 {
 	// Plugin-wide game session state — world tracking and net-mode queries.
@@ -12,6 +14,7 @@ namespace BetterCheats
 		static void Initialize(IPluginSelf* self);
 		static void Shutdown();
 
+		// Any thread: the menu reads it on the render thread.
 		static bool IsInChimeraMain() { return s_inChimeraMain; }
 		static bool IsSinglePlayer();
 
@@ -23,10 +26,9 @@ namespace BetterCheats
 		static bool AreCheatsAllowed();
 
 	private:
-		static void OnWorldBeginPlay(SDK::UWorld* world);
-		static void OnWorldEndPlay(SDK::UWorld* world, const char* worldName);
+		static void OnUIStateChanged(uint64_t oldState, uint64_t newState, void* userData);
 
-		static IPluginSelf* s_self;
-		static bool         s_inChimeraMain;
+		static IPluginSelf*      s_self;
+		static std::atomic<bool> s_inChimeraMain;
 	};
 }
