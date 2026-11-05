@@ -597,7 +597,8 @@ namespace BetterCheats::Features
 	} };
 
 	inline PluginMap::Feature BuildAnywhere{ "build-anywhere", "Place windows and benches anywhere", {
-		"ACrAPHelperActorCustom::CheckMainMeshCollision", "UCrBuildingStabilitySubsystem::IsSocketFree",
+		"ACrAPHelperActorCustom::CheckMainMeshCollision", "ACrAPHelper::GetBoxCollisionResult",
+		"UCrSocketSnapPlacementMethod::GetSnappedSocket", "UCrBuildingStabilitySubsystem::IsSocketFree",
 		Fields::CrAPHelper_BuildingData.key, Fields::AuActorPlacementData_BuildingID.key
 	} };
 
