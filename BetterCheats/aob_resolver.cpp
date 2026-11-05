@@ -113,17 +113,19 @@ namespace BetterCheats::AOB
 			ResolveFunction(self, scanner, out, hookName, pick->pattern, pick->followRel32At);
 		}
 
-		// Deconstruct Windows During Waves is opt-in, so its patterns go through
-		// the raw scan, which records nothing with the loader: after a game update
-		// a miss turns that one toggle off instead of refusing the plugin. The same
-		// two verdicts as Resolve still apply. The function must match exactly once
-		// and be a function entry. The heat gate is a jump inside it, so it must
-		// sit in that function, and its short jb must land where the near jb
-		// opening the match (the infection gate) lands, which is the function's
-		// return-null path.
+		// Deconstruct Windows During Waves is opt-in: the function is a key of
+		// the loader's map, with this plugin's pattern as the fallback, and the
+		// "deconstruct-windows" feature (Features::DeconstructWindows) lists it,
+		// so after a game update a miss turns that one toggle off instead of
+		// refusing the plugin. The heat gate is a jump inside the function, so it
+		// stays a raw scan of this plugin's own, which records nothing with the
+		// loader. It must match exactly once and sit in that function, and its
+		// short jb must land where the near jb opening the match (the infection
+		// gate) lands, which is the function's return-null path.
 		void ResolveDeconstructWindows(IPluginSelf* self, IPluginHookScanner* scanner)
 		{
-			const uintptr_t function = FindFunction(self, scanner, FindDeconstructibleTarget);
+			const uintptr_t function = PluginMap::Function(scanner, self, "ACrPlayerControllerBase::FindDeconstructibleTarget",
+				FindDeconstructibleTarget, PLUGIN_SCAN_FUNCTION_START);
 			const uintptr_t match    = FindUnique(self, scanner, FindDeconstructibleTarget_HeatGate);
 
 			bool ok = function && match && OwningFunctionStart(match) == function;

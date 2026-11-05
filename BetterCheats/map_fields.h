@@ -602,6 +602,10 @@ namespace BetterCheats::Features
 		Fields::CrAPHelper_BuildingData.key, Fields::AuActorPlacementData_BuildingID.key
 	} };
 
+	inline PluginMap::Feature DeconstructWindows{ "deconstruct-windows", "Deconstruct windows during waves", {
+		"ACrPlayerControllerBase::FindDeconstructibleTarget"
+	} };
+
 	inline PluginMap::Feature Enemies{ "enemies", "Enemy tuning", {
 		"FWeakObjectPtr::operator=(FObjectPtr)", "UMassActorSubsystem::GetEntityHandleFromActor",
 		"FMassEntityManager::InternalGetFragmentDataPtr", PluginMap::MassEntityManagerField.key,
@@ -640,7 +644,7 @@ namespace BetterCheats::Features
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
 			Stats, Movement, Weapons, Mining, Inventory, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, Enemies, Power, Corporations, Wave, SessionName);
+			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName);
 	}
 
 	// What an off feature shows in place of its menu page.

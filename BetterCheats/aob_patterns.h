@@ -70,14 +70,6 @@ namespace BetterCheats::AOB
 	constexpr FunctionPattern GetPlacementResourceConditionResult =
 		{ "48 8B C8 E8 ?? ?? ?? ?? 0F B6 D8 88 9F ?? ?? 00 00", 3 };
 
-	// Class::Function  UAuActorPlacementComponent::AddPoint
-	// Parameters       (UAuActorPlacementComponent* this) -> FScriptContainerElement*
-	// Called each time the player adds a foundation to the zoop chain.
-	// Documented for reference; zoop limit is bypassed via MaxMultiConfirmPoints field writes
-	// on the top-level UAuActorPlacementData and all its sub-variant pointers.
-	constexpr const char* AddPoint =
-		"48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 4C 89 74 24 ?? 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 8B D9";
-
 	// Class::Function  ACrAPHelperActorCustom::CheckStability
 	// Parameters       (ACrAPHelperActorCustom* this, const UCrBuildingData* PlacementData) -> bool
 	// Native stability gate for the "Custom" placement helper actor
@@ -97,8 +89,8 @@ namespace BetterCheats::AOB
 	// pattern pinned both the imm8 encoding and the modrm bytes of those moves,
 	// which is why it stopped matching. The frame size is wildcarded. CL-128786
 	// re-allocated its registers again, so the second pattern is that build's;
-	// it matches nothing on the current build. The loader's map has no row for
-	// this function yet, so these stay the plugin's own fallback.
+	// it matches nothing on the current build. The loader's map has a row for
+	// each build, so these are the fallback for a build it has no row for.
 	constexpr FunctionPattern CheckStability_Custom[] = {
 		{ "40 53 57 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 48 85 D2 75 ?? 32 C0" },
 		{ "40 53 55 56 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F1" },
@@ -119,8 +111,8 @@ namespace BetterCheats::AOB
 	// all changed bytes. The register bytes and the member offset are wildcarded;
 	// the two register saves after the early-out keep the match unique. The
 	// second pattern is CL-128786's, whose code differs; it matches nothing on
-	// the current build. The loader's map has no row for this function yet, so
-	// these stay the plugin's own fallback.
+	// the current build. The loader's map has a row for each build, so these are
+	// the fallback for a build it has no row for.
 	constexpr FunctionPattern CheckStability_DynamicPillar[] = {
 		{ "40 56 48 83 EC ?? 48 83 B9 ?? ?? ?? ?? ?? 48 8B F1 75 ?? 32 C0" },
 		{ "48 89 74 24 18 57 48 83 EC 60 48 8B F1 E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 48 83 BE ?? ?? ?? ?? 00" },
