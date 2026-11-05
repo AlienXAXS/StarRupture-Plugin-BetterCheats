@@ -146,10 +146,13 @@ namespace BetterCheats::AOB
 		}
 
 		// Build Windows Anywhere is opt-in too, and its two hooks only make sense
-		// together, so they resolve as a pair or not at all.
+		// together, so they resolve as a pair or not at all. CheckMainMeshCollision
+		// is a key of the loader's map, with no pattern of the plugin's: a miss
+		// turns the "build-anywhere" feature off (Features::BuildAnywhere).
 		void ResolveBuildWindowsAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
 		{
-			const uintptr_t mainMesh = FindFunction(self, scanner, CheckMainMeshCollision_Custom);
+			const uintptr_t mainMesh = PluginMap::Function(scanner, self, "ACrAPHelperActorCustom::CheckMainMeshCollision",
+				nullptr, PLUGIN_SCAN_FUNCTION_START);
 			const uintptr_t box      = FindFunction(self, scanner, GetBoxCollisionResult);
 			if (!mainMesh || !box)
 			{
@@ -162,11 +165,13 @@ namespace BetterCheats::AOB
 		}
 
 		// Build Benches Anywhere also needs the two Build Windows Anywhere hooks,
-		// which player_building.cpp checks before installing these.
+		// which player_building.cpp checks before installing these. IsSocketFree
+		// is a key of the loader's map, like CheckMainMeshCollision above.
 		void ResolveBuildBenchesAnywhere(IPluginSelf* self, IPluginHookScanner* scanner)
 		{
 			const uintptr_t snapped    = FindFunction(self, scanner, GetSnappedSocket);
-			const uintptr_t socketFree = FindFunction(self, scanner, IsSocketFree);
+			const uintptr_t socketFree = PluginMap::Function(scanner, self, "UCrBuildingStabilitySubsystem::IsSocketFree",
+				nullptr, PLUGIN_SCAN_FUNCTION_START);
 			if (!snapped || !socketFree)
 			{
 				LOG_WARN("AOB: UCrSocketSnapPlacementMethod::GetSnappedSocket or UCrBuildingStabilitySubsystem::IsSocketFree "

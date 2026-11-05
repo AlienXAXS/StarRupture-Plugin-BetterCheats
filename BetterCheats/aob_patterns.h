@@ -170,18 +170,10 @@ namespace BetterCheats::AOB
 	// -------------------------------------------------------------------------
 	// Build Windows Anywhere
 	//
-	// Opt-in as well, and scanned the same way: a miss leaves the toggle doing
-	// nothing.
+	// Opt-in as well. CheckMainMeshCollision comes from the loader's map (see
+	// ResolveBuildWindowsAnywhere); GetBoxCollisionResult is scanned, and a miss
+	// of either leaves the toggle doing nothing.
 	// -------------------------------------------------------------------------
-
-	// Class::Function  ACrAPHelperActorCustom::CheckMainMeshCollision
-	// Parameters       (ACrAPHelperActorCustom* this, const UCrBuildingData* PlacementData) -> EAuAPlacementConditionResult
-	// Overlap test of the helper's main mesh. Overlapping actors are skipped when
-	// they are snapped to, connected to or ignored by the piece; any other
-	// building makes it BuildingColliding or IsColliding.
-	constexpr const char* CheckMainMeshCollision_Custom =
-		"40 55 53 56 57 41 55 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 48 83 B9 ?? ?? ?? ?? 00 "
-		"4C 8B E9 48 8B 01 0F 84 ?? ?? ?? ?? 33 FF 48 89 7D ?? 48 89 7D ??";
 
 	// Class::Function  ACrAPHelper::GetBoxCollisionResult
 	// Parameters       (ACrAPHelper* this, const FVector& Min, const FVector& Max,
@@ -197,8 +189,8 @@ namespace BetterCheats::AOB
 	// -------------------------------------------------------------------------
 	// Build Benches Anywhere
 	//
-	// Opt-in, scanned the same way as a pair: a miss leaves the toggle doing
-	// nothing.
+	// Opt-in. IsSocketFree comes from the loader's map; GetSnappedSocket is
+	// scanned, and a miss of either leaves the toggle doing nothing.
 	// -------------------------------------------------------------------------
 
 	// Class::Function  UCrSocketSnapPlacementMethod::GetSnappedSocket
@@ -209,14 +201,6 @@ namespace BetterCheats::AOB
 	constexpr const char* GetSnappedSocket =
 		"4C 89 4C 24 20 48 89 54 24 10 48 89 4C 24 08 55 53 57 41 55 41 57 48 8D AC 24 ?? ?? ?? ?? "
 		"48 81 EC ?? ?? ?? ?? 48 8B 85 ?? ?? ?? ?? 33 FF 49 8B D9 4D 8B E8 4C 8B FA C6 40 08 00";
-
-	// Class::Function  UCrBuildingStabilitySubsystem::IsSocketFree
-	// Parameters       (UCrBuildingStabilitySubsystem* this, ACrCustomBuilding* Building, const UStaticMeshSocket* Socket) -> bool
-	// False when any custom building is registered on that socket. Its only
-	// caller is GetSnappedSocket.
-	constexpr const char* IsSocketFree =
-		"4C 89 44 24 18 55 53 56 57 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 4C 8B FA 48 8B F1 "
-		"E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 33 FF 4C 8B F0";
 
 	// -------------------------------------------------------------------------
 	// Mining
