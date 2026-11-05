@@ -19,6 +19,11 @@
 
 #define BC_FIELD(Class, Member) SR_FIELD(decltype(SDK::Class::Member), Class, Member, 0)
 
+// Same, for a member whose size the plugin does not compile in (a flexible array,
+// which the PDB sizes 0): any size the map holds is accepted.
+#define BC_NATIVE_ANY_SIZE(Type, Class, Member, Offset) \
+	PluginField<Type>{ { #Class "::" #Member, #Class, #Member, PLUGIN_FIELD_NATIVE | PLUGIN_FIELD_ANY_SIZE, 0, (Offset) } }
+
 // A member the SDK dumps as padding, so it has no name or offset to compile in:
 // the loader's map holds it under this key, and Offset is the row for the build
 // this plugin was compiled against.
@@ -113,6 +118,19 @@ namespace BetterCheats::Fields
 	static_assert(sizeof(SetByCallerMap) == 0x50, "TMap layout");
 	inline auto GameplayEffectSpec_SetByCallerNameMagnitudes = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerNameMagnitudes, 0x1D8);
 	inline auto GameplayEffectSpec_SetByCallerTagMagnitudes  = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerTagMagnitudes, 0x228);
+
+	// FMassEntityManager::ConstSharedFragmentsContainer: a TSharedFragmentsContainer<FConstSharedStruct>.
+	// Neither class is reflected (plain engine C++), so the loader serves them from the map's rows.
+	// The plugin only passes the member's address to FindOrAdd, so its bytes are opaque here.
+	struct ConstSharedFragmentsContainerBytes { uint8_t bytes[0xB0]; };
+	inline auto MassEntityManager_ConstSharedFragmentsContainer =
+		BC_NATIVE(ConstSharedFragmentsContainerBytes, FMassEntityManager, ConstSharedFragmentsContainer, 0x120);
+
+	// FStructSharedMemory::StructMemory: the struct data that follows the 8-byte ScriptStruct pointer.
+	// The PDB sizes this trailing flexible array 0, so the request takes any size; the plugin reads an
+	// FCrElectricityParameters there.
+	inline auto StructSharedMemory_StructMemory =
+		BC_NATIVE_ANY_SIZE(SDK::FCrElectricityParameters, FStructSharedMemory, StructMemory, 0x08);
 
 	// Members the plugin reads and writes by name, one row each for the running build.
 
@@ -412,6 +430,7 @@ namespace BetterCheats::Fields
 			CrEnviroWaveTimerSubsystem_NextWaveTimer, CrEnviroWaveTimerSubsystem_bWaitingForNextWave, CrEnviroWaveTimerSubsystem_bPause,
 			CrEnviroWaveTimerSubsystem_bStopWaves, CrUW_InventoryContainer_InventoryComponent,
 			MassEnemyHealthFragment_HP, GameplayEffectSpec_SetByCallerNameMagnitudes, GameplayEffectSpec_SetByCallerTagMagnitudes,
+			MassEntityManager_ConstSharedFragmentsContainer, StructSharedMemory_StructMemory,
 			AuAddedItem_Size, CrSkillData_Size, CrElectricityParameters_Size,
 			CrCharacterPlayerBase_ADSMoveSpeed, CrCharacterPlayerBase_AccelerationAndDeceleration, CrCharacterPlayerBase_CrouchedMoveSpeed,
 			CrCharacterPlayerBase_DoubleJumpEnergyUsage, CrCharacterPlayerBase_DurationOfAccelerationToSprint, CrCharacterPlayerBase_EnergyLoweringMultiplierDuringSprint,
@@ -630,7 +649,8 @@ namespace BetterCheats::Features
 		Fields::CrElectricityParameters_ElectricityValue.key, Fields::CrElectricityParameters_Type.key,
 		Fields::AuActorPlacementData_EntityType.key, Fields::AuAPMassSpawnedEntityType_EntityConfig.key,
 		Fields::CrBuildingData_BuildingName.key, Fields::CrElectricityParameters_Size.key,
-		PluginMap::MassEntityManagerField.key
+		PluginMap::MassEntityManagerField.key, Fields::MassEntityManager_ConstSharedFragmentsContainer.key,
+		Fields::StructSharedMemory_StructMemory.key
 	} };
 
 	inline PluginMap::Feature Corporations{ "corporations", "Corporation data points", {

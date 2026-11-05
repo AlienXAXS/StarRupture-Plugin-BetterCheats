@@ -727,8 +727,12 @@ namespace BetterCheats::Panels::Power
 				if (!paramsStruct)
 					return;
 
-				// FMassEntityManager::ConstSharedFragmentsContainer sits at offset 0x120.
-				void* container = reinterpret_cast<uint8_t*>(entityManager) + 0x120;
+				void* container = BetterCheats::Fields::MassEntityManager_ConstSharedFragmentsContainer.In(entityManager);
+				if (!container)
+				{
+					LOG_WARN("Power: ConstSharedFragmentsContainer unresolved - skipping shared-fragment patch for '%s'.", assetName);
+					return;
+				}
 
 				const uint32_t oldHash = g_getStructInstanceCrc32(paramsStruct, reinterpret_cast<const uint8_t*>(&oldParams), 0);
 
@@ -749,7 +753,12 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				auto* liveParams = reinterpret_cast<SDK::FCrElectricityParameters*>(reinterpret_cast<uint8_t*>(sharedMemory) + 0x08);
+				SDK::FCrElectricityParameters* liveParams = BetterCheats::Fields::StructSharedMemory_StructMemory.In(sharedMemory);
+				if (!liveParams)
+				{
+					LOG_WARN("Power: FStructSharedMemory::StructMemory unresolved - skipping patch for '%s'.", assetName);
+					return;
+				}
 
 				float* liveValue = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(liveParams);
 				if (!liveValue)
