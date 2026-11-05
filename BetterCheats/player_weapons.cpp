@@ -1168,8 +1168,9 @@ namespace BetterCheats::Panels::Weapons
 		constexpr int   kRestockMaxFailures     = 3;
 		constexpr int   kRestockSessionCap      = 20000;
 
-		using AddNewItemFn = SDK::TArray<SDK::FAuAddedItem>*(__fastcall*)(
-			SDK::UAuItemsComponent* self, SDK::TArray<SDK::FAuAddedItem>* result,
+		// `result` is a TArray<FAuAddedItem>, stepped by the live size (PluginMap::ElementAt).
+		using AddNewItemFn = void*(__fastcall*)(
+			SDK::UAuItemsComponent* self, void* result,
 			const SDK::UAuItemDataBase* newItem, uint32_t amount);
 
 		AddNewItemFn ResolveAddNewItem()

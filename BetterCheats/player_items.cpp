@@ -169,8 +169,9 @@ namespace BetterCheats::Panels::Items
 		// avoids the RPC entirely and gives us the actual result: an empty array means
 		// the add was rejected (no space / not authority), a populated one lists what
 		// was actually added.
-		using AddNewItemFn = SDK::TArray<SDK::FAuAddedItem>*(__fastcall*)(
-			SDK::UAuItemsComponent* self, SDK::TArray<SDK::FAuAddedItem>* result, const SDK::UAuItemDataBase* newItem, uint32_t amount);
+		// `result` is a TArray<FAuAddedItem>, stepped by the live size (PluginMap::ElementAt).
+		using AddNewItemFn = void*(__fastcall*)(
+			SDK::UAuItemsComponent* self, void* result, const SDK::UAuItemDataBase* newItem, uint32_t amount);
 
 		AddNewItemFn g_addNewItem            = nullptr;
 		bool         g_addNewItemResolveTried = false;
