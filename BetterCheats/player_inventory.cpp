@@ -228,14 +228,14 @@ namespace BetterCheats::Panels::Inventory
 		// the byte size of the parameter block ProcessEvent marshals. The SDK pads
 		// them (Pad_B4); they sit at 0xB4 and 0xB6, after FunctionFlags. An engine
 		// layout, not a game one.
+		constexpr size_t kUFunctionNumParmsOffset  = 0xB4;
 		constexpr size_t kUFunctionParmsSizeOffset = 0xB6;
-		constexpr size_t kUFunctionNumParmsAt      = kUFunctionParmsSizeOffset - 2;
-		static_assert(offsetof(SDK::UFunction, Pad_B4) == kUFunctionNumParmsAt,
-			"UFunction layout changed: re-check kUFunctionParmsSizeOffset");
+		static_assert(offsetof(SDK::UFunction, Pad_B4) == kUFunctionNumParmsOffset,
+			"UFunction layout changed: re-check kUFunctionNumParmsOffset and kUFunctionParmsSizeOffset");
 
 		uint8_t NumParmsOf(const SDK::UFunction* function)
 		{
-			return *(reinterpret_cast<const uint8_t*>(function) + kUFunctionNumParmsAt);
+			return *(reinterpret_cast<const uint8_t*>(function) + kUFunctionNumParmsOffset);
 		}
 
 		uint16_t ParmsSizeOf(const SDK::UFunction* function)
