@@ -222,6 +222,18 @@ namespace BetterCheats::Panels::Inventory
 		static_assert(sizeof(SetSlotSizeParams) == 0x28,
 			"WBP_InventorySlot_C::SetSlotSize parameter block changed");
 
+		// UFunction::ParmsSize, the byte size of the parameter block ProcessEvent
+		// marshals. The SDK pads it (Pad_B4); it is a uint16 at 0xB6, after
+		// FunctionFlags and NumParms. An engine layout, not a game one.
+		constexpr size_t kUFunctionParmsSizeOffset = 0xB6;
+		static_assert(offsetof(SDK::UFunction, ExecFunction) == 0xD8,
+			"UFunction layout changed: re-check kUFunctionParmsSizeOffset");
+
+		uint16_t ParmsSizeOf(const SDK::UFunction* function)
+		{
+			return *reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(function) + kUFunctionParmsSizeOffset);
+		}
+
 		// Prefer the widget's own resize entry point: it drives the SizeBox the
 		// same way we would, and whatever else the Blueprint does to keep the
 		// slot's insides in proportion comes along with it. The direct SizeBox
@@ -242,6 +254,20 @@ namespace BetterCheats::Panels::Inventory
 				function = slot->Class->GetFunction("WBP_InventorySlot_C", "SetSlotSize");
 				if (!function) return;
 				s_function.Set(function);
+			}
+
+			// ProcessEvent writes through the whole parameter block, so a build that changed
+			// the Blueprint's locals would have it write past ours.
+			if (ParmsSizeOf(function) != sizeof(SetSlotSizeParams))
+			{
+				static bool s_logged = false;
+				if (!s_logged)
+				{
+					s_logged = true;
+					LOG_WARN("Inventory: SetSlotSize takes 0x%X parameter bytes, not 0x%zX - skipping the call.",
+						ParmsSizeOf(function), sizeof(SetSlotSizeParams));
+				}
+				return;
 			}
 
 			SetSlotSizeParams params{};
