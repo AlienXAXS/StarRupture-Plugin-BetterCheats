@@ -569,7 +569,11 @@ namespace BetterCheats::Features
 		Fields::AuWeaponItemDataBase_RequiredItem.key, Fields::CrWeaponItemDataBase_PossibleEnemiesHitPerTrace.key,
 		Fields::CrGrenadeWeaponItemDataBase_GrenadeThrowCostOfGrenadeCharge.key, Fields::CrWeaponModDataAsset_BaseDamageFalloffCurveOverride.key,
 		Fields::AuWeaponItemDataBase_bIsUsingDamageFalloff.key, Fields::MassEnemyCharacterBase_bIsInPool.key,
-		Fields::MassEnemyHealthFragment_HP.key, Fields::AuAddedItem_Amount.key, Fields::AuAddedItem_Size.key,
+		Fields::MassEnemyHealthFragment_HP.key, Fields::AuAddedItem_Amount.key, Fields::AuAddedItem_Size.key
+	} };
+
+	// Only the log-only grenade damage probe reads these, so a miss turns off that probe and nothing else.
+	inline PluginMap::Feature GrenadeProbe{ "grenade-probe", "Grenade damage probe (log only)", {
 		Fields::GameplayEffectSpec_SetByCallerNameMagnitudes.key, Fields::GameplayEffectSpec_SetByCallerTagMagnitudes.key
 	} };
 
@@ -664,7 +668,7 @@ namespace BetterCheats::Features
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
-			Stats, Movement, Weapons, Mining, Inventory, Items, Skills,
+			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, Items, Skills,
 			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName);
 	}
 

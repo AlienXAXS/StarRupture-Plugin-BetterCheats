@@ -486,6 +486,8 @@ namespace BetterCheats::Panels::Weapons
 
 			// The two SetByCaller maps, name-keyed then tag-keyed. Dumper-7 leaves
 			// them in padding, so their offsets come from the loader's map.
+			if (!BetterCheats::Features::GrenadeProbe.On())
+				return;
 			SetByCallerMap* nameMap = BetterCheats::Fields::GameplayEffectSpec_SetByCallerNameMagnitudes.In(spec);
 			SetByCallerMap* tagMap  = BetterCheats::Fields::GameplayEffectSpec_SetByCallerTagMagnitudes.In(spec);
 			if (nameMap && LogSetByCallerMap("SetByCaller map A", *nameMap) && tagMap)
