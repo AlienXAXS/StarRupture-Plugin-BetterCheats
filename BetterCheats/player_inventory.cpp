@@ -208,9 +208,11 @@ namespace BetterCheats::Panels::Inventory
 		float g_baseSlotWidth  = 0.0f;
 		float g_baseSlotHeight = 0.0f;
 
-		// WBP_InventorySlot_C::SetSlotSize's parameter block, which carries the
-		// Blueprint graph's own locals after the argument — ProcessEvent writes
-		// through all of it, so the whole 0x28 has to be there.
+		// WBP_InventorySlot_C::SetSlotSize's parameter buffer. Only InSize is a
+		// parameter; the rest are the Blueprint graph's locals, which the SDK dump
+		// lists after it. ProcessEvent keeps its own frame for those and copies only
+		// ParmsSize bytes in from and back out to this buffer, so the buffer has to
+		// be at least ParmsSize long, no more.
 		struct SetSlotSizeParams
 		{
 			SDK::FVector2D InSize;
@@ -222,12 +224,19 @@ namespace BetterCheats::Panels::Inventory
 		static_assert(sizeof(SetSlotSizeParams) == 0x28,
 			"WBP_InventorySlot_C::SetSlotSize parameter block changed");
 
-		// UFunction::ParmsSize, the byte size of the parameter block ProcessEvent
-		// marshals. The SDK pads it (Pad_B4); it is a uint16 at 0xB6, after
-		// FunctionFlags and NumParms. An engine layout, not a game one.
+		// UFunction::NumParms (uint8) and ParmsSize (uint16), the parameter count and
+		// the byte size of the parameter block ProcessEvent marshals. The SDK pads
+		// them (Pad_B4); they sit at 0xB4 and 0xB6, after FunctionFlags. An engine
+		// layout, not a game one.
 		constexpr size_t kUFunctionParmsSizeOffset = 0xB6;
-		static_assert(offsetof(SDK::UFunction, ExecFunction) == 0xD8,
+		constexpr size_t kUFunctionNumParmsAt      = kUFunctionParmsSizeOffset - 2;
+		static_assert(offsetof(SDK::UFunction, Pad_B4) == kUFunctionNumParmsAt,
 			"UFunction layout changed: re-check kUFunctionParmsSizeOffset");
+
+		uint8_t NumParmsOf(const SDK::UFunction* function)
+		{
+			return *(reinterpret_cast<const uint8_t*>(function) + kUFunctionNumParmsAt);
+		}
 
 		uint16_t ParmsSizeOf(const SDK::UFunction* function)
 		{
@@ -256,16 +265,18 @@ namespace BetterCheats::Panels::Inventory
 				s_function.Set(function);
 			}
 
-			// ProcessEvent writes through the whole parameter block, so a build that changed
-			// the Blueprint's locals would have it write past ours.
-			if (ParmsSizeOf(function) != sizeof(SetSlotSizeParams))
+			// ProcessEvent copies ParmsSize bytes in from and back out to the buffer, so it
+			// has to hold them, and the function has to take just the one parameter we fill.
+			// A build that changed the parameter list would otherwise get a buffer that
+			// does not match it.
+			if (NumParmsOf(function) != 1 || ParmsSizeOf(function) > sizeof(SetSlotSizeParams))
 			{
 				static bool s_logged = false;
 				if (!s_logged)
 				{
 					s_logged = true;
-					LOG_WARN("Inventory: SetSlotSize takes 0x%X parameter bytes, not 0x%zX - skipping the call.",
-						ParmsSizeOf(function), sizeof(SetSlotSizeParams));
+					LOG_WARN("Inventory: SetSlotSize takes %u parameter(s) in 0x%X bytes, not 1 in at most 0x%zX - skipping the call.",
+						NumParmsOf(function), ParmsSizeOf(function), sizeof(SetSlotSizeParams));
 				}
 				return;
 			}
