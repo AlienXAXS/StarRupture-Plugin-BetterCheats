@@ -214,7 +214,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.23.1 or later** to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, and only 1.23.1 has the Steam public build's entries; an older loader leaves both options off there.
+> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.23.1 or later** to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, which only 1.23.1 or newer carries for these options; an older loader leaves both options off.
 
 ---
 
