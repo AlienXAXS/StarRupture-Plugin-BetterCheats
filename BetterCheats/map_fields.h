@@ -345,10 +345,14 @@ namespace BetterCheats::Fields
 	// UWBP_InventorySlot_C: a Blueprint member, found on first use through the loader's property reader.
 	inline PluginLazyField<SDK::USizeBox*> WBP_InventorySlot_SizeBox{ "SizeBox" };
 
-	// Structs the plugin copies or indexes by value; they fail the plugin when the
-	// running build's size differs from the one compiled in.
-	inline auto AuAddedItem_Size             = SR_SIZE_CHECK(FAuAddedItem);
-	inline auto CrSkillData_Size             = SR_SIZE_CHECK(FCrSkillData);
+	// Structs the plugin only steps through in a game array: the size the running build
+	// reflects, read with PluginMap::ElementAt. A build that resizes them does not turn
+	// the plugin off.
+	inline auto AuAddedItem_Size             = SR_SIZE(FAuAddedItem);
+	inline auto CrSkillData_Size             = SR_SIZE(FCrSkillData);
+
+	// A struct the plugin copies by value; it fails the plugin when the running build's
+	// size differs from the one compiled in.
 	inline auto CrElectricityParameters_Size = SR_SIZE_CHECK(FCrElectricityParameters);
 
 	// The member's value, or a default when the object is null or the member did not resolve.

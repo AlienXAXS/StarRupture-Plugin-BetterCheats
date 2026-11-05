@@ -454,7 +454,8 @@ namespace BetterCheats::Panels::Items
 
 				int32_t totalAdded = 0;
 				for (int32_t i = 0; i < added.Num(); ++i)
-					totalAdded += BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuAddedItem_Amount, &added[i]);
+					totalAdded += BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuAddedItem_Amount,
+						PluginMap::ElementAt(added, i, BetterCheats::Fields::AuAddedItem_Size));
 
 				LOG_INFO("Item Spawner: gave %d x \"%s\" [%s] (%d stack(s) of %d, %d entr%s added).",
 					totalAdded, ctx->displayName.c_str(), ctx->uniqueName.c_str(), ctx->stacks, ctx->maxStack,

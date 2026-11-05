@@ -168,14 +168,15 @@ namespace BetterCheats::Panels::Skills
 			if (pc)
 			{
 				const SDK::TArray<SDK::FCrSkillData>* skills = BetterCheats::Fields::CrPlayerControllerBase_PlayerSkills.In(static_cast<const void*>(pc));
-				const SDK::FCrSkillData* data = skills ? skills->GetDataPtr() : nullptr;
+				const bool stepable = skills && PluginMap::ElementAt(*skills, 0, BetterCheats::Fields::CrSkillData_Size);
 
-				const int rawCount = data ? skills->Num() : 0;
+				const int rawCount = stepable ? skills->Num() : 0;
 				snapshot.count = rawCount < kMaxSkills ? rawCount : kMaxSkills;
 				for (int i = 0; i < snapshot.count; ++i)
 				{
-					snapshot.skillIds[i] = static_cast<uint8_t>(BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Skill, &data[i]));
-					snapshot.levels[i]   = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Level, &data[i]);
+					const uint8_t* element = PluginMap::ElementAt(*skills, i, BetterCheats::Fields::CrSkillData_Size);
+					snapshot.skillIds[i] = static_cast<uint8_t>(BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Skill, element));
+					snapshot.levels[i]   = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrSkillData_Level, element);
 				}
 			}
 
@@ -191,8 +192,7 @@ namespace BetterCheats::Panels::Skills
 				return;
 
 			SDK::TArray<SDK::FCrSkillData>* skills = BetterCheats::Fields::CrPlayerControllerBase_PlayerSkills.In(pc);
-			SDK::FCrSkillData* data = skills ? const_cast<SDK::FCrSkillData*>(skills->GetDataPtr()) : nullptr;
-			if (!data)
+			if (!skills || !PluginMap::ElementAt(*skills, 0, BetterCheats::Fields::CrSkillData_Size))
 				return;
 
 			const int count = skills->Num();
@@ -203,8 +203,9 @@ namespace BetterCheats::Panels::Skills
 			{
 				for (int i = 0; i < count; ++i)
 				{
-					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level, &data[i], 999);
-					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Experience, &data[i], 0.0f);
+					uint8_t* element = PluginMap::ElementAt(*skills, i, BetterCheats::Fields::CrSkillData_Size);
+					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level, element, 999);
+					BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Experience, element, 0.0f);
 				}
 				g_pendingMaxAll = false;
 			}
@@ -215,7 +216,8 @@ namespace BetterCheats::Panels::Skills
 				if (!edit.pending)
 					continue;
 
-				BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level, &data[i], static_cast<int32_t>(edit.level));
+				BetterCheats::Fields::Store(BetterCheats::Fields::CrSkillData_Level,
+					PluginMap::ElementAt(*skills, i, BetterCheats::Fields::CrSkillData_Size), static_cast<int32_t>(edit.level));
 				edit.pending  = false;
 			}
 		}

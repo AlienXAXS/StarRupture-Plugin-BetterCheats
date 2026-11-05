@@ -1266,7 +1266,8 @@ namespace BetterCheats::Panels::Weapons
 
 			int gained = 0;
 			for (int32_t i = 0; i < added.Num(); ++i)
-				gained += BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuAddedItem_Amount, &added[i]);
+				gained += BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuAddedItem_Amount,
+					PluginMap::ElementAt(added, i, BetterCheats::Fields::AuAddedItem_Size));
 
 			// Backstop for what the delta rule cannot see: if adds are not landing at
 			// all, stop rather than trying harder. A feature that quietly does nothing
