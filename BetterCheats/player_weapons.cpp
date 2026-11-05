@@ -328,9 +328,7 @@ namespace BetterCheats::Panels::Weapons
 			}
 		}
 
-		// FGameplayTag is a single FName, so the name-keyed and tag-keyed
-		// SetByCaller maps share one layout.
-		using SetByCallerMap = UC::TMap<SDK::FName, float>;
+		using BetterCheats::Fields::SetByCallerMap;
 
 		struct SetByCallerEntry
 		{
@@ -486,14 +484,12 @@ namespace BetterCheats::Panels::Weapons
 				label, static_cast<void*>(spec), def, header.level, header.stackCount,
 				header.modifiers, header.modifiedAttributes);
 
-			// Pad_1D8 is Dumper-7's gap for the two SetByCaller TMaps (name-keyed,
-			// then tag-keyed), 0x50 each. The static_asserts are the layout claim.
-			static_assert(sizeof(SetByCallerMap) == 0x50, "TMap layout");
-			static_assert(sizeof(spec->Pad_1D8) == 2 * sizeof(SetByCallerMap), "two TMaps fill the gap");
-
-			auto* maps = reinterpret_cast<SetByCallerMap*>(spec->Pad_1D8);
-			if (LogSetByCallerMap("SetByCaller map A", maps[0]))
-				LogSetByCallerMap("SetByCaller map B", maps[1]);
+			// The two SetByCaller maps, name-keyed then tag-keyed. Dumper-7 leaves
+			// them in padding, so their offsets come from the loader's map.
+			SetByCallerMap* nameMap = BetterCheats::Fields::GameplayEffectSpec_SetByCallerNameMagnitudes.In(spec);
+			SetByCallerMap* tagMap  = BetterCheats::Fields::GameplayEffectSpec_SetByCallerTagMagnitudes.In(spec);
+			if (nameMap && LogSetByCallerMap("SetByCaller map A", *nameMap) && tagMap)
+				LogSetByCallerMap("SetByCaller map B", *tagMap);
 		}
 
 		// Pointer to a named property's storage on `object`, or null.

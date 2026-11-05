@@ -106,6 +106,14 @@ namespace BetterCheats::Fields
 	// UCrUW_InventoryContainer: a private TWeakObjectPtr<UCrInventoryComponent>
 	inline auto CrUW_InventoryContainer_InventoryComponent = BC_NATIVE(SDK::FWeakObjectPtr, UCrUW_InventoryContainer, InventoryComponent, 0x468);
 
+	// FGameplayEffectSpec: the two SetByCaller maps, which Dumper-7 folds into Pad_1D8
+	// (name-keyed, then tag-keyed; an FGameplayTag is a single FName, so both share one
+	// layout). The grenade throw probe reads them from the engine's struct.
+	using SetByCallerMap = UC::TMap<SDK::FName, float>;
+	static_assert(sizeof(SetByCallerMap) == 0x50, "TMap layout");
+	inline auto GameplayEffectSpec_SetByCallerNameMagnitudes = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerNameMagnitudes, 0x1D8);
+	inline auto GameplayEffectSpec_SetByCallerTagMagnitudes  = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerTagMagnitudes, 0x228);
+
 	// Members the plugin reads and writes by name, one row each for the running build.
 
 	// ACrCharacterPlayerBase
@@ -403,7 +411,7 @@ namespace BetterCheats::Fields
 			CrGameInstance_ServerSessionName, CrTechnologyKeeper_bUnlockAllBuildings,
 			CrEnviroWaveTimerSubsystem_NextWaveTimer, CrEnviroWaveTimerSubsystem_bWaitingForNextWave, CrEnviroWaveTimerSubsystem_bPause,
 			CrEnviroWaveTimerSubsystem_bStopWaves, CrUW_InventoryContainer_InventoryComponent,
-			MassEnemyHealthFragment_HP,
+			MassEnemyHealthFragment_HP, GameplayEffectSpec_SetByCallerNameMagnitudes, GameplayEffectSpec_SetByCallerTagMagnitudes,
 			AuAddedItem_Size, CrSkillData_Size, CrElectricityParameters_Size,
 			CrCharacterPlayerBase_ADSMoveSpeed, CrCharacterPlayerBase_AccelerationAndDeceleration, CrCharacterPlayerBase_CrouchedMoveSpeed,
 			CrCharacterPlayerBase_DoubleJumpEnergyUsage, CrCharacterPlayerBase_DurationOfAccelerationToSprint, CrCharacterPlayerBase_EnergyLoweringMultiplierDuringSprint,
@@ -549,7 +557,8 @@ namespace BetterCheats::Features
 		Fields::AuWeaponItemDataBase_RequiredItem.key, Fields::CrWeaponItemDataBase_PossibleEnemiesHitPerTrace.key,
 		Fields::CrGrenadeWeaponItemDataBase_GrenadeThrowCostOfGrenadeCharge.key, Fields::CrWeaponModDataAsset_BaseDamageFalloffCurveOverride.key,
 		Fields::AuWeaponItemDataBase_bIsUsingDamageFalloff.key, Fields::MassEnemyCharacterBase_bIsInPool.key,
-		Fields::MassEnemyHealthFragment_HP.key, Fields::AuAddedItem_Amount.key, Fields::AuAddedItem_Size.key
+		Fields::MassEnemyHealthFragment_HP.key, Fields::AuAddedItem_Amount.key, Fields::AuAddedItem_Size.key,
+		Fields::GameplayEffectSpec_SetByCallerNameMagnitudes.key, Fields::GameplayEffectSpec_SetByCallerTagMagnitudes.key
 	} };
 
 	inline PluginMap::Feature Mining{ "mining-tools", "Mining tool tuning", {
