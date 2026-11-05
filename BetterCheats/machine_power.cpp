@@ -29,6 +29,9 @@ namespace BetterCheats::Panels::Power
 {
 	namespace
 	{
+		// FStructSharedMemory::StructMemory: the StructUtils header size (engine layout), where the struct data starts.
+		constexpr size_t kStructUtilsHeaderSize = 0x08;
+
 		struct PowerEntry
 		{
 			std::string                      packageName;
@@ -753,12 +756,8 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				SDK::FCrElectricityParameters* liveParams = BetterCheats::Fields::StructSharedMemory_StructMemory.In(sharedMemory);
-				if (!liveParams)
-				{
-					LOG_WARN("Power: FStructSharedMemory::StructMemory unresolved - skipping patch for '%s'.", assetName);
-					return;
-				}
+				SDK::FCrElectricityParameters* liveParams = reinterpret_cast<SDK::FCrElectricityParameters*>(
+					reinterpret_cast<uint8_t*>(sharedMemory) + kStructUtilsHeaderSize);
 
 				float* liveValue = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(liveParams);
 				if (!liveValue)
