@@ -12,7 +12,7 @@ jobs:
   release:
     permissions:
       contents: write
-    uses: AlienXAXS/StarRupture-Plugin-SDK/.github/workflows/plugin-release.yml@v1.23.1
+    uses: AlienXAXS/StarRupture-Plugin-SDK/.github/workflows/plugin-release.yml@v1.23.2
     with:
       plugin_name: BetterCheats
       solution_file: StarRupture-Plugin-BetterCheats.sln
