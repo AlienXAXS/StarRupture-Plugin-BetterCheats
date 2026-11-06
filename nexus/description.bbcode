@@ -121,7 +121,7 @@ Corporations Data Points and Skills are written to the save itself, so they stay
 [*]Press [b]Esc[/b] and pick [b]BETTER CHEATS[/b], or press [b]F10[/b] (default), while in a single-player world
 [/list]
 
-Requires [url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url], v1.23.0 or later.
+Requires [url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url], v1.23.0 or newer. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off.
 
 [line]
 
@@ -152,10 +152,11 @@ Both keys can also be changed through the ModLoader keybind settings, and the No
 [list]
 [*][b]Menu does not appear[/b] — the menu only works while loaded into a save; also ensure the plugin is loaded (ModLoader F2, Plugins tab). In multiplayer, set EnableCheatsInMultiplayer=true
 [*][b]Hotkey does nothing[/b] — check the configured keybind in the ModLoader settings
-[*][b]Saved cheat settings are not restored[/b] — check [i]"modloader.log"[/i] for errors loading [i]"Plugins\BetterCheats\<SessionName>.json"[/i]
+[*][b]Saved cheat settings are not restored[/b] — check [i]"modloader.log"[/i] for errors loading [i]"Plugins\BetterCheats\<SessionName>.json"[/i]. After a game update that hides the save's session name, per-save settings are neither saved nor restored until the loader learns the new build
 [*][b]Plugin not loading[/b] — check [i]"ModLoader.log in Binaries\Win64\ModLoader\Logs\"[/i]
 [*][b]Issues after a game update[/b] — some features may require a plugin update after major game patches. Patterns already known to change in an upcoming update carry both versions, so those features keep working through it
-[*][b]A Building option does nothing[/b] — after a game update one of the three window and bench options may miss its patterns. The plugin still loads and [i]"modloader.log"[/i] names the one
+[*][b]A Building option does nothing[/b] — after a game update [b]Deconstruct Windows During Waves[/b] may miss its patterns. The plugin still loads and [i]"modloader.log"[/i] names the one
+[*][b]Place windows and benches anywhere shows as off[/b] — [b]Build Windows Anywhere[/b] and [b]Build Benches Anywhere[/b] take their game functions from the mod loader's version map. If a game update leaves one unplaced, the loader's failure window and Plugins tab list the feature as off, and both options stay off until the loader learns the new build
 [/list]
 
 [line]
