@@ -490,7 +490,7 @@ namespace BetterCheats::Fields
 			CrPlayerControllerBase_PlayerSkills, CrSkillData_Skill,
 			CrSkillData_Level, CrSkillData_Experience, CrGameStateBase_CorporationsOwner,
 			CrGameStateBase_TechnologyKeeper, CrCorporationsOwner_DataPoints, CrEnviroWaveTimerSubsystem_TimerActor,
-			CrWaveTimerActor_bPause
+			CrWaveTimerActor_bPause, AudioComponent_Sound, AudioComponent_VolumeMultiplier
 		) && all;
 		all = PluginMap::ResolveMassEntityManager(scanner, self) && all;
 		return all;
