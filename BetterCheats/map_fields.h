@@ -30,11 +30,6 @@
 #define BC_NATIVE(Type, Class, Member, Offset) \
 	PluginField<Type>{ { #Class "::" #Member, #Class, #Member, PLUGIN_FIELD_NATIVE, sizeof(Type), (Offset) } }
 
-// The same, for a native member whose size nothing reads: the loader serves the offset and
-// the size from the map's row for the running build, and refuses it where there is none.
-// Offset is only the row for the build this plugin was compiled against.
-#define BC_NATIVE_ANY_SIZE(Type, Class, Member, Offset) 	PluginField<Type>{ { #Class "::" #Member, #Class, #Member, PLUGIN_FIELD_NATIVE | PLUGIN_FIELD_ANY_SIZE, 0, (Offset) } }
-
 namespace BetterCheats::Fields
 {
 	// ACrCharacterPlayerBase
@@ -129,7 +124,7 @@ namespace BetterCheats::Fields
 	// The plugin only passes the member's address to FindOrAdd, so its bytes and size are
 	// opaque here: the size comes from the build's row.
 	inline auto MassEntityManager_ConstSharedFragmentsContainer =
-		BC_NATIVE_ANY_SIZE(uint8_t, FMassEntityManager, ConstSharedFragmentsContainer, 0x120);
+		SR_NATIVE_ANY_SIZE(uint8_t, FMassEntityManager, ConstSharedFragmentsContainer, 0x120);
 
 	// Members the plugin reads and writes by name, one row each for the running build.
 
