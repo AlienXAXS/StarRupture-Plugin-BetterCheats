@@ -83,6 +83,9 @@ namespace BetterCheats::Panels::Wind
 		int                      g_devTicks = 0;
 		int                      g_devRewrites = 0;
 		int                      g_devHeldPeak = 0;
+		float                    g_devLogTimer = 0.0f;
+		// Faster than the mute's own rescan, so a sound it would miss still shows in the log.
+		constexpr float          kDevLogSeconds = 0.25f;
 
 		bool ControllerInPauseMenu(float deltaSeconds);
 
@@ -397,6 +400,7 @@ namespace BetterCheats::Panels::Wind
 				g_devTicks = 0;
 				g_devRewrites = 0;
 				g_devHeldPeak = 0;
+				g_devLogTimer = 0.0f;
 				try { DevLogSubclasses(); }
 				catch (...) { LOG_WARN("Wind dev: exception logging subclasses."); }
 			}
@@ -408,6 +412,11 @@ namespace BetterCheats::Panels::Wind
 				g_rescanTimer = kRescanSeconds;
 				try { RescanWind(); }
 				catch (...) { LOG_WARN("Wind: exception scanning GObjects."); }
+			}
+			g_devLogTimer -= deltaSeconds;
+			if (g_devLogTimer <= 0.0f)
+			{
+				g_devLogTimer = kDevLogSeconds;
 				try { DevLogNewPlaying(); }
 				catch (...) { LOG_WARN("Wind dev: exception logging playing sounds."); }
 			}
