@@ -75,29 +75,65 @@ namespace BetterCheats::Panels::Wind
 			return false;
 		}
 
-		// Dev diagnostic: one line per playing audio component, logged when the pause
-		// menu opens, to see what is audible there and which of it matched as wind.
-		void LogPlayingSounds()
+		// Dev diagnostic state. Game thread only.
+		std::vector<std::string> g_devSeen;     // distinct sound assets already logged this menu session
+		int                      g_devLoader = -1;
+		int                      g_devController = -1;
+		bool                     g_devFieldReported = false;
+		int                      g_devTicks = 0;
+		int                      g_devRewrites = 0;
+		int                      g_devHeldPeak = 0;
+
+		bool ControllerInPauseMenu(float deltaSeconds);
+
+		constexpr uint32_t kDevSkip =
+			static_cast<uint32_t>(SDK::EObjectFlags::ClassDefaultObject) |
+			static_cast<uint32_t>(SDK::EObjectFlags::ArchetypeObject) |
+			static_cast<uint32_t>(SDK::EObjectFlags::BeginDestroyed) |
+			static_cast<uint32_t>(SDK::EObjectFlags::FinishDestroyed) |
+			static_cast<uint32_t>(SDK::EObjectFlags::MirroredGarbage);
+
+		bool Holds(const SDK::UAudioComponent* comp);
+
+		// Edge-logs the two pause signals, and once what the controller flag resolved to.
+		void DevLogSignals(float deltaSeconds)
+		{
+			IPluginSelf* self = GetSelf();
+			if (!self)
+				return;
+			const int loader = (self->hooks->GameMenu && self->hooks->GameMenu->IsPauseMenuOpen()) ? 1 : 0;
+			const int controller = ControllerInPauseMenu(deltaSeconds) ? 1 : 0;
+
+			SDK::ACrPlayerControllerBase* pc = g_controller.Get();
+			if (pc && !g_devFieldReported)
+			{
+				g_devFieldReported = true;
+				const bool* flag = Fields::CrPlayerControllerBase_bReplInPauseMenu.In(self->hooks->ObjectProperties, pc);
+				LOG_INFO("Wind dev: controller resolved, bReplInPauseMenu field %s.", flag ? "found" : "NOT found");
+			}
+			if (loader != g_devLoader || controller != g_devController)
+			{
+				g_devLoader = loader;
+				g_devController = controller;
+				LOG_INFO("Wind dev: pause signals loader=%d controller=%d", loader, controller);
+			}
+		}
+
+		// Logs each playing audio component's sound once per distinct asset while the menu
+		// is up: owner class, the match flag, whether it is held, and the pause signals.
+		void DevLogNewPlaying()
 		{
 			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
 			SDK::UClass* audioClass = SDK::UAudioComponent::StaticClass();
 			if (!arr || !audioClass)
 				return;
 
-			constexpr uint32_t kSkip =
-				static_cast<uint32_t>(SDK::EObjectFlags::ClassDefaultObject) |
-				static_cast<uint32_t>(SDK::EObjectFlags::ArchetypeObject) |
-				static_cast<uint32_t>(SDK::EObjectFlags::BeginDestroyed) |
-				static_cast<uint32_t>(SDK::EObjectFlags::FinishDestroyed) |
-				static_cast<uint32_t>(SDK::EObjectFlags::MirroredGarbage);
-
-			int playing = 0;
 			for (int i = 0; i < arr->Num(); ++i)
 			{
 				SDK::UObject* obj = arr->GetByIndex(i);
 				if (!obj || obj->Class != audioClass)
 					continue;
-				if (static_cast<uint32_t>(obj->Flags) & kSkip)
+				if (static_cast<uint32_t>(obj->Flags) & kDevSkip)
 					continue;
 
 				auto* comp = static_cast<SDK::UAudioComponent*>(obj);
@@ -108,12 +144,49 @@ namespace BetterCheats::Panels::Wind
 				float* volume = Fields::AudioComponent_VolumeMultiplier.In(comp);
 				const SDK::UObject* soundObj = sound ? *sound : nullptr;
 				const std::string path = soundObj ? soundObj->GetFullName() : std::string("(none)");
+				bool seen = false;
+				for (const std::string& entry : g_devSeen)
+				{
+					if (entry == path)
+					{
+						seen = true;
+						break;
+					}
+				}
+				if (seen)
+					continue;
+				g_devSeen.push_back(path);
+
 				const std::string owner = (comp->Outer && comp->Outer->Class) ? comp->Outer->Class->GetName() : std::string("(none)");
-				LOG_INFO("Wind dev: playing sound=%s owner=%s volume=%.3f wind=%s",
-					path.c_str(), owner.c_str(), volume ? *volume : -1.0f, IsWindSound(soundObj) ? "yes" : "no");
-				++playing;
+				LOG_INFO("Wind dev: playing sound=%s owner=%s volume=%.3f wind=%s held=%s loader=%d controller=%d",
+					path.c_str(), owner.c_str(), volume ? *volume : -1.0f,
+					IsWindSound(soundObj) ? "yes" : "no", Holds(comp) ? "yes" : "no", g_devLoader, g_devController);
 			}
-			LOG_INFO("Wind dev: %d playing audio components at pause menu open.", playing);
+		}
+
+		// Once per menu open: audio components whose class is a subclass of UAudioComponent,
+		// which the exact-class walks would skip.
+		void DevLogSubclasses()
+		{
+			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
+			SDK::UClass* audioClass = SDK::UAudioComponent::StaticClass();
+			if (!arr || !audioClass)
+				return;
+
+			int count = 0;
+			for (int i = 0; i < arr->Num(); ++i)
+			{
+				SDK::UObject* obj = arr->GetByIndex(i);
+				if (!obj || obj->Class == audioClass || !obj->Class)
+					continue;
+				if (static_cast<uint32_t>(obj->Flags) & kDevSkip)
+					continue;
+				if (!obj->IsA(audioClass))
+					continue;
+				LOG_INFO("Wind dev: UAudioComponent subclass instance class=%s", obj->Class->GetName().c_str());
+				++count;
+			}
+			LOG_INFO("Wind dev: %d subclass audio components.", count);
 		}
 
 		bool Holds(const SDK::UAudioComponent* comp)
@@ -200,6 +273,22 @@ namespace BetterCheats::Panels::Wind
 			}
 			g_muted.clear();
 			g_active = false;
+		}
+
+		// Counts the held components whose volume the game raised again since the last
+		// tick, which says whether the hold fights a per-frame write.
+		void DevCountRewrites()
+		{
+			++g_devTicks;
+			if (static_cast<int>(g_muted.size()) > g_devHeldPeak)
+				g_devHeldPeak = static_cast<int>(g_muted.size());
+			for (const Muted& entry : g_muted)
+			{
+				SDK::UAudioComponent* comp = entry.comp.Get();
+				float* volume = comp ? Fields::AudioComponent_VolumeMultiplier.In(comp) : nullptr;
+				if (volume && std::fabs(*volume) > kSilent)
+					++g_devRewrites;
+			}
 		}
 
 		bool ControllerInPauseMenu(float deltaSeconds)
@@ -291,6 +380,12 @@ namespace BetterCheats::Panels::Wind
 		const bool inWorld = GameContext::IsInChimeraMain();
 		const bool option = g_option.load();
 
+		if (option && inWorld)
+		{
+			try { DevLogSignals(deltaSeconds); }
+			catch (...) { LOG_WARN("Wind dev: exception reading pause signals."); }
+		}
+
 		if (option && inWorld && IsPauseMenuUp(deltaSeconds))
 		{
 			g_releaseTimer = kReleaseDelaySeconds;
@@ -298,16 +393,23 @@ namespace BetterCheats::Panels::Wind
 			{
 				g_active = true;
 				g_rescanTimer = 0.0f;
-				try { LogPlayingSounds(); }
-				catch (...) { LOG_WARN("Wind dev: exception logging playing sounds."); }
+				g_devSeen.clear();
+				g_devTicks = 0;
+				g_devRewrites = 0;
+				g_devHeldPeak = 0;
+				try { DevLogSubclasses(); }
+				catch (...) { LOG_WARN("Wind dev: exception logging subclasses."); }
 			}
 
+			DevCountRewrites();
 			g_rescanTimer -= deltaSeconds;
 			if (g_rescanTimer <= 0.0f)
 			{
 				g_rescanTimer = kRescanSeconds;
 				try { RescanWind(); }
 				catch (...) { LOG_WARN("Wind: exception scanning GObjects."); }
+				try { DevLogNewPlaying(); }
+				catch (...) { LOG_WARN("Wind dev: exception logging playing sounds."); }
 			}
 			HoldMuted();
 			return;
@@ -327,6 +429,8 @@ namespace BetterCheats::Panels::Wind
 				return;
 			}
 		}
+		LOG_INFO("Wind dev: menu closed; held up to %d components over %d ticks, game raised a held volume %d times.",
+			g_devHeldPeak, g_devTicks, g_devRewrites);
 		ReleaseMuted();
 	}
 
