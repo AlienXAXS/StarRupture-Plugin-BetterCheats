@@ -2,4 +2,4 @@
 - Cancelling a wave now resets the timer to the longest wait between waves seen in the current world; just after loading a save it can be shorter than the full wait
 - BetterCheats keeps loading after a game update that hides the save's session name; its per-save settings are then neither saved nor restored until the loader learns the new build
 - Build Windows Anywhere and Build Benches Anywhere work on every game build the loader knows; if a game update leaves either unplaced, the loader lists "Place windows and benches anywhere" as off instead of the options silently doing nothing
-- Machine power keeps working when a game update changes the size of its electricity structure
+- Machine power keeps working when a game update changes the size of its electricity structure or of the game's shared-fragment container; on a loader older than 1.24.0 it is turned off instead
