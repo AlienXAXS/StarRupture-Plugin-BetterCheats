@@ -75,6 +75,47 @@ namespace BetterCheats::Panels::Wind
 			return named && sound->GetFullName().find(kAmbiencePath) != std::string::npos;
 		}
 
+		// Dev diagnostic: one line per playing audio component, logged when the pause
+		// menu opens, to see what is audible there and which of it matched as wind.
+		void LogPlayingSounds()
+		{
+			SDK::TUObjectArray* arr = SDK::UObject::GObjects.GetTypedPtr();
+			SDK::UClass* audioClass = SDK::UAudioComponent::StaticClass();
+			if (!arr || !audioClass)
+				return;
+
+			constexpr uint32_t kSkip =
+				static_cast<uint32_t>(SDK::EObjectFlags::ClassDefaultObject) |
+				static_cast<uint32_t>(SDK::EObjectFlags::ArchetypeObject) |
+				static_cast<uint32_t>(SDK::EObjectFlags::BeginDestroyed) |
+				static_cast<uint32_t>(SDK::EObjectFlags::FinishDestroyed) |
+				static_cast<uint32_t>(SDK::EObjectFlags::MirroredGarbage);
+
+			int playing = 0;
+			for (int i = 0; i < arr->Num(); ++i)
+			{
+				SDK::UObject* obj = arr->GetByIndex(i);
+				if (!obj || obj->Class != audioClass)
+					continue;
+				if (static_cast<uint32_t>(obj->Flags) & kSkip)
+					continue;
+
+				auto* comp = static_cast<SDK::UAudioComponent*>(obj);
+				if (!comp->IsPlaying())
+					continue;
+
+				SDK::USoundBase** sound = Fields::AudioComponent_Sound.In(comp);
+				float* volume = Fields::AudioComponent_VolumeMultiplier.In(comp);
+				const SDK::UObject* soundObj = sound ? *sound : nullptr;
+				const std::string path = soundObj ? soundObj->GetFullName() : std::string("(none)");
+				const std::string owner = (comp->Outer && comp->Outer->Class) ? comp->Outer->Class->GetName() : std::string("(none)");
+				LOG_INFO("Wind dev: playing sound=%s owner=%s volume=%.3f wind=%s",
+					path.c_str(), owner.c_str(), volume ? *volume : -1.0f, IsWindSound(soundObj) ? "yes" : "no");
+				++playing;
+			}
+			LOG_INFO("Wind dev: %d playing audio components at pause menu open.", playing);
+		}
+
 		bool Holds(const SDK::UAudioComponent* comp)
 		{
 			for (const Muted& entry : g_muted)
@@ -257,6 +298,8 @@ namespace BetterCheats::Panels::Wind
 			{
 				g_active = true;
 				g_rescanTimer = 0.0f;
+				try { LogPlayingSounds(); }
+				catch (...) { LOG_WARN("Wind dev: exception logging playing sounds."); }
 			}
 
 			g_rescanTimer -= deltaSeconds;
