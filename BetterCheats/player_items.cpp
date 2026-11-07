@@ -30,10 +30,8 @@ namespace BetterCheats::Panels::Items
 
 		struct ItemEntry
 		{
-			SDK::UAuItemDataBase* item              = nullptr;
-			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — the cached
-			                                         // `item` CDO can be garbage-collected if its Blueprint
-			                                         // class/package gets unloaded before "Give Item" is clicked.
+			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — a cached CDO can be garbage-collected
+			                                         // if its Blueprint class/package gets unloaded before "Give Item" is clicked.
 			std::string           name;
 			std::string           uniqueName;     // item->UniqueItemName — passed to ServerDebugAddItems
 			int                   maxStack        = 1;
@@ -230,7 +228,6 @@ namespace BetterCheats::Panels::Items
 						}
 
 						ItemEntry entry;
-						entry.item       = item;
 						entry.assetData  = assetData[i];
 						SDK::UTexture2D* icon = GetItemIconResource(item);
 						bool iconIsTexture2D = false;
@@ -339,8 +336,8 @@ namespace BetterCheats::Panels::Items
 		// -------------------------------------------------------------------------
 		// "Give Item" — resolving the local character/inventory and invoking the
 		// inventory RPC must happen on the game thread, not from the ImGui render
-		// callback that triggers it. The selected item pointer is just a value here;
-		// it's only dereferenced once we're safely on the game thread.
+		// callback that triggers it. The context carries only the unique name;
+		// the item is re-resolved once we're safely on the game thread.
 		// -------------------------------------------------------------------------
 		struct GiveItemContext
 		{
@@ -536,7 +533,13 @@ namespace BetterCheats::Panels::Items
 				// Icon — loaded on first draw by the shared helper.
 				imgui->SetCursorPosX(imgui->GetCursorPosX() + padX);
 				IPluginHooks* texHooks = GetHooks();
-				g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
+				if (g_icons.Has(entry.uniqueName))
+					g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
+				else
+				{
+					imgui->Dummy(iconSz, iconSz);
+					imgui->SameLine(0.0f, padX);
+				}
 
 				// Name + stack size info, vertically centred beside the icon
 				imgui->BeginGroup();
