@@ -36,6 +36,13 @@ namespace BetterCheatsConfig
 			ConfigValueType::Keybind,
 			kDefaultNoClipKey,
 			"Key to toggle No Clip on / off without opening the menu"
+		},
+		{
+			"Audio",
+			"MuteWindInPauseMenu",
+			ConfigValueType::Boolean,
+			"false",
+			"Silence the wind loops while the pause menu is open"
 		}
 	};
 
@@ -68,6 +75,16 @@ namespace BetterCheatsConfig
 		static bool IsCheatsInMultiplayerEnabled()
 		{
 			return s_self ? s_self->config->ReadBool(s_self, "General", "EnableCheatsInMultiplayer", false) : false;
+		}
+
+		static bool IsMuteWindInPauseMenuEnabled()
+		{
+			return s_self ? s_self->config->ReadBool(s_self, "Audio", "MuteWindInPauseMenu", false) : false;
+		}
+
+		static bool SetMuteWindInPauseMenu(bool enabled)
+		{
+			return s_self && s_self->config->WriteBool(s_self, "Audio", "MuteWindInPauseMenu", enabled);
 		}
 
 		// Returns the current toggle keybind string (e.g. "F10", "Ctrl+F10").

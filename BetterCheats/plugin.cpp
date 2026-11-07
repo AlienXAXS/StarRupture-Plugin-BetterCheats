@@ -14,6 +14,7 @@
 #include "player_tools.h"
 #include "player_weapons.h"
 #include "world_wave.h"
+#include "world_wind.h"
 #include "world_corporations.h"
 #include "machine_power.h"
 #include "enemies.h"
@@ -140,6 +141,11 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::CheatMenu::TickPendingClose();
 	BetterCheats::CheatMenu::TickPendingOpen();
 
+	// An audio option, not a cheat: it does not wait for the cheats gate, and it
+	// gives the sound back itself when the world goes away.
+	if (BetterCheats::Features::WindMute.On())
+		BetterCheats::Panels::Wind::Tick(deltaSeconds);
+
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
 
@@ -260,6 +266,10 @@ extern "C" {
 		if (BetterCheats::Features::Wave.On())
 			BetterCheats::Panels::Wave::Initialize();
 
+		LOG_INFO("Initializing Wind mute...");
+		if (BetterCheats::Features::WindMute.On())
+			BetterCheats::Panels::Wind::Initialize();
+
 		LOG_INFO("Initializing Power panel...");
 		if (BetterCheats::Features::Power.On())
 			BetterCheats::Panels::Power::Initialize();
@@ -361,6 +371,8 @@ extern "C" {
 			BetterCheats::Panels::Weapons::Shutdown();
 		if (BetterCheats::Features::Wave.On())
 			BetterCheats::Panels::Wave::Shutdown();
+		if (BetterCheats::Features::WindMute.On())
+			BetterCheats::Panels::Wind::Shutdown();
 		if (BetterCheats::Features::Corporations.On())
 			BetterCheats::Panels::Corporations::Shutdown();
 		if (BetterCheats::Features::Enemies.On())

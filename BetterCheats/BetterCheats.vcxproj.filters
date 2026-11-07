@@ -138,6 +138,9 @@
     <ClInclude Include="world_wave.h">
       <Filter>Cheats\World</Filter>
     </ClInclude>
+    <ClInclude Include="world_wind.h">
+      <Filter>Cheats\Misc</Filter>
+    </ClInclude>
     <ClInclude Include="world_corporations.h">
       <Filter>Cheats\World</Filter>
     </ClInclude>
@@ -261,6 +264,9 @@
     </ClCompile>
     <ClCompile Include="world_wave.cpp">
       <Filter>Cheats\World</Filter>
+    </ClCompile>
+    <ClCompile Include="world_wind.cpp">
+      <Filter>Cheats\Misc</Filter>
     </ClCompile>
     <ClCompile Include="world_corporations.cpp">
       <Filter>Cheats\World</Filter>
