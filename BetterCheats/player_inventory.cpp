@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -208,41 +209,6 @@ namespace BetterCheats::Panels::Inventory
 		float g_baseSlotWidth  = 0.0f;
 		float g_baseSlotHeight = 0.0f;
 
-		// WBP_InventorySlot_C::SetSlotSize's parameter buffer. Only InSize is a
-		// parameter; the rest are the Blueprint graph's locals, which the SDK dump
-		// lists after it. ProcessEvent keeps its own frame for those and copies only
-		// ParmsSize bytes in from and back out to this buffer, so the buffer has to
-		// be at least ParmsSize long, no more.
-		struct SetSlotSizeParams
-		{
-			SDK::FVector2D InSize;
-			double         BreakVector2D_X;
-			double         BreakVector2D_Y;
-			float          WidthOverrideCast;
-			float          HeightOverrideCast;
-		};
-		static_assert(sizeof(SetSlotSizeParams) == 0x28,
-			"WBP_InventorySlot_C::SetSlotSize parameter block changed");
-
-		// UFunction::NumParms (uint8) and ParmsSize (uint16), the parameter count and
-		// the byte size of the parameter block ProcessEvent marshals. The SDK pads
-		// them (Pad_B4); they sit at 0xB4 and 0xB6, after FunctionFlags. An engine
-		// layout, not a game one.
-		constexpr size_t kUFunctionNumParmsOffset  = 0xB4;
-		constexpr size_t kUFunctionParmsSizeOffset = 0xB6;
-		static_assert(offsetof(SDK::UFunction, Pad_B4) == kUFunctionNumParmsOffset,
-			"UFunction layout changed: re-check kUFunctionNumParmsOffset and kUFunctionParmsSizeOffset");
-
-		uint8_t NumParmsOf(const SDK::UFunction* function)
-		{
-			return *(reinterpret_cast<const uint8_t*>(function) + kUFunctionNumParmsOffset);
-		}
-
-		uint16_t ParmsSizeOf(const SDK::UFunction* function)
-		{
-			return *reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(function) + kUFunctionParmsSizeOffset);
-		}
-
 		// Prefer the widget's own resize entry point: it drives the SizeBox the
 		// same way we would, and whatever else the Blueprint does to keep the
 		// slot's insides in proportion comes along with it. The direct SizeBox
@@ -254,6 +220,8 @@ namespace BetterCheats::Panels::Inventory
 		// ObjectRef, looked up again once it's gone.
 		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height)
 		{
+			if (!BetterCheats::Features::InventorySlotSize.On()) return;
+
 			static ObjectRef<SDK::UFunction> s_function;
 
 			SDK::UFunction* function = s_function.Get();
@@ -265,26 +233,30 @@ namespace BetterCheats::Panels::Inventory
 				s_function.Set(function);
 			}
 
-			// ProcessEvent copies ParmsSize bytes in from and back out to the buffer, so it
-			// has to hold them, and the function has to take just the one parameter we fill.
-			// A build that changed the parameter list would otherwise get a buffer that
-			// does not match it.
-			if (NumParmsOf(function) != 1 || ParmsSizeOf(function) > sizeof(SetSlotSizeParams))
+			// The parameter block is sized and laid out from what the running game reflects
+			// (ProcessEvent copies ParmsSize bytes in from and back out to it). InSize has to
+			// be the only parameter, which is when the block ends where InSize does, and has to
+			// be the FVector2D this plugin writes. A build that changed the parameter list
+			// skips the call.
+			const PluginFieldSpec& inSize = BetterCheats::Fields::WBP_InventorySlot_SetSlotSize_InSize;
+			PluginMap::ParamsBlock block = PluginMap::ParamsBlockOf(BetterCheats::Fields::WBP_InventorySlot_SetSlotSize, { &inSize });
+			if (!block) return;
+			if (block.Size() != static_cast<uint32_t>(inSize.offset) + inSize.resolvedSize || inSize.resolvedSize != sizeof(SDK::FVector2D))
 			{
 				static bool s_logged = false;
 				if (!s_logged)
 				{
 					s_logged = true;
-					LOG_WARN("Inventory: SetSlotSize takes %u parameter(s) in 0x%X bytes, not 1 in at most 0x%zX - skipping the call.",
-						NumParmsOf(function), ParmsSizeOf(function), sizeof(SetSlotSizeParams));
+					LOG_WARN("Inventory: SetSlotSize takes 0x%X bytes with InSize at 0x%X (0x%X bytes), not just a FVector2D - skipping the call.",
+						block.Size(), static_cast<uint32_t>(inSize.offset), inSize.resolvedSize);
 				}
 				return;
 			}
 
-			SetSlotSizeParams params{};
-			params.InSize = SDK::FVector2D(static_cast<double>(width), static_cast<double>(height));
+			const SDK::FVector2D size(static_cast<double>(width), static_cast<double>(height));
+			std::memcpy(block.Param("InSize"), &size, sizeof(size));
 
-			slot->ProcessEvent(function, &params);
+			PluginMap::Call(slot, function, block);
 		}
 
 		// Returns the scale actually in force, or 0 when there was nothing to
@@ -1992,6 +1964,9 @@ namespace BetterCheats::Panels::Inventory
 	void Tick(float deltaSeconds)
 	{
 		BetterCheats::RecordGameThread();
+
+		// The widget class may load after the plugin does; asks the loader again until it has.
+		BetterCheats::Features::ResolveSlotSizeLate();
 
 		ApplyPendingResize();
 		RescaleBuiltContainers();

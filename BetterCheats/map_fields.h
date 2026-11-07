@@ -6,6 +6,7 @@
 #include "AuItems_classes.hpp"
 #include "AuActorPlacement_classes.hpp"
 #include "WBP_InventorySlot_classes.hpp"
+#include "WBP_InventorySlot_parameters.hpp"
 #include "plugin_map.h"
 #include "Engine_classes.hpp"
 #include "MassAIPrototypeEnemyRuntime_classes.hpp"
@@ -350,6 +351,12 @@ namespace BetterCheats::Fields
 	// reflects it.
 	inline auto CrElectricityParameters_Size = SR_SIZE(FCrElectricityParameters);
 
+	// WBP_InventorySlot_C::SetSlotSize's parameter block: its size and where InSize sits in it, as the
+	// running build reflects them (PluginMap::ParamsBlockOf). A Blueprint function: its widget class is
+	// loaded with the inventory screen, so these resolve after the plugin loads (Features::ResolveSlotSizeLate).
+	inline auto WBP_InventorySlot_SetSlotSize        = SR_PARAMS_SIZE(WBP_InventorySlot_C, SetSlotSize);
+	inline auto WBP_InventorySlot_SetSlotSize_InSize = SR_PARAM(WBP_InventorySlot_C, SetSlotSize, InSize);
+
 	// The member's value, or a default when the object is null or the member did not resolve.
 	using PluginMap::ValueOr;
 
@@ -604,6 +611,12 @@ namespace BetterCheats::Features
 		Fields::AuItemDataBase_ItemName.key
 	} };
 
+	// Only the call into the widget's own SetSlotSize reads these, so a miss turns off that call and nothing
+	// else: the slots are still resized by the direct SizeBox writes. Off until the widget class is loaded.
+	inline PluginMap::Feature InventorySlotSize{ "inventory-slot-size", "Inventory slot sizing through the widget", {
+		Fields::WBP_InventorySlot_SetSlotSize.key, Fields::WBP_InventorySlot_SetSlotSize_InSize.key
+	} };
+
 	inline PluginMap::Feature Items{ "item-spawner", "Item spawner", {
 		"UAuItemsComponent::AddNewItem", Fields::CrCharacterPlayerBase_InventoryComponent.key,
 		Fields::AuItemDataBase_MaxStack.key, Fields::AuItemDataBase_ItemIcon.key,
@@ -674,8 +687,33 @@ namespace BetterCheats::Features
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
-			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, Items, Skills,
+			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
 			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName);
+	}
+
+	// The loader's scanner and this plugin's handle, kept past OnPluginLoadHooks for
+	// ResolveSlotSizeLate. Interfaces of the loader, not game objects.
+	inline IPluginHookScanner* g_slotSizeScanner = nullptr;
+	inline const IPluginSelf*  g_slotSizeSelf    = nullptr;
+
+	// Asks for the SetSlotSize rows in OnPluginLoadHooks. False is normal there: the widget
+	// class is not loaded yet, and the loader has switched InventorySlotSize off for now.
+	inline void ResolveSlotSize(IPluginSelf* self, IPluginHookScanner* scanner)
+	{
+		g_slotSizeScanner = scanner;
+		g_slotSizeSelf    = self;
+		PluginMap::ResolveFields(scanner, self, Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize);
+	}
+
+	// Asks again while InventorySlotSize is off. Game thread only; the loader rate-limits
+	// the look at the game's objects, and what it finds holds for the process.
+	inline void ResolveSlotSizeLate()
+	{
+		if (InventorySlotSize.On() || !g_slotSizeScanner || !g_slotSizeSelf)
+			return;
+		if (PluginMap::ResolveLateFields(g_slotSizeScanner, g_slotSizeSelf,
+				Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize))
+			InventorySlotSize.on = true;
 	}
 
 	// What an off feature shows in place of its menu page.
