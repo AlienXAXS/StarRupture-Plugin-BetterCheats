@@ -19,6 +19,11 @@
 
 #define BC_FIELD(Class, Member) SR_FIELD(decltype(SDK::Class::Member), Class, Member, 0)
 
+// A game struct held as a single member: the same typed In(object), but the member
+// may be any size the game reflects (SR_FIELD_ANY_SIZE). Only for a member whose
+// size nothing reads: the code takes the pointer and reads members through their own rows.
+#define BC_FIELD_ANY_SIZE(Class, Member) PluginField<decltype(SDK::Class::Member)>{ SR_FIELD_ANY_SIZE(Class, Member, 0) }
+
 // A member the SDK dumps as padding, so it has no name or offset to compile in:
 // the loader's map holds it under this key, and Offset is the row for the build
 // this plugin was compiled against.
@@ -278,14 +283,14 @@ namespace BetterCheats::Fields
 	inline auto AuAddedItem_Amount = BC_FIELD(FAuAddedItem, Amount);
 
 	// UCrElectricityTrait
-	inline auto CrElectricityTrait_Parameters = BC_FIELD(UCrElectricityTrait, Parameters);
+	inline auto CrElectricityTrait_Parameters = BC_FIELD_ANY_SIZE(UCrElectricityTrait, Parameters);
 
 	// FCrElectricityParameters
 	inline auto CrElectricityParameters_ElectricityValue = BC_FIELD(FCrElectricityParameters, ElectricityValue);
 	inline auto CrElectricityParameters_Type = BC_FIELD(FCrElectricityParameters, Type);
 
 	// UAuActorPlacementData
-	inline auto AuActorPlacementData_EntityType = BC_FIELD(UAuActorPlacementData, EntityType);
+	inline auto AuActorPlacementData_EntityType = BC_FIELD_ANY_SIZE(UAuActorPlacementData, EntityType);
 	inline auto AuActorPlacementData_BuildingID = BC_FIELD(UAuActorPlacementData, BuildingID);
 
 	// FAuAPMassSpawnedEntityType
@@ -340,9 +345,10 @@ namespace BetterCheats::Fields
 	inline auto AuAddedItem_Size             = SR_SIZE(FAuAddedItem);
 	inline auto CrSkillData_Size             = SR_SIZE(FCrSkillData);
 
-	// A struct the plugin copies by value; it fails the plugin when the running build's
-	// size differs from the one compiled in.
-	inline auto CrElectricityParameters_Size = SR_SIZE_CHECK(FCrElectricityParameters);
+	// A struct the plugin saves whole before an edit and hands back to the game: the size
+	// of the buffer that holds the copy (PluginMap::StructBuffer), as the running build
+	// reflects it.
+	inline auto CrElectricityParameters_Size = SR_SIZE(FCrElectricityParameters);
 
 	// The member's value, or a default when the object is null or the member did not resolve.
 	using PluginMap::ValueOr;
