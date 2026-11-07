@@ -25,11 +25,12 @@ namespace BetterCheats::Panels::Wind
 			"S_Wind1_Loop", "S_Wind2_Loop", "S_Wind3_Loop", "S_WindMountain1_Loop",
 			"S_WindWave_Loop", "S_Wind_2d_loop_01_sweetener"
 		};
-		constexpr const char* kAmbiencePath = "/Game/Chimera/Audio/Ambience/";
 
-		// A full pass over GObjects, so it runs when the menu opens and then on a
-		// slow interval, not every frame.
-		constexpr float kRescanSeconds = 3.0f;
+		// A full pass over GObjects, so it runs when the menu opens and then on an
+		// interval, not every frame. Short enough that a loop the game starts while the
+		// menu is up is silenced within a second; components are caught whether or not
+		// they are playing yet, so only one created and gone inside the interval slips by.
+		constexpr float kRescanSeconds = 1.0f;
 
 		// How long a closed answer must hold before the volumes go back. The pause
 		// flag lags a frame and may blink while the menu moves between screens.
@@ -58,21 +59,20 @@ namespace BetterCheats::Panels::Wind
 		ObjectRef<SDK::ACrPlayerControllerBase>  g_controller;
 		float                                    g_controllerRetry = 0.0f;
 
+		// By asset name alone: the SDK's GetName() on a package returns only its last
+		// path segment, so a full-name test for the Ambience folder never matches. The
+		// zipline and wind turbine sounds also carry "Wind" but are not listed.
 		bool IsWindSound(const SDK::UObject* sound)
 		{
 			if (!sound)
 				return false;
 			const std::string name = sound->GetName();
-			bool named = false;
 			for (const char* wind : kWindSounds)
 			{
 				if (name == wind)
-				{
-					named = true;
-					break;
-				}
+					return true;
 			}
-			return named && sound->GetFullName().find(kAmbiencePath) != std::string::npos;
+			return false;
 		}
 
 		// Dev diagnostic: one line per playing audio component, logged when the pause
