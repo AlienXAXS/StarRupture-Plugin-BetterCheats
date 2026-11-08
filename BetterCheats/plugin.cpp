@@ -3,7 +3,7 @@
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
-#include "preset_store.h"
+#include "ui_widgets.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -32,6 +32,8 @@ static IPluginSelf* g_self = nullptr;
 static bool g_enabled = true;
 
 IPluginSelf* GetSelf() { return g_self; }
+
+PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_INFO("%s", msg); });
 
 // Mirrors BetterDrone's own GetPresetsFilePath (drone_ui.cpp) -- resolves
 // this DLL's own directory (not the working directory, which the loader
@@ -279,7 +281,7 @@ extern "C" {
 		LOG_INFO("Initializing saved presets store...");
 		char presetsPath[MAX_PATH] = {};
 		GetPresetsFilePath(presetsPath, sizeof(presetsPath));
-		BetterCheats::PresetStore::Init(presetsPath);
+		BetterCheats::g_presets.LoadFile(presetsPath);
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);

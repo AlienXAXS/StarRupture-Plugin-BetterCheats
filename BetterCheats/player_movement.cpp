@@ -1023,11 +1023,11 @@ namespace BetterCheats::Panels::Movement
 		}
 
 		// ---------------------------------------------------------------------
-		// Saved presets (PresetStore-backed) -- the player's own tweaks,
+		// Saved presets (PluginPresets-backed) -- the player's own tweaks,
 		// named and kept apart from the built-in kPresets above. One "Movement"
 		// group covers every row, GAS and raw, in kAttrs/kRaws index order
 		// (GetLiveMovementFields/ApplyMovementFields must stay in that same
-		// order -- PresetStore::Load matches by key, not position, but both
+		// order -- PluginPresets::Store::Get matches by key, not position, but both
 		// sides building the same array shape keeps this simple).
 		// ---------------------------------------------------------------------
 
@@ -1036,7 +1036,7 @@ namespace BetterCheats::Panels::Movement
 
 		// kAttrs[kAttrSprintSpeed].key and kRaws[kRawSprintSpeed].key are both
 		// the bare string "sprintSpeed" (the GAS multiplier and the raw
-		// movement-component speed happen to share a name) -- PresetStore
+		// movement-component speed happen to share a name) -- PluginPresets
 		// keys fields by string, so two Field entries with the same key would
 		// make Load() resolve both to whichever one appears first in the
 		// stored preset, silently overwriting the other on every load. Only
@@ -1047,7 +1047,7 @@ namespace BetterCheats::Panels::Movement
 			return (r == kRawSprintSpeed) ? "sprintSpeedRaw" : kRaws[r].key;
 		}
 
-		void GetLiveMovementFields(BetterCheats::PresetStore::Field* out)
+		void GetLiveMovementFields(PluginPresets::Field* out)
 		{
 			for (int a = 0; a < kAttrCount; ++a)
 				out[a] = { kAttrs[a].key, g_attrValues[a].load() };
@@ -1055,7 +1055,7 @@ namespace BetterCheats::Panels::Movement
 				out[kAttrCount + r] = { MovementRawPresetKey(r), g_rawValues[r].load() };
 		}
 
-		void ApplyMovementFields(const BetterCheats::PresetStore::Field* fields, int count)
+		void ApplyMovementFields(const PluginPresets::Field* fields, int count)
 		{
 			for (int a = 0; a < kAttrCount && a < count; ++a)
 			{
@@ -1122,7 +1122,7 @@ namespace BetterCheats::Panels::Movement
 			snprintf(out, cap, "Custom");
 		}
 
-		BetterCheats::UI::SavedPresetRowState s_movementPresetRow;
+		PluginPresets::RowState s_movementPresetRow;
 
 		// One row: label (dimmed at default, + optional disclosure arrow/indent) +
 		// live-values readout + joined slider/box + drawn reset button -- see
@@ -1756,8 +1756,8 @@ namespace BetterCheats::Panels::Movement
 
 		imgui->Spacing();
 		{
-			BetterCheats::PresetStore::Field fields[kMovementFieldCount];
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "movement_saved_presets", kMovementPresetGroup,
+			PluginPresets::Field fields[kMovementFieldCount];
+			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "movement_saved_presets", kMovementPresetGroup,
 				fields, kMovementFieldCount,
 				&GetLiveMovementFields, &ApplyMovementFields,
 				&IsBuiltinMovementName, &ComputeMovementSuggestedBase, s_movementPresetRow);

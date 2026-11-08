@@ -2,7 +2,7 @@
 
 #include "plugin_interface.h"
 #include "attribute_compose.h"
-#include "preset_store.h"
+#include "plugin_presets.h"
 
 #include <algorithm>
 #include <cmath>
@@ -522,165 +522,10 @@ namespace BetterCheats::UI
 
 		return result;
 	}
+}
 
-	// ---------------------------------------------------------------------
-	// Saved presets row -- a dropdown of a PresetStore group's saved
-	// presets plus Save/Rename/Delete, alongside (never replacing) a panel's
-	// own built-in preset buttons. Save never prompts: it computes a
-	// suggested name itself and selects the result, staying one click.
-	//
-	// Ported from BetterDrone's RenderSavedPresetsRow (drone_ui.cpp), which
-	// used plain C function pointers for its four callbacks -- generalized
-	// here to a template taking arbitrary callables, since a caller like the
-	// Weapons tab needs to capture per-instance context (which weapon
-	// type's own built-in preset list applies) that a bare function pointer
-	// can't carry.
-	// ---------------------------------------------------------------------
-
-	// Persists across frames per preset group: which saved preset is
-	// selected, plus in-progress rename/delete/error UI state. One instance
-	// per group the caller manages (Movement's own, one per weapon tab).
-	struct SavedPresetRowState
-	{
-		char selected[BetterCheats::PresetStore::kMaxNameLen] = {};
-		bool renaming = false;
-		char renameBuf[BetterCheats::PresetStore::kMaxNameLen] = {};
-		char errorMsg[96] = {};
-	};
-
-	template <typename GetLiveFields, typename ApplyFields, typename IsBuiltinName, typename ComputeSuggestedBase>
-	inline void RenderSavedPresetsRow(IModLoaderImGui* imgui, const char* idScope, const char* group,
-		BetterCheats::PresetStore::Field* fields, int fieldCount,
-		GetLiveFields getLive, ApplyFields apply, IsBuiltinName isBuiltin, ComputeSuggestedBase computeSuggest,
-		SavedPresetRowState& state)
-	{
-		imgui->PushIDStr(idScope);
-
-		char names[16][BetterCheats::PresetStore::kMaxNameLen];
-		const int count = BetterCheats::PresetStore::ListNames(group, names, 16);
-
-		bool selectedStillValid = false;
-		for (int i = 0; i < count; ++i)
-			if (strcmp(names[i], state.selected) == 0)
-				selectedStillValid = true;
-		if (!selectedStillValid)
-			state.selected[0] = '\0';
-
-		imgui->AlignTextToFramePadding();
-		imgui->Text("Saved Presets");
-		imgui->SameLine(0.0f, -1.0f);
-
-		imgui->SetNextItemWidth(220.0f);
-		const char* preview = state.selected[0] ? state.selected : "(none saved)";
-		if (imgui->BeginCombo("##saved", preview))
-		{
-			for (int i = 0; i < count; ++i)
-			{
-				const bool isSelected = (strcmp(names[i], state.selected) == 0);
-				if (imgui->Selectable(names[i], isSelected))
-				{
-					snprintf(state.selected, sizeof(state.selected), "%s", names[i]);
-					getLive(fields); // seed so a key missing from this preset stays unchanged
-					if (BetterCheats::PresetStore::Load(group, state.selected, fields, fieldCount))
-						apply(fields, fieldCount);
-				}
-			}
-			imgui->EndCombo();
-		}
-
-		imgui->SameLine(0.0f, -1.0f);
-		if (imgui->SmallButton("Save"))
-		{
-			char base[BetterCheats::PresetStore::kMaxNameLen];
-			computeSuggest(base, sizeof(base));
-			char suggested[BetterCheats::PresetStore::kMaxNameLen];
-			BetterCheats::PresetStore::SuggestName(group, base, suggested, sizeof(suggested));
-
-			getLive(fields);
-			if (BetterCheats::PresetStore::Save(group, suggested, fields, fieldCount))
-			{
-				snprintf(state.selected, sizeof(state.selected), "%s", suggested);
-				state.errorMsg[0] = '\0';
-			}
-			else
-			{
-				snprintf(state.errorMsg, sizeof(state.errorMsg), "Could not save -- presets file unavailable.");
-			}
-		}
-
-		const bool hasSelection = state.selected[0] != '\0';
-
-		imgui->SameLine(0.0f, -1.0f);
-		imgui->BeginDisabled(!hasSelection);
-		if (imgui->SmallButton("Rename"))
-		{
-			state.renaming = true;
-			snprintf(state.renameBuf, sizeof(state.renameBuf), "%s", state.selected);
-			state.errorMsg[0] = '\0';
-		}
-		imgui->EndDisabled();
-
-		char deletePopupId[80];
-		snprintf(deletePopupId, sizeof(deletePopupId), "Delete preset?##%s", group);
-
-		imgui->SameLine(0.0f, -1.0f);
-		imgui->BeginDisabled(!hasSelection);
-		if (imgui->SmallButton("Delete"))
-			imgui->OpenPopup(deletePopupId, 0);
-		imgui->EndDisabled();
-
-		if (imgui->BeginPopupModal(deletePopupId, nullptr, 0))
-		{
-			imgui->Text("Delete this saved preset?");
-			imgui->TextDisabled(state.selected);
-			imgui->Spacing();
-			if (imgui->SmallButton("Delete##confirm"))
-			{
-				BetterCheats::PresetStore::Delete(group, state.selected);
-				state.selected[0] = '\0';
-				imgui->CloseCurrentPopup();
-			}
-			imgui->SameLine(0.0f, -1.0f);
-			if (imgui->SmallButton("Cancel##delete"))
-				imgui->CloseCurrentPopup();
-			imgui->EndPopup();
-		}
-
-		if (state.renaming)
-		{
-			imgui->SetNextItemWidth(200.0f);
-			imgui->InputText("##rename", state.renameBuf, sizeof(state.renameBuf));
-
-			imgui->SameLine(0.0f, -1.0f);
-			if (imgui->SmallButton("OK##rename"))
-			{
-				if (isBuiltin(state.renameBuf))
-				{
-					snprintf(state.errorMsg, sizeof(state.errorMsg), "\"%s\" is a built-in preset name.", state.renameBuf);
-				}
-				else if (BetterCheats::PresetStore::Rename(group, state.selected, state.renameBuf))
-				{
-					snprintf(state.selected, sizeof(state.selected), "%s", state.renameBuf);
-					state.renaming = false;
-					state.errorMsg[0] = '\0';
-				}
-				else
-				{
-					snprintf(state.errorMsg, sizeof(state.errorMsg), "\"%s\" is already used.", state.renameBuf);
-				}
-			}
-
-			imgui->SameLine(0.0f, -1.0f);
-			if (imgui->SmallButton("Cancel##rename"))
-			{
-				state.renaming = false;
-				state.errorMsg[0] = '\0';
-			}
-		}
-
-		if (state.errorMsg[0])
-			imgui->TextColored(1.0f, 0.4f, 0.4f, 1.0f, state.errorMsg);
-
-		imgui->PopID();
-	}
+namespace BetterCheats
+{
+	// The plugin's one saved-presets store; defined in plugin.cpp.
+	extern PluginPresets::Store g_presets;
 }

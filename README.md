@@ -18,7 +18,7 @@ Most settings are one row: label, live value (what the game uses now; red when i
 
 ### Saved Presets <sup>[✦](#msantoro12)</sup>
 
-Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each weapon tab have a **Saved Presets** row: pick one to load it, **Save** stores the page's settings, **Rename**, **Delete** (asks first).
+Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each weapon tab have a **Saved Presets** row: pick one to load it, **Save** stores the page's settings (with a preset selected it asks "You're saving over <name>. Continue?" first, then overwrites it; with none selected it makes a new one), **Rename**, **Delete** (asks first).
 
 - Save names it `<built-in> Custom` or `Custom`, made unique. Built-in names are reserved.
 - Up to 16 are listed per page.

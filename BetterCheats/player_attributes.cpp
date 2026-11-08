@@ -508,11 +508,11 @@ namespace BetterCheats::Panels::Attributes
 		// is kAttrCount pairs of {locked, value} in AttrId order, then Max
 		// Health's own value -- GetLive/ApplyFields must agree on that order.
 		{
-			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			static PluginPresets::RowState s_presetRow;
 			constexpr int kFieldCount = kAttrCount * 2 + 1;
-			BetterCheats::PresetStore::Field fields[kFieldCount];
+			PluginPresets::Field fields[kFieldCount];
 
-			// Distinct keys per field -- PresetStore::Load matches by exact key
+			// Distinct keys per field -- PluginPresets::Store::Get matches by exact key
 			// string, so "Health" used for both the locked flag and the value
 			// would make Load resolve both slots to whichever stored field it
 			// finds first.
@@ -529,7 +529,7 @@ namespace BetterCheats::Panels::Attributes
 				s_keysBuilt = true;
 			}
 
-			auto getLive = [](BetterCheats::PresetStore::Field* out)
+			auto getLive = [](PluginPresets::Field* out)
 			{
 				for (int i = 0; i < kAttrCount; ++i)
 				{
@@ -538,7 +538,7 @@ namespace BetterCheats::Panels::Attributes
 				}
 				out[kAttrCount * 2] = { "maxHealth", SessionConfig::Get("playerAttributes.maxHealth.value", 0.0f) };
 			};
-			auto applyFields = [](const BetterCheats::PresetStore::Field* f, int count)
+			auto applyFields = [](const PluginPresets::Field* f, int count)
 			{
 				for (int i = 0; i < kAttrCount && (i * 2 + 1) < count; ++i)
 				{
@@ -552,7 +552,7 @@ namespace BetterCheats::Panels::Attributes
 			auto isBuiltin      = [](const char*) { return false; };
 			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
 
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "self_saved_presets", "Self",
+			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "self_saved_presets", "Self",
 				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 		}
 		imgui->Spacing();

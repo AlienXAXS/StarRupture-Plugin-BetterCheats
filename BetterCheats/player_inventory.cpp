@@ -1292,7 +1292,7 @@ namespace BetterCheats::Panels::Inventory
 			// field set would leave an override in place on load just because that
 			// item happened not to be part of the saved preset.
 			{
-				static BetterCheats::UI::SavedPresetRowState s_presetRow;
+				static PluginPresets::RowState s_presetRow;
 
 				std::vector<std::string> categoryKeys(g_stackCategories.size());
 				for (size_t i = 0; i < g_stackCategories.size(); ++i)
@@ -1303,9 +1303,9 @@ namespace BetterCheats::Panels::Inventory
 					itemKeys[i] = "item:" + g_stackItems[i].uniqueName;
 
 				const int fieldCount = 1 + static_cast<int>(g_stackCategories.size()) + static_cast<int>(g_stackItems.size());
-				std::vector<BetterCheats::PresetStore::Field> fields(fieldCount);
+				std::vector<PluginPresets::Field> fields(fieldCount);
 
-				auto getLive = [&](BetterCheats::PresetStore::Field* out)
+				auto getLive = [&](PluginPresets::Field* out)
 				{
 					std::unordered_map<int, int> categoryOverrides;
 					{
@@ -1332,7 +1332,7 @@ namespace BetterCheats::Panels::Inventory
 						out[idx++] = { itemKeys[i].c_str(), it != itemOverrides.end() ? static_cast<float>(it->second) : -1.0f };
 					}
 				};
-				auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+				auto applyFields = [&](const PluginPresets::Field* f, int count)
 				{
 					int idx = 0;
 					if (idx < count)
@@ -1364,7 +1364,7 @@ namespace BetterCheats::Panels::Inventory
 				auto isBuiltin      = [](const char*) { return false; };
 				auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
 
-				BetterCheats::UI::RenderSavedPresetsRow(imgui, "inventory_saved_presets", "Inventory",
+				PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "inventory_saved_presets", "Inventory",
 					fields.data(), fieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 			}
 			imgui->Spacing();

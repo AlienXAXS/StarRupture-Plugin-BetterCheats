@@ -905,21 +905,21 @@ namespace BetterCheats::Panels::Power
 		// each frame rather than a fixed cap; fields are keyed by
 		// "package.asset" (stable across a rescan) rather than table position.
 		{
-			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			static PluginPresets::RowState s_presetRow;
 
 			std::vector<std::string> keyStorage;
 			keyStorage.reserve(g_entries.size());
 			for (const auto& entry : g_entries)
 				keyStorage.push_back(entry.packageName + "." + entry.assetName);
 
-			std::vector<BetterCheats::PresetStore::Field> fields(g_entries.size());
+			std::vector<PluginPresets::Field> fields(g_entries.size());
 
-			auto getLive = [&](BetterCheats::PresetStore::Field* out)
+			auto getLive = [&](PluginPresets::Field* out)
 			{
 				for (size_t i = 0; i < g_entries.size(); ++i)
 					out[i] = { keyStorage[i].c_str(), g_entries[i].value };
 			};
-			auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+			auto applyFields = [&](const PluginPresets::Field* f, int count)
 			{
 				std::vector<ApplyItem> items;
 				items.reserve(g_entries.size());
@@ -933,7 +933,7 @@ namespace BetterCheats::Panels::Power
 			auto isBuiltin      = [](const char*) { return false; };
 			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
 
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "power_saved_presets", "Power",
+			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "power_saved_presets", "Power",
 				fields.data(), static_cast<int>(fields.size()), getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 		}
 		imgui->Spacing();

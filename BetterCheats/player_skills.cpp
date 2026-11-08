@@ -261,19 +261,19 @@ namespace BetterCheats::Panels::Skills
 		// skill ID (not table position), so a load still lands on the right
 		// skill even if the game ever reorders PlayerSkills.
 		{
-			static BetterCheats::UI::SavedPresetRowState s_presetRow;
+			static PluginPresets::RowState s_presetRow;
 			char keyBuf[kMaxSkills][16];
 			for (int i = 0; i < snapshot.count; ++i)
 				snprintf(keyBuf[i], sizeof(keyBuf[i]), "skill_%u", snapshot.skillIds[i]);
 
-			BetterCheats::PresetStore::Field fields[kMaxSkills];
+			PluginPresets::Field fields[kMaxSkills];
 
-			auto getLive = [&](BetterCheats::PresetStore::Field* out)
+			auto getLive = [&](PluginPresets::Field* out)
 			{
 				for (int i = 0; i < snapshot.count; ++i)
 					out[i] = { keyBuf[i], static_cast<float>(snapshot.levels[i]) };
 			};
-			auto applyFields = [&](const BetterCheats::PresetStore::Field* f, int count)
+			auto applyFields = [&](const PluginPresets::Field* f, int count)
 			{
 				for (int i = 0; i < snapshot.count && i < count; ++i)
 					QueueLevelEdit(i, static_cast<int32_t>(f[i].value));
@@ -281,7 +281,7 @@ namespace BetterCheats::Panels::Skills
 			auto isBuiltin      = [](const char*) { return false; };
 			auto computeSuggest = [](char* out, int cap) { snprintf(out, cap, "Custom"); };
 
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "skills_saved_presets", "Skills",
+			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "skills_saved_presets", "Skills",
 				fields, snapshot.count, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 		}
 		imgui->Spacing();

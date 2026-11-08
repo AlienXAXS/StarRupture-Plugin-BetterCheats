@@ -1081,7 +1081,7 @@ namespace BetterCheats::Panels::Weapons
 			// Saved-presets UI state -- selected/renaming/error, one
 			// instance per weapon type so switching tabs doesn't leak one
 			// weapon's in-progress rename into another's.
-			BetterCheats::UI::SavedPresetRowState presetRow;
+			PluginPresets::RowState presetRow;
 		};
 
 		// g_profiles is written from Tick (discovery, ApplySavedConfig) and iterated
@@ -2754,8 +2754,8 @@ namespace BetterCheats::Panels::Weapons
 				imgui->Spacing();
 				{
 					constexpr int kGrenadePresetFieldCount = kGrenadeRowCount + 1; // + infiniteCharges
-					BetterCheats::PresetStore::Field presetFields[kGrenadePresetFieldCount];
-					// PresetStore group ids must never contain ':' themselves --
+					PluginPresets::Field presetFields[kGrenadePresetFieldCount];
+					// PluginPresets group ids must never contain ':' themselves --
 					// the store's own file format uses "[group:name]", splitting
 					// on the FIRST ':' when it re-parses the file (see
 					// preset_store.h). "Weapon:" + key put a second colon inside
@@ -2767,13 +2767,13 @@ namespace BetterCheats::Panels::Weapons
 					// delimiter.
 					const std::string presetGroup = std::string("Weapon.") + profile.key;
 
-					auto getLive = [&profile](BetterCheats::PresetStore::Field* out)
+					auto getLive = [&profile](PluginPresets::Field* out)
 					{
 						for (int g = 0; g < kGrenadeRowCount; ++g)
 							out[g] = { kGrenadeRows[g].key, profile.grenadeValues[g] };
 						out[kGrenadeRowCount] = { "infiniteCharges", profile.infiniteCharges ? 1.0f : 0.0f };
 					};
-					auto applyFields = [&profile](const BetterCheats::PresetStore::Field* f, int count)
+					auto applyFields = [&profile](const PluginPresets::Field* f, int count)
 					{
 						for (int g = 0; g < kGrenadeRowCount && g < count; ++g)
 						{
@@ -2834,7 +2834,7 @@ namespace BetterCheats::Panels::Weapons
 						snprintf(out, cap, "Custom");
 					};
 
-					BetterCheats::UI::RenderSavedPresetsRow(imgui, "grenade_saved_presets", presetGroup.c_str(),
+					PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "grenade_saved_presets", presetGroup.c_str(),
 						presetFields, kGrenadePresetFieldCount,
 						getLive, applyFields, isBuiltin, computeSuggest, profile.presetRow);
 				}
@@ -3062,20 +3062,20 @@ namespace BetterCheats::Panels::Weapons
 			imgui->Spacing();
 			{
 				constexpr int kWeaponPresetFieldCount = kAttrCount + 2; // + oneHitKill + infiniteMagazine
-				BetterCheats::PresetStore::Field presetFields[kWeaponPresetFieldCount];
+				PluginPresets::Field presetFields[kWeaponPresetFieldCount];
 				// See the grenade tab's identical comment above: group ids must
 				// never contain ':' (the store's own "[group:name]" delimiter),
 				// so this is "Weapon." not "Weapon:".
 				const std::string presetGroup = std::string("Weapon.") + profile.key;
 
-				auto getLive = [&profile](BetterCheats::PresetStore::Field* out)
+				auto getLive = [&profile](PluginPresets::Field* out)
 				{
 					for (int a = 0; a < kAttrCount; ++a)
 						out[a] = { kAttrs[a].key, profile.values[a] };
 					out[kAttrCount]     = { "oneHitKill",       profile.oneHitKill       ? 1.0f : 0.0f };
 					out[kAttrCount + 1] = { "infiniteMagazine", profile.infiniteMagazine ? 1.0f : 0.0f };
 				};
-				auto applyFields = [&profile](const BetterCheats::PresetStore::Field* f, int count)
+				auto applyFields = [&profile](const PluginPresets::Field* f, int count)
 				{
 					for (int a = 0; a < kAttrCount && a < count; ++a)
 					{
@@ -3151,7 +3151,7 @@ namespace BetterCheats::Panels::Weapons
 					snprintf(out, cap, "Custom");
 				};
 
-				BetterCheats::UI::RenderSavedPresetsRow(imgui, "weapon_saved_presets", presetGroup.c_str(),
+				PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "weapon_saved_presets", presetGroup.c_str(),
 					presetFields, kWeaponPresetFieldCount,
 					getLive, applyFields, isBuiltin, computeSuggest, profile.presetRow);
 			}
