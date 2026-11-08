@@ -1742,7 +1742,10 @@ namespace BetterCheats::Panels::Movement
 
 			imgui->SameLine(0.0f, -1.0f);
 			if (imgui->SmallButton(preset.label))
+			{
 				ApplyPreset(preset);
+				s_movementPresetRow.ClearSelection();
+			}
 			if (imgui->IsItemHovered())
 			{
 				char tip[512];

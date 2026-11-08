@@ -2737,6 +2737,7 @@ namespace BetterCheats::Panels::Weapons
 							SessionConfig::Set(ConfigKey(profile, kGrenadeRows[v.row].key, "value"), v.value);
 						}
 						LOG_INFO("Weapons: applied grenade preset '%s' to '%s'", preset.label, profile.display.c_str());
+						profile.presetRow.ClearSelection();
 					}
 					if (imgui->IsItemHovered())
 					{
@@ -3044,6 +3045,7 @@ namespace BetterCheats::Panels::Weapons
 						SessionConfig::Set(ConfigKey(profile, kAttrs[v.attr].key, "value"), v.value);
 					}
 					LOG_INFO("Weapons: applied preset '%s' to '%s'", preset.label, profile.display.c_str());
+					profile.presetRow.ClearSelection();
 				}
 				if (imgui->IsItemHovered())
 				{

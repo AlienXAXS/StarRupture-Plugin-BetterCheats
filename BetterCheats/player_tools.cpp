@@ -553,6 +553,8 @@ namespace BetterCheats::Panels::Tools
 			SessionConfig::Set(ValueKey(s), value);
 		}
 
+		PluginPresets::RowState s_presetRow;
+
 		void RenderPresetButtons(IModLoaderImGui* imgui)
 		{
 			imgui->TextDisabled("Presets:");
@@ -573,6 +575,7 @@ namespace BetterCheats::Panels::Tools
 						SetStat(v.stat, v.value);
 					}
 					LOG_INFO("Tools: applied preset '%s'", preset.label);
+					s_presetRow.ClearSelection();
 				}
 				if (imgui->IsItemHovered())
 				{
@@ -588,7 +591,6 @@ namespace BetterCheats::Panels::Tools
 
 		void RenderSavedPresets(IModLoaderImGui* imgui)
 		{
-			static PluginPresets::RowState s_presetRow;
 			constexpr int kFieldCount = kStatCount + 3;   // + One Hit Kill Laser, No Overheat, Mining Boost
 			PluginPresets::Field fields[kFieldCount];
 

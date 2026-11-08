@@ -21,6 +21,7 @@ Most settings are one row: label, live value (what the game uses now; red when i
 Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each weapon tab have a **Saved Presets** row: pick one to load it, **Save** stores the page's settings (with a preset selected it asks "You're saving over <name>. Continue?" first, then overwrites it; with none selected it makes a new one), **Rename**, **Delete** (asks first).
 
 - Save names it `<built-in> Custom` or `Custom`, made unique. Built-in names are reserved.
+- Pick **(none)** at the top of the list to clear the selection. Applying a built-in preset clears it too, so the next Save makes a new preset.
 - Up to 16 are listed per page.
 - Stored in `Plugins\config\BetterCheats-Presets.ini`, shared by every save.
 
