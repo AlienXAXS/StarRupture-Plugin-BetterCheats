@@ -1,5 +1,6 @@
 - Applying a built-in preset clears the Saved Presets selection, and the list has a (none) choice, so the next Save makes a new preset
 - Saving a Saved Preset while one is selected now asks "You're saving over <name>. Continue?" and overwrites it; with none selected, Save still makes a new preset
+- On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away
 - Build cost, stability and inventory size work on every game build the loader knows
 - Cancelling a wave now resets the timer to the longest wait between waves seen in the current world; just after loading a save it can be shorter than the full wait
 - BetterCheats keeps loading after a game update that hides the save's session name; its per-save settings are then neither saved nor restored until the loader learns the new build

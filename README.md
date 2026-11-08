@@ -22,6 +22,7 @@ Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each
 
 - Save names it `<built-in> Custom` or `Custom`, made unique. Built-in names are reserved.
 - Pick **(none)** at the top of the list to clear the selection. Applying a built-in preset clears it too, so the next Save makes a new preset.
+- On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away.
 - Up to 16 are listed per page.
 - Stored in `Plugins\config\BetterCheats-Presets.ini`, shared by every save.
 
