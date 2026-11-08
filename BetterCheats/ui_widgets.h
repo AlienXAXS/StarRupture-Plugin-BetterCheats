@@ -524,8 +524,3 @@ namespace BetterCheats::UI
 	}
 }
 
-namespace BetterCheats
-{
-	// The plugin's one saved-presets store; defined in plugin.cpp.
-	extern PluginPresets::Store g_presets;
-}

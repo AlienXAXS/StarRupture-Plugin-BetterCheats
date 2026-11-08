@@ -2758,7 +2758,7 @@ namespace BetterCheats::Panels::Weapons
 					// PluginPresets group ids must never contain ':' themselves --
 					// the store's own file format uses "[group:name]", splitting
 					// on the FIRST ':' when it re-parses the file (see
-					// preset_store.h). "Weapon:" + key put a second colon inside
+					// plugin_presets.h). "Weapon:" + key put a second colon inside
 					// the group id, which only broke once the file got re-read
 					// from disk (a restart, or the loader's RELOAD button) --
 					// same-session save/load/rename never re-parses, so it looked

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin_interface.h"
+#include "plugin_presets.h"
 
 // Gates the developer-only cheat panel. Set by the "Client Debug" configuration
 // (which defines _DEBUG); "Client Release" defines NDEBUG and leaves it off, so
@@ -37,3 +38,9 @@ inline IPluginConfig*  GetConfig()  { auto* s = GetSelf(); return s ? s->config 
 #define LOG_INFO(format, ...)  do { if (auto s = GetSelf()) s->logger->Info (s, format, ##__VA_ARGS__); } while (0)
 #define LOG_WARN(format, ...)  do { if (auto s = GetSelf()) s->logger->Warn (s, format, ##__VA_ARGS__); } while (0)
 #define LOG_ERROR(format, ...) do { if (auto s = GetSelf()) s->logger->Error(s, format, ##__VA_ARGS__); } while (0)
+
+namespace BetterCheats
+{
+	// The plugin's one saved-presets store; defined in plugin.cpp.
+	extern PluginPresets::Store g_presets;
+}

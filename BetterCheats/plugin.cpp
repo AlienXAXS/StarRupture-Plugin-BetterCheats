@@ -3,7 +3,6 @@
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
-#include "ui_widgets.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -33,7 +32,7 @@ static bool g_enabled = true;
 
 IPluginSelf* GetSelf() { return g_self; }
 
-PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_INFO("%s", msg); });
+PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_WARN("%s", msg); });
 
 // Mirrors BetterDrone's own GetPresetsFilePath (drone_ui.cpp) -- resolves
 // this DLL's own directory (not the working directory, which the loader
