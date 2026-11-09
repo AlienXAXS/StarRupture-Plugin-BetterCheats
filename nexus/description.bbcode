@@ -8,7 +8,7 @@ Adds a powerful in-game cheat menu with categories covering player abilities, wo
 
 [img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/pause-menu.png[/img]
 
-[b]This mod is being actively developed, not all cheat options are ready. Teleport, Crafters, Rail Drones and Misc are empty placeholders for now.[/b]
+[b]This mod is being actively developed, not all cheat options are ready. Teleport, Crafters and Rail Drones are empty placeholders for now.[/b]
 
 [line]
 
@@ -32,9 +32,10 @@ Available categories include:
 
 [list]
 [*]World — Environment: skip, pause, cancel or restart waves (Cancel and Restart set the countdown to the longest wait between waves seen in the current world), next wave countdown, wave timer on or off. Corporations: set your Data Points.
-[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack. Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
+[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack (icons load as the list shows them, so the game reaches the menu sooner). Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
 [*]Enemies — Disable AI and One-Hit Kill
 [*]Machinery — Power: edit every generator and consumer. Logistic Drones is set in BetterDrone.
+[*]Misc — Audio: [b]Mute wind in the pause menu[/b] (off by default). While the pause menu is open the wind loops are silent, and they come back when it closes. ✦
 [/list]
 
 Many cheats remain active even after closing the menu, allowing continuous effects such as stat locks, power overrides, and world modifications.
@@ -100,7 +101,7 @@ The two "anywhere" options only relax the collision check, for your own placemen
 
 [size=4][b]Saved Presets ✦[/b][/size]
 
-Power, Self, Inventory (Item Stack Sizes), Movement, Skills, Tools and each weapon tab have a Saved Presets row: pick one to load, Save, Rename, Delete. Up to 16 per page, shared by every save.
+Power, Self, Inventory (Item Stack Sizes), Movement, Skills, Tools and each weapon tab have a Saved Presets row: pick one to load, Save, Rename, Delete. Saving with a preset selected asks before it overwrites that preset; with none selected it makes a new one. Pick (none) to clear the selection; applying a built-in preset clears it too, so the next Save makes a new preset. On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away. Up to 16 per page, shared by every save.
 
 [line]
 
@@ -141,6 +142,7 @@ Config file:
 [*]EnableCheatsInMultiplayer — lets the menu open in multiplayer (default: false). Unsupported, may cause crashes
 [*]ToggleKey — key used to open and close the menu (default: F10)
 [*]NoClipKey — key that toggles No Clip without opening the menu (default: F9)
+[*]MuteWindInPauseMenu — silences the wind loops while the pause menu is open (default: false)
 [/list]
 
 Both keys can also be changed through the ModLoader keybind settings, and the No Clip key on the Movement page. Changes apply immediately.

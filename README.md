@@ -12,7 +12,7 @@ Open it with **Esc** → **BETTER CHEATS**, or press **F10**, the shortcut (rebi
 
 <img src="images/pause-menu.png" width="360" alt="The pause menu with the MOD LOADER, BETTER CHEATS and BETTER DRONE rows">
 
-Pages are grouped World, Player, Enemies and Machinery. Teleport, Crafters, Rail Drones and Misc are empty placeholders, and Logistic Drones points to `BetterDrone.ini`.
+Pages are grouped World, Player, Enemies, Machinery and Misc. Teleport, Crafters and Rail Drones are empty placeholders, and Logistic Drones points to `BetterDrone.ini`.
 
 Most settings are one row: label, live value (what the game uses now; red when it differs from your setting; **+buff** tag and a Base / Mods / Ours / Result tooltip), slider, typed box, **-/+** and a reset icon. A value that differs from its default is applied; reset turns it off. Multipliers act on base stats, attachments and buffs still add on top.
 
@@ -60,6 +60,8 @@ Tick **Locked** and an attribute is held at its slider value, even with the menu
 ### Item Spawner
 
 Search the item list (icon, name, stack size), set **Stacks** (1 or more) and press **Give Item**. You get stacks x stack size, shown as `xN (stack S)`. The page says so if the game build doesn't expose what it needs.
+
+Icons load as the list draws them, a few at a time, instead of all at start-up, so the game gets to the menu sooner. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
 
 ### Inventory
 
@@ -179,6 +181,12 @@ In game, a Producers and a Consumers table list every building, each with a numb
 
 ---
 
+## Misc
+
+### Audio <sup>[✦](#msantoro12)</sup>
+
+**Mute wind in the pause menu** (off by default; also on the loader's config page as `Audio/MuteWindInPauseMenu`). While the pause menu is open, the game's looping wind sounds are held at zero volume, and they get their volume back when it closes. Only the wind loops are touched; other sounds play as usual. Wind loops that start while the menu is open are caught within about a second. The option shows as off if a game update changes something it needs.
+
 ## Console
 
 Mod console commands:
@@ -203,6 +211,7 @@ Config is stored in `Plugins\config\BetterCheats.ini` and is generated on first 
 | `General` | `EnableCheatsInMultiplayer` | `false` | `true` or `false` -- lets the menu open in a multiplayer session. Cheats are not supported in multiplayer and may cause crashes |
 | `Menu` | `ToggleKey` | `F10` | Key to open / close the BetterCheats menu |
 | `Keybinds` | `NoClipKey` | `F9` | Key to toggle No Clip on / off without opening the menu |
+| `Audio` | `MuteWindInPauseMenu` | `false` | `true` or `false` -- silences the wind loops while the pause menu is open |
 
 Both keys can be rebound at runtime via the modloader's keybind settings, and the No Clip key from **Player -> Movement**; the change takes effect immediately and is written back to the .ini.
 
