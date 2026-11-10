@@ -63,6 +63,13 @@ namespace BetterCheats::Panels::Items
 		// Item icons load the first time the list draws them, a few per tick.
 		ItemIcons::Loader      g_icons;
 
+		// The rows (positions in g_filteredIndices) that were on screen last frame.
+		// Icons are also asked for a few rows past them, so they are ready by the
+		// time scrolling brings those rows in.
+		constexpr int          kIconMarginRows = 3;
+		int                    g_visibleFirst  = 0;
+		int                    g_visibleLast   = -1;
+
 		std::string IconUniqueNameOf(SDK::UAuItemDataBase* item)
 		{
 			return BetterCheats::Fields::UniqueNameOf(item);
@@ -87,6 +94,8 @@ namespace BetterCheats::Panels::Items
 		void RefreshFilteredItems()
 		{
 			g_filteredIndices.clear();
+			g_visibleFirst = 0;
+			g_visibleLast  = -1;
 
 			const std::string needle = ToLowerAscii(g_searchBuf);
 			for (int i = 0; i < static_cast<int>(g_items.size()); ++i)
@@ -505,9 +514,27 @@ namespace BetterCheats::Panels::Items
 			const float iconSz = 36.0f;
 			const float padX   = 6.0f;
 
-			for (int filteredIndex : g_filteredIndices)
+			int visibleFirst = -1;
+			int visibleLast  = -1;
+
+			for (int pos = 0; pos < static_cast<int>(g_filteredIndices.size()); ++pos)
 			{
+				const int filteredIndex = g_filteredIndices[pos];
 				const ItemEntry& entry = g_items[filteredIndex];
+
+				// The cursor is at the row's top here. IsRectVisible says whether the
+				// list's clip rect shows any of the row; scrolled-off rows ask for no icon.
+				const bool onScreen = imgui->IsRectVisible(1.0f, rowH);
+				if (onScreen)
+				{
+					if (visibleFirst < 0)
+						visibleFirst = pos;
+					visibleLast = pos;
+				}
+				const bool wantIcon = onScreen
+					|| (g_visibleFirst <= g_visibleLast
+						&& pos >= g_visibleFirst - kIconMarginRows
+						&& pos <= g_visibleLast + kIconMarginRows);
 				const bool isSelected  = filteredIndex == g_selectedIndex;
 
 				imgui->PushIDInt(filteredIndex);
@@ -530,10 +557,11 @@ namespace BetterCheats::Panels::Items
 				const float textLineH = imgui->GetTextLineHeight();
 				imgui->SetCursorPosY(rowTopY + (rowH - textLineH * 2.0f) * 0.5f);
 
-				// Icon — loaded on first draw by the shared helper.
+				// Icon — loaded on first draw by the shared helper, only for rows on
+				// screen or just past it.
 				imgui->SetCursorPosX(imgui->GetCursorPosX() + padX);
 				IPluginHooks* texHooks = GetHooks();
-				if (g_icons.Has(entry.uniqueName))
+				if (wantIcon && g_icons.Has(entry.uniqueName))
 					g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
 				else
 				{
@@ -567,6 +595,9 @@ namespace BetterCheats::Panels::Items
 
 				imgui->PopID();
 			}
+
+			g_visibleFirst = visibleFirst < 0 ? 0 : visibleFirst;
+			g_visibleLast  = visibleLast;
 		}
 		imgui->EndChild();
 
