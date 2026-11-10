@@ -1,9 +1,1 @@
-- Mute wind in the pause menu: a new option on the Misc page and the loader's config page, off by default. While the pause menu is open the wind loops are silent, and they come back when it closes
-- The item spawner loads icons a few at a time, only for the rows you can see and a few past them once they stay there for a moment (a fast scroll past rows loads nothing for them), instead of all at start-up or all at once when it opens, so the game reaches the menu sooner and play avoids a burst of texture copies; a row shows an empty slot until its icon is ready
-- Applying a built-in preset clears the Saved Presets selection, and the list has a (none) choice, so the next Save makes a new preset
-- Saving a Saved Preset while one is selected now asks "You're saving over <name>. Continue?" and overwrites it; with none selected, Save still makes a new preset
-- On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away
-- Build cost, stability and inventory size work on every game build the loader knows
-- Cancelling a wave now resets the timer to the longest wait between waves seen in the current world; just after loading a save it can be shorter than the full wait
-- BetterCheats keeps loading after a game update that hides the save's session name; its per-save settings are then neither saved nor restored until the loader learns the new build
-- Build Windows Anywhere and Build Benches Anywhere work on every game build the loader knows; if a game update leaves either unplaced, the loader lists "Place windows and benches anywhere" as off instead of the options silently doing nothing
+- Item spawner icons now load only for the rows you stop on, plus a few around them, a few at a time. Dragging the scrollbar fast no longer starts loading every icon
