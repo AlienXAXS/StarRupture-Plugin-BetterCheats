@@ -67,7 +67,7 @@ namespace BetterCheats::Panels::Items
 		// Icons are also asked for a few rows past them, so they are ready by the
 		// time scrolling brings those rows in.
 		constexpr int          kIconMarginRows = 3;
-		int                    g_visibleFirst  = 0;
+		int                    g_visibleFirst  = -1;
 		int                    g_visibleLast   = -1;
 
 		std::string IconUniqueNameOf(SDK::UAuItemDataBase* item)
@@ -94,7 +94,7 @@ namespace BetterCheats::Panels::Items
 		void RefreshFilteredItems()
 		{
 			g_filteredIndices.clear();
-			g_visibleFirst = 0;
+			g_visibleFirst = -1;
 			g_visibleLast  = -1;
 
 			const std::string needle = ToLowerAscii(g_searchBuf);
@@ -596,7 +596,7 @@ namespace BetterCheats::Panels::Items
 				imgui->PopID();
 			}
 
-			g_visibleFirst = visibleFirst < 0 ? 0 : visibleFirst;
+			g_visibleFirst = visibleFirst;
 			g_visibleLast  = visibleLast;
 		}
 		imgui->EndChild();
