@@ -61,7 +61,7 @@ Tick **Locked** and an attribute is held at its slider value, even with the menu
 
 Search the item list (icon, name, stack size), set **Stacks** (1 or more) and press **Give Item**. You get stacks x stack size, shown as `xN (stack S)`. The page says so if the game build doesn't expose what it needs.
 
-Icons load for the rows you can see, plus a few past them, as you scroll, a few at a time. This replaces loading all of them at start-up or all at once when the list opens, so the game gets to the menu sooner. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
+Icons load for the rows you can see, plus a few past them, once a row has stayed there for a moment (rows a fast scroll sweeps past load nothing), a few at a time. This replaces loading all of them at start-up or all at once when the list opens, so the game gets to the menu sooner. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
 
 ### Inventory
 

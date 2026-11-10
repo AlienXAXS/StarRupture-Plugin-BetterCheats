@@ -3,11 +3,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "aob_resolver.h"
@@ -69,6 +72,15 @@ namespace BetterCheats::Panels::Items
 		constexpr int          kIconMarginRows = 3;
 		int                    g_visibleFirst  = -1;
 		int                    g_visibleLast   = -1;
+
+		// A row asks for its icon only after staying in that range for kIconDwell,
+		// so a fast scrollbar drag queues nothing it sweeps past. g_iconSince: rows
+		// in range still waiting (pruned each frame); g_iconAsked: rows that asked.
+		using IconClock = std::chrono::steady_clock;
+		constexpr std::chrono::milliseconds                    kIconDwell{ 200 };
+		std::unordered_map<std::string, IconClock::time_point> g_iconSince;
+		std::unordered_set<std::string>                        g_iconAsked;
+		IconClock::time_point                                  g_iconFrameAt;
 
 		std::string IconUniqueNameOf(SDK::UAuItemDataBase* item)
 		{
@@ -517,6 +529,13 @@ namespace BetterCheats::Panels::Items
 			int visibleFirst = -1;
 			int visibleLast  = -1;
 
+			// A frame gap over the dwell means the list was not drawn: nothing waits.
+			const IconClock::time_point now = IconClock::now();
+			if (now - g_iconFrameAt > kIconDwell)
+				g_iconSince.clear();
+			g_iconFrameAt = now;
+			std::unordered_map<std::string, IconClock::time_point> iconSince;
+
 			for (int pos = 0; pos < static_cast<int>(g_filteredIndices.size()); ++pos)
 			{
 				const int filteredIndex = g_filteredIndices[pos];
@@ -558,10 +577,21 @@ namespace BetterCheats::Panels::Items
 				imgui->SetCursorPosY(rowTopY + (rowH - textLineH * 2.0f) * 0.5f);
 
 				// Icon — loaded on first draw by the shared helper, only for rows on
-				// screen or just past it.
+				// screen or just past it that have stayed there for kIconDwell.
 				imgui->SetCursorPosX(imgui->GetCursorPosX() + padX);
 				IPluginHooks* texHooks = GetHooks();
-				if (wantIcon && g_icons.Has(entry.uniqueName))
+				bool drawIcon = wantIcon && g_icons.Has(entry.uniqueName);
+				if (drawIcon && !g_iconAsked.count(entry.uniqueName))
+				{
+					const auto seen  = g_iconSince.find(entry.uniqueName);
+					const auto since = seen != g_iconSince.end() ? seen->second : now;
+					drawIcon = now - since >= kIconDwell;
+					if (drawIcon)
+						g_iconAsked.insert(entry.uniqueName);
+					else
+						iconSince.emplace(entry.uniqueName, since);
+				}
+				if (drawIcon)
 					g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
 				else
 				{
@@ -598,6 +628,7 @@ namespace BetterCheats::Panels::Items
 
 			g_visibleFirst = visibleFirst;
 			g_visibleLast  = visibleLast;
+			g_iconSince.swap(iconSince);
 		}
 		imgui->EndChild();
 
