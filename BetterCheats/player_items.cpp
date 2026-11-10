@@ -78,6 +78,7 @@ namespace BetterCheats::Panels::Items
 		// in range still waiting (pruned each frame); g_iconAsked: rows that asked.
 		using IconClock = std::chrono::steady_clock;
 		constexpr std::chrono::milliseconds                    kIconDwell{ 200 };
+		constexpr std::chrono::milliseconds                    kIconFrameGap{ 400 };
 		std::unordered_map<std::string, IconClock::time_point> g_iconSince;
 		std::unordered_set<std::string>                        g_iconAsked;
 		IconClock::time_point                                  g_iconFrameAt;
@@ -529,9 +530,9 @@ namespace BetterCheats::Panels::Items
 			int visibleFirst = -1;
 			int visibleLast  = -1;
 
-			// A frame gap over the dwell means the list was not drawn: nothing waits.
+			// A frame gap over kIconFrameGap means the list was not drawn: nothing waits.
 			const IconClock::time_point now = IconClock::now();
-			if (now - g_iconFrameAt > kIconDwell)
+			if (now - g_iconFrameAt > kIconFrameGap)
 				g_iconSince.clear();
 			g_iconFrameAt = now;
 			std::unordered_map<std::string, IconClock::time_point> iconSince;
