@@ -328,6 +328,16 @@ namespace BetterCheats::Fields
 	// ACrWaveTimerActor
 	inline auto CrWaveTimerActor_bPause = BC_FIELD(ACrWaveTimerActor, bPause);
 
+	// UAudioComponent: the pause-menu wind mute reads the sound asset and the volume
+	// the game last set, and writes the volume through SetVolumeMultiplier.
+	inline auto AudioComponent_Sound = BC_FIELD(UAudioComponent, Sound);
+	inline auto AudioComponent_VolumeMultiplier = BC_FIELD(UAudioComponent, VolumeMultiplier);
+
+	// ACrPlayerControllerBase: set while the local player sits in the pause menu or one
+	// of its screens. Found by name on first use and null where a build lacks it; the
+	// wind mute then follows the loader's pause-menu flag alone.
+	inline PluginLazyField<bool> CrPlayerControllerBase_bReplInPauseMenu{ "bReplInPauseMenu" };
+
 	// UAuWeaponItemDataBase (flag)
 	inline auto AuWeaponItemDataBase_bIsUsingDamageFalloff = BC_FIELD(UAuWeaponItemDataBase, bIsUsingDamageFalloff);
 
@@ -493,7 +503,7 @@ namespace BetterCheats::Fields
 			CrPlayerControllerBase_PlayerSkills, CrSkillData_Skill,
 			CrSkillData_Level, CrSkillData_Experience, CrGameStateBase_CorporationsOwner,
 			CrGameStateBase_TechnologyKeeper, CrCorporationsOwner_DataPoints, CrEnviroWaveTimerSubsystem_TimerActor,
-			CrWaveTimerActor_bPause
+			CrWaveTimerActor_bPause, AudioComponent_Sound, AudioComponent_VolumeMultiplier
 		) && all;
 		all = PluginMap::ResolveMassEntityManager(scanner, self) && all;
 		return all;
@@ -508,7 +518,7 @@ namespace BetterCheats::Fields
 // the plugin. The entry points of an off feature (Initialize, Tick, ApplySavedConfig,
 // RenderImGui, Shutdown) return before touching a key, and its menu page says so.
 // The cheat settings live in the in-game menu and the per-session JSON, not on
-// the loader's config page, so no feature lists a config key.
+// the loader's config page, so only the wind mute, a plugin-wide setting, lists a config key.
 namespace BetterCheats::Features
 {
 	inline PluginMap::Feature Stats{ "player-stats", "Health, energy and survival cheats", {
@@ -682,13 +692,17 @@ namespace BetterCheats::Features
 		Fields::CrGameInstance_ServerSessionName.key
 	} };
 
+	inline PluginMap::Feature WindMute{ "wind-mute", "Mute wind in the pause menu", {
+		Fields::AudioComponent_Sound.key, Fields::AudioComponent_VolumeMultiplier.key
+	}, { "Audio.MuteWindInPauseMenu" } };
+
 	// Declares every feature. Call before the resolves, so a miss lands on the
 	// feature, not on the plugin.
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
 			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName);
+			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute);
 	}
 
 	// The loader's scanner and this plugin's handle, kept past OnPluginLoadHooks for

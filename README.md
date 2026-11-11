@@ -12,15 +12,17 @@ Open it with **Esc** → **BETTER CHEATS**, or press **F10**, the shortcut (rebi
 
 <img src="images/pause-menu.png" width="360" alt="The pause menu with the MOD LOADER, BETTER CHEATS and BETTER DRONE rows">
 
-Pages are grouped World, Player, Enemies and Machinery. Teleport, Crafters, Rail Drones and Misc are empty placeholders, and Logistic Drones points to `BetterDrone.ini`.
+Pages are grouped World, Player, Enemies, Machinery and Misc. Teleport, Crafters and Rail Drones are empty placeholders, and Logistic Drones points to `BetterDrone.ini`.
 
 Most settings are one row: label, live value (what the game uses now; red when it differs from your setting; **+buff** tag and a Base / Mods / Ours / Result tooltip), slider, typed box, **-/+** and a reset icon. A value that differs from its default is applied; reset turns it off. Multipliers act on base stats, attachments and buffs still add on top.
 
 ### Saved Presets <sup>[✦](#msantoro12)</sup>
 
-Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each weapon tab have a **Saved Presets** row: pick one to load it, **Save** stores the page's settings, **Rename**, **Delete** (asks first).
+Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each weapon tab have a **Saved Presets** row: pick one to load it, **Save** stores the page's settings (with a preset selected it asks "You're saving over <name>. Continue?" first, then overwrites it; with none selected it makes a new one), **Rename**, **Delete** (asks first).
 
 - Save names it `<built-in> Custom` or `Custom`, made unique. Built-in names are reserved.
+- Pick **(none)** at the top of the list to clear the selection. Applying a built-in preset clears it too, so the next Save makes a new preset.
+- On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away.
 - Up to 16 are listed per page.
 - Stored in `Plugins\config\BetterCheats-Presets.ini`, shared by every save.
 
@@ -58,6 +60,8 @@ Tick **Locked** and an attribute is held at its slider value, even with the menu
 ### Item Spawner
 
 Search the item list (icon, name, stack size), set **Stacks** (1 or more) and press **Give Item**. You get stacks x stack size, shown as `xN (stack S)`. The page says so if the game build doesn't expose what it needs.
+
+Icons load a few at a time, only for the rows you stop on and a few around them. Dragging the scrollbar fast loads nothing until you slow down. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
 
 ### Inventory
 
@@ -177,6 +181,12 @@ In game, a Producers and a Consumers table list every building, each with a numb
 
 ---
 
+## Misc
+
+### Audio <sup>[✦](#msantoro12)</sup>
+
+**Mute wind in the pause menu** (off by default; also on the loader's config page as `Audio/MuteWindInPauseMenu`). While the pause menu is open, the game's looping wind sounds are held at zero volume, and they get their volume back when it closes. Only the wind loops are touched; other sounds play as usual. Wind loops that start while the menu is open are caught within about a second. The option shows as off if a game update changes something it needs.
+
 ## Console
 
 Mod console commands:
@@ -201,6 +211,7 @@ Config is stored in `Plugins\config\BetterCheats.ini` and is generated on first 
 | `General` | `EnableCheatsInMultiplayer` | `false` | `true` or `false` -- lets the menu open in a multiplayer session. Cheats are not supported in multiplayer and may cause crashes |
 | `Menu` | `ToggleKey` | `F10` | Key to open / close the BetterCheats menu |
 | `Keybinds` | `NoClipKey` | `F9` | Key to toggle No Clip on / off without opening the menu |
+| `Audio` | `MuteWindInPauseMenu` | `false` | `true` or `false` -- silences the wind loops while the pause menu is open |
 
 Both keys can be rebound at runtime via the modloader's keybind settings, and the No Clip key from **Player -> Movement**; the change takes effect immediately and is written back to the .ini.
 
@@ -214,7 +225,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.24.0 or later** to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
+> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.24.0 or later** to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
 
 ---
 

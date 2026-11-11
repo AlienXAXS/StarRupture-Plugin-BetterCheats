@@ -553,6 +553,8 @@ namespace BetterCheats::Panels::Tools
 			SessionConfig::Set(ValueKey(s), value);
 		}
 
+		PluginPresets::RowState s_presetRow;
+
 		void RenderPresetButtons(IModLoaderImGui* imgui)
 		{
 			imgui->TextDisabled("Presets:");
@@ -573,6 +575,7 @@ namespace BetterCheats::Panels::Tools
 						SetStat(v.stat, v.value);
 					}
 					LOG_INFO("Tools: applied preset '%s'", preset.label);
+					s_presetRow.ClearSelection();
 				}
 				if (imgui->IsItemHovered())
 				{
@@ -588,11 +591,10 @@ namespace BetterCheats::Panels::Tools
 
 		void RenderSavedPresets(IModLoaderImGui* imgui)
 		{
-			static BetterCheats::UI::SavedPresetRowState s_presetRow;
 			constexpr int kFieldCount = kStatCount + 3;   // + One Hit Kill Laser, No Overheat, Mining Boost
-			BetterCheats::PresetStore::Field fields[kFieldCount];
+			PluginPresets::Field fields[kFieldCount];
 
-			auto getLive = [](BetterCheats::PresetStore::Field* out)
+			auto getLive = [](PluginPresets::Field* out)
 			{
 				for (int s = 0; s < kStatCount; ++s)
 					out[s] = { kStats[s].key, g_statValue[s].load() };
@@ -600,7 +602,7 @@ namespace BetterCheats::Panels::Tools
 				out[kStatCount + 1] = { "noDrillOverheat", g_noDrillOverheat.load() ? 1.0f : 0.0f };
 				out[kStatCount + 2] = { "miningBoost",     g_miningBoostValue.load() };
 			};
-			auto applyFields = [](const BetterCheats::PresetStore::Field* f, int count)
+			auto applyFields = [](const PluginPresets::Field* f, int count)
 			{
 				for (int s = 0; s < kStatCount && s < count; ++s)
 					SetStat(s, f[s].value);
@@ -665,7 +667,7 @@ namespace BetterCheats::Panels::Tools
 				snprintf(out, cap, "Custom");
 			};
 
-			BetterCheats::UI::RenderSavedPresetsRow(imgui, "tools_saved_presets", "Tools",
+			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "tools_saved_presets", "Tools",
 				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 		}
 

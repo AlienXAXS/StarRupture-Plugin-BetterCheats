@@ -1,7 +1,5 @@
 [size=6][b]BetterCheats — Cheat Menu for StarRupture[/b][/size]
 
-[b]Found a bug? Report it on GitHub: [url=https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats/issues]https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats/issues[/url][/b] and attach your [b]ModLoader.log[/b] (in [b]Binaries\Win64\ModLoader\Logs\[/b]).
-
 Adds a powerful in-game cheat menu with categories covering player abilities, world settings, machinery, enemies, item spawning, weapons, movement, and more.
 
 [b]Client-side only[/b]
@@ -10,7 +8,15 @@ Adds a powerful in-game cheat menu with categories covering player abilities, wo
 
 [img]https://raw.githubusercontent.com/{{REPO}}/{{TAG}}/images/pause-menu.png[/img]
 
-[b]This mod is being actively developed, not all cheat options are ready. Teleport, Crafters, Rail Drones and Misc are empty placeholders for now.[/b]
+[b]This mod is being actively developed, not all cheat options are ready. Teleport, Crafters and Rail Drones are empty placeholders for now.[/b]
+
+[line]
+
+[size=5][b]Support[/b][/size]
+
+[b]Found a bug?[/b] Report it on [url=https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats/issues]GitHub[/url] and attach your [b]ModLoader.log[/b] (in [b]Binaries\Win64\ModLoader\Logs\[/b]).
+
+[quote][b]If you have a question or want to discuss the mod, please join our [url=https://discord.gg/G5a4GYsvrz]Discord[/url].[/b][/quote]
 
 [line]
 
@@ -26,9 +32,10 @@ Available categories include:
 
 [list]
 [*]World — Environment: skip, pause, cancel or restart waves (Cancel and Restart set the countdown to the longest wait between waves seen in the current world), next wave countdown, wave timer on or off. Corporations: set your Data Points.
-[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack. Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
+[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack (icons load for the rows you stop on or scroll slowly past, so the game reaches the menu sooner). Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
 [*]Enemies — Disable AI and One-Hit Kill
 [*]Machinery — Power: edit every generator and consumer. Logistic Drones is set in BetterDrone.
+[*]Misc — Audio: [b]Mute wind in the pause menu[/b] (off by default). While the pause menu is open the wind loops are silent, and they come back when it closes. ✦
 [/list]
 
 Many cheats remain active even after closing the menu, allowing continuous effects such as stat locks, power overrides, and world modifications.
@@ -94,7 +101,7 @@ The two "anywhere" options only relax the collision check, for your own placemen
 
 [size=4][b]Saved Presets ✦[/b][/size]
 
-Power, Self, Inventory (Item Stack Sizes), Movement, Skills, Tools and each weapon tab have a Saved Presets row: pick one to load, Save, Rename, Delete. Up to 16 per page, shared by every save.
+Power, Self, Inventory (Item Stack Sizes), Movement, Skills, Tools and each weapon tab have a Saved Presets row: pick one to load, Save, Rename, Delete. Saving with a preset selected asks before it overwrites that preset; with none selected it makes a new one. Pick (none) to clear the selection; applying a built-in preset clears it too, so the next Save makes a new preset. On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away. Up to 16 per page, shared by every save.
 
 [line]
 
@@ -121,7 +128,7 @@ Corporations Data Points and Skills are written to the save itself, so they stay
 [*]Press [b]Esc[/b] and pick [b]BETTER CHEATS[/b], or press [b]F10[/b] (default), while in a single-player world
 [/list]
 
-Requires [url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url], v1.24.0 or newer. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
+Requires [url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url], v1.24.0 or newer. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
 
 [line]
 
@@ -135,6 +142,7 @@ Config file:
 [*]EnableCheatsInMultiplayer — lets the menu open in multiplayer (default: false). Unsupported, may cause crashes
 [*]ToggleKey — key used to open and close the menu (default: F10)
 [*]NoClipKey — key that toggles No Clip without opening the menu (default: F9)
+[*]MuteWindInPauseMenu — silences the wind loops while the pause menu is open (default: false)
 [/list]
 
 Both keys can also be changed through the ModLoader keybind settings, and the No Clip key on the Movement page. Changes apply immediately.
@@ -158,6 +166,8 @@ Both keys can also be changed through the ModLoader keybind settings, and the No
 [*][b]A Building option does nothing[/b] — after a game update [b]Deconstruct Windows During Waves[/b] may miss its patterns. The plugin still loads and [i]"modloader.log"[/i] names the one
 [*][b]Place windows and benches anywhere shows as off[/b] — [b]Build Windows Anywhere[/b] and [b]Build Benches Anywhere[/b] take their game functions from the mod loader's version map. If a game update leaves one unplaced, the loader's failure window and Plugins tab list the feature as off, and both options stay off until the loader learns the new build
 [/list]
+
+[b]Links:[/b] [url=https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats]GitHub[/url] for [url=https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats/issues]issues[/url] | [url=https://discord.gg/G5a4GYsvrz]Discord[/url] for discussion
 
 [line]
 

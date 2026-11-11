@@ -3,7 +3,6 @@
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
-#include "preset_store.h"
 #include "game_context.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
@@ -15,6 +14,7 @@
 #include "player_tools.h"
 #include "player_weapons.h"
 #include "world_wave.h"
+#include "world_wind.h"
 #include "world_corporations.h"
 #include "machine_power.h"
 #include "enemies.h"
@@ -32,6 +32,8 @@ static IPluginSelf* g_self = nullptr;
 static bool g_enabled = true;
 
 IPluginSelf* GetSelf() { return g_self; }
+
+PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_WARN("%s", msg); });
 
 // Mirrors BetterDrone's own GetPresetsFilePath (drone_ui.cpp) -- resolves
 // this DLL's own directory (not the working directory, which the loader
@@ -139,6 +141,11 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::CheatMenu::TickPendingClose();
 	BetterCheats::CheatMenu::TickPendingOpen();
 
+	// An audio option, not a cheat: it does not wait for the cheats gate, and it
+	// gives the sound back itself when the world goes away.
+	if (BetterCheats::Features::WindMute.On())
+		BetterCheats::Panels::Wind::Tick(deltaSeconds);
+
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
 
@@ -167,6 +174,8 @@ static void OnEngineTick(float deltaSeconds)
 		BetterCheats::Panels::Corporations::Tick(deltaSeconds);
 	if (BetterCheats::Features::Enemies.On())
 		BetterCheats::Panels::Enemies::Tick(deltaSeconds);
+	if (BetterCheats::Features::Items.On())
+		BetterCheats::Panels::Items::Tick();
 
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
@@ -260,6 +269,10 @@ extern "C" {
 		if (BetterCheats::Features::Wave.On())
 			BetterCheats::Panels::Wave::Initialize();
 
+		LOG_INFO("Initializing Wind mute...");
+		if (BetterCheats::Features::WindMute.On())
+			BetterCheats::Panels::Wind::Initialize();
+
 		LOG_INFO("Initializing Power panel...");
 		if (BetterCheats::Features::Power.On())
 			BetterCheats::Panels::Power::Initialize();
@@ -280,7 +293,7 @@ extern "C" {
 		LOG_INFO("Initializing saved presets store...");
 		char presetsPath[MAX_PATH] = {};
 		GetPresetsFilePath(presetsPath, sizeof(presetsPath));
-		BetterCheats::PresetStore::Init(presetsPath);
+		BetterCheats::g_presets.LoadFile(presetsPath);
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
@@ -361,6 +374,8 @@ extern "C" {
 			BetterCheats::Panels::Weapons::Shutdown();
 		if (BetterCheats::Features::Wave.On())
 			BetterCheats::Panels::Wave::Shutdown();
+		if (BetterCheats::Features::WindMute.On())
+			BetterCheats::Panels::Wind::Shutdown();
 		if (BetterCheats::Features::Corporations.On())
 			BetterCheats::Panels::Corporations::Shutdown();
 		if (BetterCheats::Features::Enemies.On())

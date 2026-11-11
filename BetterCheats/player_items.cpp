@@ -3,11 +3,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "aob_resolver.h"
@@ -17,6 +20,7 @@
 #include "Engine_classes.hpp"
 #include "plugin_map.h"
 #include "map_fields.h"
+#include "item_icons.h"
 
 namespace BetterCheats::Panels::Items
 {
@@ -29,13 +33,8 @@ namespace BetterCheats::Panels::Items
 
 		struct ItemEntry
 		{
-			SDK::UAuItemDataBase* item              = nullptr;
-			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — the cached
-			                                         // `item` CDO can be garbage-collected if its Blueprint
-			                                         // class/package gets unloaded before "Give Item" is clicked.
-			SDK::UTexture2D*      icon              = nullptr;  // UTexture2D from ItemIcon.ResourceObject
-			bool                  iconIsTexture2D   = false;    // cached IsA(UTexture2D) result
-			PluginTextureHandle   cachedTexHandle   = nullptr;  // persistent SRV wrapping engine GPU resource
+			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — a cached CDO can be garbage-collected
+			                                         // if its Blueprint class/package gets unloaded before "Give Item" is clicked.
 			std::string           name;
 			std::string           uniqueName;     // item->UniqueItemName — passed to ServerDebugAddItems
 			int                   maxStack        = 1;
@@ -64,54 +63,34 @@ namespace BetterCheats::Panels::Items
 		char                   g_searchBuf[128] = {};
 		std::vector<int>       g_filteredIndices;
 
-		void FreeItemTexHandles(std::vector<ItemEntry>& items)
+		// Item icons load the first time the list draws them, a few per tick.
+		ItemIcons::Loader      g_icons;
+
+		// The rows (positions in g_filteredIndices) that were on screen last frame.
+		// Icons are also asked for a few rows past them, so they are ready by the
+		// time scrolling brings those rows in.
+		constexpr int          kIconMarginRows = 3;
+		int                    g_visibleFirst  = -1;
+		int                    g_visibleLast   = -1;
+
+		// A row asks for its icon only after staying in that range for kIconDwell,
+		// so a fast scrollbar drag queues nothing it sweeps past. g_iconSince: rows
+		// in range still waiting (pruned each frame); g_iconAsked: rows that asked.
+		using IconClock = std::chrono::steady_clock;
+		constexpr std::chrono::milliseconds                    kIconDwell{ 200 };
+		constexpr std::chrono::milliseconds                    kIconFrameGap{ 400 };
+		std::unordered_map<std::string, IconClock::time_point> g_iconSince;
+		std::unordered_set<std::string>                        g_iconAsked;
+		IconClock::time_point                                  g_iconFrameAt;
+
+		std::string IconUniqueNameOf(SDK::UAuItemDataBase* item)
 		{
-			IPluginHooks* hooks = GetHooks();
-			if (!hooks || !hooks->ImGuiTextures) return;
-			for (ItemEntry& e : items)
-			{
-				if (e.cachedTexHandle)
-				{
-					hooks->ImGuiTextures->FreeTexture(e.cachedTexHandle);
-					e.cachedTexHandle = nullptr;
-				}
-			}
+			return BetterCheats::Fields::UniqueNameOf(item);
 		}
 
-		// Attempts to register UTexture2D icons with ImGui for every entry that has
-		// no handle yet. Game thread only, straight after the scan that found the
-		// icons: `icon` is a raw pointer into a package nothing keeps loaded, so it
-		// is only safe to read in the same tick it was read. LoadFromUTexture2D
-		// returns NULL (without throwing) when D3D12 is not yet ready; an icon
-		// that misses stays blank until the list is refreshed.
-		void LoadItemTexHandles(std::vector<ItemEntry>& items, IPluginSplash* splash = nullptr)
+		const SDK::FSlateBrush* IconBrushOf(SDK::UAuItemDataBase* item)
 		{
-			IPluginHooks* hooks = GetHooks();
-			if (!hooks || !hooks->ImGuiTextures) return;
-
-			const int total = static_cast<int>(items.size());
-			int loaded = 0;
-
-			if (splash && splash->IsVisible())
-				splash->SetSubStatus("(BetterCheats) Copying Item Textures... Wait!");
-
-			for (ItemEntry& e : items)
-			{
-				if (e.iconIsTexture2D && e.icon && !e.cachedTexHandle)
-				{
-					const std::string texName = e.icon->GetName();
-					e.cachedTexHandle = hooks->ImGuiTextures->LoadFromUTexture2D(e.icon, texName.c_str());
-				}
-
-				if (splash && splash->IsVisible() && total > 0)
-				{
-					++loaded;
-					splash->SetSubProgress(static_cast<float>(loaded) / static_cast<float>(total));
-				}
-			}
-
-			if (splash && splash->IsVisible())
-				splash->ClearSubBar();
+			return BetterCheats::Fields::AuItemDataBase_ItemIcon.In(static_cast<const void*>(item));
 		}
 
 		// Lower-cases ASCII letters; item names are plain English so this is sufficient
@@ -128,6 +107,8 @@ namespace BetterCheats::Panels::Items
 		void RefreshFilteredItems()
 		{
 			g_filteredIndices.clear();
+			g_visibleFirst = -1;
+			g_visibleLast  = -1;
 
 			const std::string needle = ToLowerAscii(g_searchBuf);
 			for (int i = 0; i < static_cast<int>(g_items.size()); ++i)
@@ -195,9 +176,8 @@ namespace BetterCheats::Panels::Items
 		}
 
 		// Returns the resource backing an item's icon brush — typically a UTexture2D —
-		// or nullptr if the item has none configured. Not rendered anywhere yet; this
-		// just resolves and stores it so an icon column can be wired into ImGui later
-		// once texture binding is figured out.
+		// or nullptr if the item has none configured. Only the scan's filter reads it;
+		// the pointer is not kept, and ItemIcons::Loader loads the picture itself.
 		SDK::UTexture2D* GetItemIconResource(SDK::UAuItemDataBase* item)
 		{
 			// ResourceObject might be UTexture, UMaterialInterface, etc. — the IsA check
@@ -270,10 +250,10 @@ namespace BetterCheats::Panels::Items
 						}
 
 						ItemEntry entry;
-						entry.item       = item;
 						entry.assetData  = assetData[i];
-						entry.icon       = GetItemIconResource(item);
-						if (entry.icon) { try { entry.iconIsTexture2D = entry.icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
+						SDK::UTexture2D* icon = GetItemIconResource(item);
+						bool iconIsTexture2D = false;
+						if (icon) { try { iconIsTexture2D = icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
 						const int stackSize = BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuItemDataBase_MaxStack, item);
 						entry.maxStack   = stackSize > 0 ? stackSize : 1;
 						entry.uniqueName = BetterCheats::Fields::UniqueNameOf(item);
@@ -288,14 +268,14 @@ namespace BetterCheats::Panels::Items
 						// themselves, not usable items.
 						if (entry.name.size() >= 9 && entry.name.compare(entry.name.size() - 9, 9, "Blueprint") == 0)
 							continue;
-						if (entry.icon)
+						if (icon)
 						{
-							const std::string iconName = entry.icon->GetName();
+							const std::string iconName = icon->GetName();
 							if (iconName.find("WhiteSquareTexture") != std::string::npos)
 								continue;
 						}
 
-						if (!entry.icon || !entry.iconIsTexture2D)
+						if (!icon || !iconIsTexture2D)
 						{
 							++noIconCount;
 							continue;
@@ -319,11 +299,6 @@ namespace BetterCheats::Panels::Items
 			{
 				LOG_DEBUG("Item Spawner: exception while resolving items via the asset registry.");
 			}
-
-			// Pre-load texture handles while still on the game thread.  D3D12 may
-			// not be ready yet (returns NULL), in which case the fallback in
-			// AdoptPendingItemsIfReady will pick up the remainder on first render.
-			LoadItemTexHandles(items, splash);
 
 			{
 				std::lock_guard<std::mutex> lock(g_pendingMutex);
@@ -374,7 +349,6 @@ namespace BetterCheats::Panels::Items
 				g_pendingItemsReady = false;
 			}
 
-			FreeItemTexHandles(g_items);
 			g_items         = std::move(incoming);
 			g_itemsLoaded   = true;
 			g_selectedIndex = -1;
@@ -384,8 +358,8 @@ namespace BetterCheats::Panels::Items
 		// -------------------------------------------------------------------------
 		// "Give Item" — resolving the local character/inventory and invoking the
 		// inventory RPC must happen on the game thread, not from the ImGui render
-		// callback that triggers it. The selected item pointer is just a value here;
-		// it's only dereferenced once we're safely on the game thread.
+		// callback that triggers it. The context carries only the unique name;
+		// the item is re-resolved once we're safely on the game thread.
 		// -------------------------------------------------------------------------
 		struct GiveItemContext
 		{
@@ -483,6 +457,7 @@ namespace BetterCheats::Panels::Items
 		ResolveAddNewItem();
 
 		IPluginSelf* self = GetSelf();
+		g_icons.Init(self, "BetterCheats", { &IconUniqueNameOf, &IconBrushOf });
 		IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
 		if (splash && splash->IsVisible())
 			splash->AcquireSplashHold();
@@ -552,9 +527,34 @@ namespace BetterCheats::Panels::Items
 			const float iconSz = 36.0f;
 			const float padX   = 6.0f;
 
-			for (int filteredIndex : g_filteredIndices)
+			int visibleFirst = -1;
+			int visibleLast  = -1;
+
+			// A frame gap over kIconFrameGap means the list was not drawn: nothing waits.
+			const IconClock::time_point now = IconClock::now();
+			if (now - g_iconFrameAt > kIconFrameGap)
+				g_iconSince.clear();
+			g_iconFrameAt = now;
+			std::unordered_map<std::string, IconClock::time_point> iconSince;
+
+			for (int pos = 0; pos < static_cast<int>(g_filteredIndices.size()); ++pos)
 			{
+				const int filteredIndex = g_filteredIndices[pos];
 				const ItemEntry& entry = g_items[filteredIndex];
+
+				// The cursor is at the row's top here. IsRectVisible says whether the
+				// list's clip rect shows any of the row; scrolled-off rows ask for no icon.
+				const bool onScreen = imgui->IsRectVisible(1.0f, rowH);
+				if (onScreen)
+				{
+					if (visibleFirst < 0)
+						visibleFirst = pos;
+					visibleLast = pos;
+				}
+				const bool wantIcon = onScreen
+					|| (g_visibleFirst <= g_visibleLast
+						&& pos >= g_visibleFirst - kIconMarginRows
+						&& pos <= g_visibleLast + kIconMarginRows);
 				const bool isSelected  = filteredIndex == g_selectedIndex;
 
 				imgui->PushIDInt(filteredIndex);
@@ -577,19 +577,30 @@ namespace BetterCheats::Panels::Items
 				const float textLineH = imgui->GetTextLineHeight();
 				imgui->SetCursorPosY(rowTopY + (rowH - textLineH * 2.0f) * 0.5f);
 
-				// Icon — use the persistent handle cached when items were adopted.
+				// Icon — loaded on first draw by the shared helper, only for rows on
+				// screen or just past it that have stayed there for kIconDwell.
 				imgui->SetCursorPosX(imgui->GetCursorPosX() + padX);
+				IPluginHooks* texHooks = GetHooks();
+				bool drawIcon = wantIcon && g_icons.Has(entry.uniqueName);
+				if (drawIcon && !g_iconAsked.count(entry.uniqueName))
 				{
-					IPluginHooks* texHooks = GetHooks();
-					const ItemEntry& e = g_items[filteredIndex];
-					if (e.cachedTexHandle && texHooks && texHooks->ImGuiTextures)
-						texHooks->ImGuiTextures->Image(e.cachedTexHandle, iconSz, iconSz);
+					const auto seen  = g_iconSince.find(entry.uniqueName);
+					const auto since = seen != g_iconSince.end() ? seen->second : now;
+					drawIcon = now - since >= kIconDwell;
+					if (drawIcon)
+						g_iconAsked.insert(entry.uniqueName);
 					else
-						imgui->Dummy(iconSz, iconSz);
+						iconSince.emplace(entry.uniqueName, since);
+				}
+				if (drawIcon)
+					g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
+				else
+				{
+					imgui->Dummy(iconSz, iconSz);
+					imgui->SameLine(0.0f, padX);
 				}
 
 				// Name + stack size info, vertically centred beside the icon
-				imgui->SameLine(0.0f, padX);
 				imgui->BeginGroup();
 				{
 					// Bold via slight colour pop — real bold requires a second font push
@@ -615,6 +626,10 @@ namespace BetterCheats::Panels::Items
 
 				imgui->PopID();
 			}
+
+			g_visibleFirst = visibleFirst;
+			g_visibleLast  = visibleLast;
+			g_iconSince.swap(iconSince);
 		}
 		imgui->EndChild();
 
@@ -650,9 +665,14 @@ namespace BetterCheats::Panels::Items
 		// class (the in-world "loot box" actor) is identified in the SDK.
 	}
 
+	void Tick()
+	{
+		g_icons.Tick();
+	}
+
 	void Shutdown()
 	{
-		FreeItemTexHandles(g_items);
+		g_icons.Shutdown();
 		g_items.clear();
 		g_itemsLoaded = false;
 	}
