@@ -209,6 +209,7 @@ extern "C" {
 		BetterCheats::Features::Declare(self, scanner);
 		BetterCheats::AOB::ResolveAll(self, scanner);
 		BetterCheats::Fields::Resolve(self, scanner);
+		BetterCheats::Features::ResolveSlotSize(self, scanner);
 	}
 
 	__declspec(dllexport) bool PluginInit(IPluginSelf* self)

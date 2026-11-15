@@ -1,1 +1,2 @@
-- Item spawner icons now load only for the rows you stop on, plus a few around them, a few at a time. Dragging the scrollbar fast no longer starts loading every icon
+- Machine power and inventory slot sizing read their sizes from the loader's version object map, so they keep working when a game update changes them
+- Requires ModLoader v1.24.0 or later

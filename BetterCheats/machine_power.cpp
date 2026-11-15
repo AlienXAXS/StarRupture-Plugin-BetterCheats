@@ -336,7 +336,18 @@ namespace BetterCheats::Panels::Power
 		// reload-override path in ScanEntriesOnGameThread can patch already-placed
 		// buildings and rebuild the template, same as the Apply button does.
 		void RebuildEntityTemplate(SDK::UMassEntityConfigAsset* configAsset, const char* assetName);
-		void PatchExistingSharedFragment(const SDK::FCrElectricityParameters& oldParams, float newValue, const char* assetName);
+		void PatchExistingSharedFragment(const PluginMap::StructBuffer& oldParams, float newValue, const char* assetName);
+
+		// A whole-struct copy of the trait's Parameters, taken before an edit so the old
+		// content hash can be rebuilt afterwards. Sized from the running build's
+		// FCrElectricityParameters; empty when the size or the source is missing.
+		PluginMap::StructBuffer SaveElectricityParameters(const void* params)
+		{
+			PluginMap::StructBuffer saved(BetterCheats::Fields::CrElectricityParameters_Size);
+			if (!saved.CopyFrom(params))
+				return PluginMap::StructBuffer();
+			return saved;
+		}
 
 		// -------------------------------------------------------------------------
 		// Enumerates every MassEntityConfigAsset via the asset registry (mirrors
@@ -443,7 +454,7 @@ namespace BetterCheats::Panels::Power
 									LOG_DEBUG("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
 										entry.name.c_str(), *electricity, overrideValue);
 
-									const SDK::FCrElectricityParameters oldParams = *params;
+									const PluginMap::StructBuffer oldParams = SaveElectricityParameters(params);
 									*electricity = overrideValue;
 
 									// Patch buildings already placed by this save's data so they
@@ -694,8 +705,14 @@ namespace BetterCheats::Panels::Power
 		// Patches the shared FCrElectricityParameters block that already-placed
 		// buildings of this config currently reference, so they pick up the new
 		// ElectricityValue immediately without reloading the save.
-		void PatchExistingSharedFragment(const SDK::FCrElectricityParameters& oldParams, float newValue, const char* assetName)
+		void PatchExistingSharedFragment(const PluginMap::StructBuffer& oldParams, float newValue, const char* assetName)
 		{
+			if (!oldParams)
+			{
+				LOG_WARN("Power: no saved copy of the parameters - skipping shared-fragment patch for '%s'.", assetName);
+				return;
+			}
+
 			if (!ResolveSharedFragmentFunctions())
 			{
 				LOG_WARN("Power: PatchExistingSharedFragment skipped for '%s' - shared-fragment functions unresolved.", assetName);
@@ -737,9 +754,9 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				const uint32_t oldHash = g_getStructInstanceCrc32(paramsStruct, reinterpret_cast<const uint8_t*>(&oldParams), 0);
+				const uint32_t oldHash = g_getStructInstanceCrc32(paramsStruct, oldParams.Data(), 0);
 
-				void* element = g_findOrAddConstShared(container, oldHash, paramsStruct, reinterpret_cast<const uint8_t*>(&oldParams));
+				void* element = g_findOrAddConstShared(container, oldHash, paramsStruct, oldParams.Data());
 				if (!element)
 				{
 					LOG_WARN("Power: FindOrAdd returned null - skipping shared-fragment patch for '%s'.", assetName);
@@ -756,8 +773,7 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				SDK::FCrElectricityParameters* liveParams = reinterpret_cast<SDK::FCrElectricityParameters*>(
-					reinterpret_cast<uint8_t*>(sharedMemory) + kStructUtilsHeaderSize);
+				uint8_t* liveParams = reinterpret_cast<uint8_t*>(sharedMemory) + kStructUtilsHeaderSize;
 
 				float* liveValue = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(liveParams);
 				if (!liveValue)
@@ -804,7 +820,7 @@ namespace BetterCheats::Panels::Power
 				float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
 				if (trait && params && electricity)
 				{
-					const SDK::FCrElectricityParameters oldParams = *params;
+					const PluginMap::StructBuffer oldParams = SaveElectricityParameters(params);
 					const float oldValue = *electricity;
 
 					*electricity = item.value;
