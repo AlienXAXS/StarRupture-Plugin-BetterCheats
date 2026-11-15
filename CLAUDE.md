@@ -15,7 +15,7 @@ This is a Visual Studio 2022 C++ project (no CLI build/test/lint tooling — bui
   msbuild StarRupture-Plugin-BetterCheats.sln /p:Configuration="Client Release" /p:Platform=x64
   ```
 - Output DLL lands in `build/Client Release/Plugins/BetterCheats.dll`
-- `Shared.props` resolves SDK include paths from sibling checkouts (`StarRupture-Game-SDK`, `StarRupture-Plugin-SDK`) — these must exist alongside this repo at `C:\Users\markp\Documents\GitHub\`
+- `Shared.props` resolves SDK include paths relative to the repo: `StarRupture-Plugin-SDK` (with its `StarRupture SDK` submodule) must sit beside this repo in the same parent folder
 - To run/test: copy the built DLL into `<game_dir>\Plugins\` alongside `dwmapi.dll` (the modloader runtime) and launch StarRupture. There are no automated tests; verification is manual in-game.
 - CI release workflow (`.github/workflows/release.yml`, templated from `templates/release.yml`) builds `Client Release` and publishes a GitHub release on push to `main`.
 
