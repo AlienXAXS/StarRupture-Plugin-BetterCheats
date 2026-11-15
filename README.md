@@ -244,9 +244,24 @@ Found a bug? [Report it on GitHub](https://github.com/AlienXAXS/StarRupture-Plug
 
 ## Building from Source
 
-Requires Visual Studio 2022 and the [StarRupture-Plugin-SDK](https://github.com/AlienXAXS/StarRupture-Plugin-SDK) and [StarRupture-Game-SDK](https://github.com/AlienXAXS/StarRupture-Game-SDK), checked out alongside this repo.
+Requires Visual Studio 2022.
 
-Clone the repo, open `StarRupture-Plugin-BetterCheats.sln`, and build the `Client Release|x64` configuration:
+Put the plugin next to `StarRupture-Plugin-SDK` and clone both with `--recursive`, so the game SDK submodules come along:
+
+```
+git clone --recursive https://github.com/AlienXAXS/StarRupture-Plugin-SDK.git
+git clone --recursive https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats.git
+```
+
+```
+<parent folder>/
+├── StarRupture-Plugin-SDK/
+└── StarRupture-Plugin-BetterCheats/
+```
+
+The game SDK comes from this plugin's own `StarRupture SDK` submodule when it has one, otherwise from the Plugin SDK's. To build against other folders, pass `/p:PluginSDKInclude=...` and `/p:GameSDKRoot=...` to msbuild.
+
+Then open `StarRupture-Plugin-BetterCheats.sln`, and build the `Client Release|x64` configuration:
 
 ```
 msbuild StarRupture-Plugin-BetterCheats.sln /p:Configuration="Client Release" /p:Platform=x64
