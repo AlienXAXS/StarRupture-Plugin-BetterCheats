@@ -338,6 +338,26 @@ namespace BetterCheats::Panels::Power
 		void RebuildEntityTemplate(SDK::UMassEntityConfigAsset* configAsset, const char* assetName);
 		void PatchExistingSharedFragment(const PluginMap::StructBuffer& oldParams, float newValue, const char* assetName);
 
+		// The trait's Parameters, or null when that member is not as large as the
+		// FCrElectricityParameters this plugin copies and edits (a build that changed one
+		// of them): machine power stays off then.
+		SDK::FCrElectricityParameters* TraitParameters(SDK::UCrElectricityTrait* trait)
+		{
+			if (!trait) return nullptr;
+			if (BetterCheats::Fields::CrElectricityTrait_Parameters.resolvedSize != BetterCheats::Fields::CrElectricityParameters_Size.resolvedSize)
+			{
+				static bool s_logged = false;
+				if (!s_logged)
+				{
+					s_logged = true;
+					LOG_WARN("Power: the trait's Parameters is 0x%X bytes but FCrElectricityParameters is 0x%X - machine power stays off.",
+						BetterCheats::Fields::CrElectricityTrait_Parameters.resolvedSize, BetterCheats::Fields::CrElectricityParameters_Size.resolvedSize);
+				}
+				return nullptr;
+			}
+			return BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait);
+		}
+
 		// A whole-struct copy of the trait's Parameters, taken before an edit so the old
 		// content hash can be rebuilt afterwards. Sized from the running build's
 		// FCrElectricityParameters; empty when the size or the source is missing.
@@ -411,7 +431,7 @@ namespace BetterCheats::Panels::Power
 							auto* configAsset = static_cast<SDK::UMassEntityConfigAsset*>(obj);
 
 							SDK::UCrElectricityTrait* trait = FindElectricityTrait(configAsset);
-							SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+							SDK::FCrElectricityParameters* params = TraitParameters(trait);
 							const SDK::ECrMassElectricityAgentType* agentType = BetterCheats::Fields::CrElectricityParameters_Type.In(params);
 							float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
 							if (!params || !agentType || !electricity || *agentType == SDK::ECrMassElectricityAgentType::None)
@@ -816,7 +836,7 @@ namespace BetterCheats::Panels::Power
 				SDK::UMassEntityConfigAsset* configAsset = ResolveConfigAsset(item.packageName, item.assetName);
 				SDK::UCrElectricityTrait*    trait        = configAsset ? FindElectricityTrait(configAsset) : nullptr;
 
-				SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+				SDK::FCrElectricityParameters* params = TraitParameters(trait);
 				float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
 				if (trait && params && electricity)
 				{

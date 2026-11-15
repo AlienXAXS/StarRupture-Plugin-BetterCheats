@@ -235,13 +235,13 @@ namespace BetterCheats::Panels::Inventory
 
 			// The parameter block is sized and laid out from what the running game reflects
 			// (ProcessEvent copies ParmsSize bytes in from and back out to it). InSize has to
-			// be the only parameter, which is when the block ends where InSize does, and has to
-			// be the FVector2D this plugin writes. A build that changed the parameter list
+			// be the only parameter, which is when it sits at offset 0 and fills the block, and
+			// has to be the FVector2D this plugin writes. A build that changed the parameter list
 			// skips the call.
 			const PluginFieldSpec& inSize = BetterCheats::Fields::WBP_InventorySlot_SetSlotSize_InSize;
 			PluginMap::ParamsBlock block = PluginMap::ParamsBlockOf(BetterCheats::Fields::WBP_InventorySlot_SetSlotSize, { &inSize });
 			if (!block) return;
-			if (block.Size() != static_cast<uint32_t>(inSize.offset) + inSize.resolvedSize || inSize.resolvedSize != sizeof(SDK::FVector2D))
+			if (inSize.offset != 0 || block.Size() != inSize.resolvedSize || inSize.resolvedSize != sizeof(SDK::FVector2D))
 			{
 				static bool s_logged = false;
 				if (!s_logged)
