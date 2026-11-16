@@ -1,2 +1,2 @@
 - Machine power and inventory slot sizing read their sizes from the loader's version object map, so they keep working when a game update changes them
-- Requires ModLoader v1.24.0 or later
+- Requires ModLoader 1.24.0 or newer
