@@ -61,7 +61,7 @@ Tick **Locked** and an attribute is held at its slider value, even with the menu
 
 Search the item list (icon, name, stack size), set **Stacks** (1 or more) and press **Give Item**. You get stacks x stack size, shown as `xN (stack S)`. The page says so if the game build doesn't expose what it needs.
 
-Icons load a few at a time, only for the rows you stop on and a few around them. Dragging the scrollbar fast loads nothing until you slow down. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
+Icons come from the loader's image library. They load for the rows on screen, and a row shows an empty slot until its icon is ready, so names stay lined up while icons fill in. Ammo and each building blueprint show their own icon. Pictures are drawn sharper than before.
 
 ### Inventory
 
@@ -84,6 +84,7 @@ Raises stack caps from 1 to 9999 as one global value, per category (Combat, Reso
 - New stacks only: existing stacks keep their cap until picked up, split or merged.
 - Raise-only: an item that already stacks higher keeps its size.
 - Non-stacking items are shown but locked.
+- Ammo and each blueprint have their own row. A size you set for one of them before this version has to be set again.
 
 ### Weapon <sup>[✦](#msantoro12)</sup>
 
@@ -225,7 +226,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
+> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library, which 1.24.0 or newer carries.
 
 ---
 

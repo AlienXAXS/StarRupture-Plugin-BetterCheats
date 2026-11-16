@@ -26,7 +26,7 @@ Available categories include:
 
 [list]
 [*]World — Environment: skip, pause, cancel or restart waves (Cancel and Restart set the countdown to the longest wait between waves seen in the current world), next wave countdown, wave timer on or off. Corporations: set your Data Points.
-[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack (icons load a few at a time, for the rows you stop on). Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
+[*]Player — Self: lock health, survival resources and afflictions, plus Full Heal. Item Spawner: search any item and give it by the stack (bigger, sharper icons from the loader's image library; they load for the rows on screen, and Ammo and each blueprint show their own icon). Skills: Max All Skills or set each skill 0 to 100. Inventory, Weapon, Movement, Building and Tools are below.
 [*]Enemies — Disable AI and One-Hit Kill
 [*]Machinery — Power: edit every generator and consumer. Logistic Drones is set in BetterDrone.
 [*]Misc — Audio: [b]Mute wind in the pause menu[/b] (off by default). While the pause menu is open the wind loops are silent, and they come back when it closes. ✦
@@ -40,7 +40,7 @@ Many cheats remain active even after closing the menu, allowing continuous effec
 
 [list]
 [*][b]Grid size[/b] — any Columns x Rows from 8 x 8 to 40 x 40, also via [b]bc_invsize[/b]. Empty it before shrinking. Slots scale down to fit the frame (option, on by default); grids past 20 x 20 overflow.
-[*][b]Item Stack Sizes[/b] — raise stack caps from 1 to 9999: one global value, per category or per item. New stacks only, never lowers a cap. ✦
+[*][b]Item Stack Sizes[/b] — raise stack caps from 1 to 9999: one global value, per category or per item. New stacks only, never lowers a cap. ✦ Ammo and each blueprint have their own row; a stack size you set for them in an earlier version has to be set again.
 [*][b]Plant Pickup[/b] — 1x to 5x from wild plants, mushrooms and rocks. Crops are not covered. ✦
 [/list]
 
@@ -122,7 +122,7 @@ Corporations Data Points and Skills are written to the save itself, so they stay
 [*]Press [b]Esc[/b] and pick [b]BETTER CHEATS[/b], or press [b]F10[/b] (default), while in a single-player world
 [/list]
 
-Requires ModLoader 1.24.0 or newer ([url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url]). Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power reads the size of one game structure (the electricity parameters) from the same map instead of a fixed number, so it keeps working when a game update changes that size. Only 1.24.0 or newer serves it; an older loader leaves machine power off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
+Requires ModLoader 1.24.0 or newer, which also carries the image library the item spawner icons use ([url=https://www.nexusmods.com/starrupture/mods/89]AlienX's Mod Loader[/url]). Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power reads the size of one game structure (the electricity parameters) from the same map instead of a fixed number, so it keeps working when a game update changes that size. Only 1.24.0 or newer serves it; an older loader leaves machine power off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off.
 
 [line]
 

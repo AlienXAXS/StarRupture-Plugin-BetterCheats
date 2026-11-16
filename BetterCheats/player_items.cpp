@@ -3,14 +3,11 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "aob_resolver.h"
@@ -20,7 +17,7 @@
 #include "Engine_classes.hpp"
 #include "plugin_map.h"
 #include "map_fields.h"
-#include "item_icons.h"
+#include "plugin_images.h"
 
 namespace BetterCheats::Panels::Items
 {
@@ -36,8 +33,9 @@ namespace BetterCheats::Panels::Items
 			SDK::FAssetData       assetData;        // re-resolve the CDO fresh at give-time — a cached CDO can be garbage-collected
 			                                         // if its Blueprint class/package gets unloaded before "Give Item" is clicked.
 			std::string           name;
-			std::string           uniqueName;     // item->UniqueItemName — passed to ServerDebugAddItems
+			std::string           uniqueName;     // Fields::ItemKeyOf(item): the unique name, or the asset name where there is none
 			int                   maxStack        = 1;
+			PluginImageId         imageId         = 0;      // from the image table; 0 where the loader has none
 		};
 
 		// -------------------------------------------------------------------------
@@ -63,36 +61,6 @@ namespace BetterCheats::Panels::Items
 		char                   g_searchBuf[128] = {};
 		std::vector<int>       g_filteredIndices;
 
-		// Item icons load the first time the list draws them, a few per tick.
-		ItemIcons::Loader      g_icons;
-
-		// The rows (positions in g_filteredIndices) that were on screen last frame.
-		// Icons are also asked for a few rows past them, so they are ready by the
-		// time scrolling brings those rows in.
-		constexpr int          kIconMarginRows = 3;
-		int                    g_visibleFirst  = -1;
-		int                    g_visibleLast   = -1;
-
-		// A row asks for its icon only after staying in that range for kIconDwell,
-		// so a fast scrollbar drag queues nothing it sweeps past. g_iconSince: rows
-		// in range still waiting (pruned each frame); g_iconAsked: rows that asked.
-		using IconClock = std::chrono::steady_clock;
-		constexpr std::chrono::milliseconds                    kIconDwell{ 200 };
-		constexpr std::chrono::milliseconds                    kIconFrameGap{ 400 };
-		std::unordered_map<std::string, IconClock::time_point> g_iconSince;
-		std::unordered_set<std::string>                        g_iconAsked;
-		IconClock::time_point                                  g_iconFrameAt;
-
-		std::string IconUniqueNameOf(SDK::UAuItemDataBase* item)
-		{
-			return BetterCheats::Fields::UniqueNameOf(item);
-		}
-
-		const SDK::FSlateBrush* IconBrushOf(SDK::UAuItemDataBase* item)
-		{
-			return BetterCheats::Fields::AuItemDataBase_ItemIcon.In(static_cast<const void*>(item));
-		}
-
 		// Lower-cases ASCII letters; item names are plain English so this is sufficient
 		// for case-insensitive substring matching without pulling in locale machinery.
 		std::string ToLowerAscii(const std::string& s)
@@ -107,8 +75,6 @@ namespace BetterCheats::Panels::Items
 		void RefreshFilteredItems()
 		{
 			g_filteredIndices.clear();
-			g_visibleFirst = -1;
-			g_visibleLast  = -1;
 
 			const std::string needle = ToLowerAscii(g_searchBuf);
 			for (int i = 0; i < static_cast<int>(g_items.size()); ++i)
@@ -177,7 +143,7 @@ namespace BetterCheats::Panels::Items
 
 		// Returns the resource backing an item's icon brush — typically a UTexture2D —
 		// or nullptr if the item has none configured. Only the scan's filter reads it;
-		// the pointer is not kept, and ItemIcons::Loader loads the picture itself.
+		// the pointer is not kept, and the image library loads the picture itself.
 		SDK::UTexture2D* GetItemIconResource(SDK::UAuItemDataBase* item)
 		{
 			// ResourceObject might be UTexture, UMaterialInterface, etc. — the IsA check
@@ -256,10 +222,10 @@ namespace BetterCheats::Panels::Items
 						if (icon) { try { iconIsTexture2D = icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
 						const int stackSize = BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuItemDataBase_MaxStack, item);
 						entry.maxStack   = stackSize > 0 ? stackSize : 1;
-						entry.uniqueName = BetterCheats::Fields::UniqueNameOf(item);
+						entry.uniqueName = BetterCheats::Fields::ItemKeyOf(item);
 						entry.name       = BetterCheats::Fields::DisplayNameOf(item);
 						if (entry.name.empty() || entry.name == "<MISSING STRING TABLE ENTRY>")
-							entry.name = entry.uniqueName;
+							entry.name = BetterCheats::Fields::UniqueNameOf(item);
 
 						// Skip placeholder/stub items that have no real presence in the game.
 						if (entry.name == "None")
@@ -334,6 +300,19 @@ namespace BetterCheats::Panels::Items
 			hooks->Engine->PostToGameThread(&RefreshItemListOnGameThread, nullptr);
 		}
 
+		// Asks the image table for each item's id. Ids last the session, and asking
+		// reads nothing: the library loads an image only when a row draws it.
+		void AssignImageIds()
+		{
+			IPluginHooks* hooks = GetHooks();
+			IPluginSelf*  self  = GetSelf();
+			if (!hooks || !hooks->Images || !self)
+				return;
+
+			for (ItemEntry& entry : g_items)
+				entry.imageId = hooks->Images->Item(self, entry.uniqueName.c_str());
+		}
+
 		// Adopts a freshly-loaded item list, if one is ready, into g_items — called
 		// only from RenderImGui(), so g_items needs no locking once adopted.
 		void AdoptPendingItemsIfReady()
@@ -350,6 +329,7 @@ namespace BetterCheats::Panels::Items
 			}
 
 			g_items         = std::move(incoming);
+			AssignImageIds();
 			g_itemsLoaded   = true;
 			g_selectedIndex = -1;
 			RefreshFilteredItems();
@@ -457,7 +437,10 @@ namespace BetterCheats::Panels::Items
 		ResolveAddNewItem();
 
 		IPluginSelf* self = GetSelf();
-		g_icons.Init(self, "BetterCheats", { &IconUniqueNameOf, &IconBrushOf });
+		IPluginHooks* hooks = GetHooks();
+		if (hooks && hooks->Images && self)
+			hooks->Images->UseSets(self, PLUGIN_IMAGE_SET_ITEMS);
+
 		IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
 		if (splash && splash->IsVisible())
 			splash->AcquireSplashHold();
@@ -527,34 +510,11 @@ namespace BetterCheats::Panels::Items
 			const float iconSz = 36.0f;
 			const float padX   = 6.0f;
 
-			int visibleFirst = -1;
-			int visibleLast  = -1;
-
-			// A frame gap over kIconFrameGap means the list was not drawn: nothing waits.
-			const IconClock::time_point now = IconClock::now();
-			if (now - g_iconFrameAt > kIconFrameGap)
-				g_iconSince.clear();
-			g_iconFrameAt = now;
-			std::unordered_map<std::string, IconClock::time_point> iconSince;
-
 			for (int pos = 0; pos < static_cast<int>(g_filteredIndices.size()); ++pos)
 			{
 				const int filteredIndex = g_filteredIndices[pos];
 				const ItemEntry& entry = g_items[filteredIndex];
 
-				// The cursor is at the row's top here. IsRectVisible says whether the
-				// list's clip rect shows any of the row; scrolled-off rows ask for no icon.
-				const bool onScreen = imgui->IsRectVisible(1.0f, rowH);
-				if (onScreen)
-				{
-					if (visibleFirst < 0)
-						visibleFirst = pos;
-					visibleLast = pos;
-				}
-				const bool wantIcon = onScreen
-					|| (g_visibleFirst <= g_visibleLast
-						&& pos >= g_visibleFirst - kIconMarginRows
-						&& pos <= g_visibleLast + kIconMarginRows);
 				const bool isSelected  = filteredIndex == g_selectedIndex;
 
 				imgui->PushIDInt(filteredIndex);
@@ -577,28 +537,11 @@ namespace BetterCheats::Panels::Items
 				const float textLineH = imgui->GetTextLineHeight();
 				imgui->SetCursorPosY(rowTopY + (rowH - textLineH * 2.0f) * 0.5f);
 
-				// Icon — loaded on first draw by the shared helper, only for rows on
-				// screen or just past it that have stayed there for kIconDwell.
+				// Icon: the image library loads it once the row is on screen. Until
+				// then, and where the hooks have no image table, the space stays empty.
 				imgui->SetCursorPosX(imgui->GetCursorPosX() + padX);
-				IPluginHooks* texHooks = GetHooks();
-				bool drawIcon = wantIcon && g_icons.Has(entry.uniqueName);
-				if (drawIcon && !g_iconAsked.count(entry.uniqueName))
-				{
-					const auto seen  = g_iconSince.find(entry.uniqueName);
-					const auto since = seen != g_iconSince.end() ? seen->second : now;
-					drawIcon = now - since >= kIconDwell;
-					if (drawIcon)
-						g_iconAsked.insert(entry.uniqueName);
-					else
-						iconSince.emplace(entry.uniqueName, since);
-				}
-				if (drawIcon)
-					g_icons.Draw(imgui, texHooks ? texHooks->ImGuiTextures : nullptr, entry.uniqueName, iconSz, padX);
-				else
-				{
-					imgui->Dummy(iconSz, iconSz);
-					imgui->SameLine(0.0f, padX);
-				}
+				PluginImages::Image(imgui, GetHooks(), entry.imageId, iconSz, iconSz);
+				imgui->SameLine(0.0f, padX);
 
 				// Name + stack size info, vertically centred beside the icon
 				imgui->BeginGroup();
@@ -626,10 +569,6 @@ namespace BetterCheats::Panels::Items
 
 				imgui->PopID();
 			}
-
-			g_visibleFirst = visibleFirst;
-			g_visibleLast  = visibleLast;
-			g_iconSince.swap(iconSince);
 		}
 		imgui->EndChild();
 
@@ -665,14 +604,8 @@ namespace BetterCheats::Panels::Items
 		// class (the in-world "loot box" actor) is identified in the SDK.
 	}
 
-	void Tick()
-	{
-		g_icons.Tick();
-	}
-
 	void Shutdown()
 	{
-		g_icons.Shutdown();
 		g_items.clear();
 		g_itemsLoaded = false;
 	}

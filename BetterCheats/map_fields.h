@@ -419,6 +419,25 @@ namespace BetterCheats::Fields
 		return name ? name->ToString() : std::string();
 	}
 
+	// What an item with no unique name carries in UniqueItemName.
+	inline constexpr const char* kUnsetUniqueName = "None";
+
+	// The key for an item: its unique name, or its asset name (the class name
+	// without the trailing "_C") where the unique name is empty or unset. Ammo
+	// and the blueprints have none, and the asset name tells them apart. It is
+	// the same for the default object and for an instance.
+	inline std::string ItemKeyOf(const SDK::UAuItemDataBase* item)
+	{
+		std::string key = UniqueNameOf(item);
+		if (!key.empty() && key != kUnsetUniqueName)
+			return key;
+
+		key = item->Class ? item->Class->GetName() : std::string();
+		if (key.size() > 2 && key.compare(key.size() - 2, 2, "_C") == 0)
+			key.resize(key.size() - 2);
+		return key;
+	}
+
 	// An item's localised display name, or empty.
 	inline std::string DisplayNameOf(const SDK::UAuItemDataBase* item)
 	{

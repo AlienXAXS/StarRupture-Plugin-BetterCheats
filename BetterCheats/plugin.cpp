@@ -174,8 +174,6 @@ static void OnEngineTick(float deltaSeconds)
 		BetterCheats::Panels::Corporations::Tick(deltaSeconds);
 	if (BetterCheats::Features::Enemies.On())
 		BetterCheats::Panels::Enemies::Tick(deltaSeconds);
-	if (BetterCheats::Features::Items.On())
-		BetterCheats::Panels::Items::Tick();
 
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);

@@ -6,6 +6,5 @@ namespace BetterCheats::Panels::Items
 {
 	void Initialize();
 	void RenderImGui(IModLoaderImGui* imgui);
-	void Tick();
 	void Shutdown();
 }

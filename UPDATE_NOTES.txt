@@ -1,2 +1,6 @@
 - Machine power and inventory slot sizing read their sizes from the loader's version object map, so they keep working when a game update changes them
 - Requires ModLoader 1.24.0 or newer
+- Item spawner icons now come from the loader's image library. They load for the rows on screen, and a row shows an empty slot until its icon is ready
+- Item spawner icons are bigger and sharper, at least 28 px
+- The item list is registered with the image library at start. Its icons load when the page shows them, or ahead of time if you turn on the loader's preload setting
+- Blueprint item icons fixed: Ammo and the building blueprints now show their own pictures. They used to all draw the Ammo picture. These items also get their own Item Stack Sizes rows and settings now, so a stack size you set for Ammo or a blueprint before this version has to be set again
