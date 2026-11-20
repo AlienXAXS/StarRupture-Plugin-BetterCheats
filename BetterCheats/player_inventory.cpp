@@ -556,10 +556,13 @@ namespace BetterCheats::Panels::Inventory
 
 			IPluginConsole* console = self->hooks->Console;
 
-			if (!GameContext::AreCheatsAllowed())
+			const CheatGate gate = GameContext::GetCheatGate();
+			if (gate != CheatGate::Allowed)
 			{
 				console->Write(sink, PluginConsoleLineKind::Error,
-					"Cheats are only available in single player.");
+					gate == CheatGate::WaitingForWorld
+						? "Cheats are waiting for the game world."
+						: "Cheats are only available in single player.");
 				return;
 			}
 
