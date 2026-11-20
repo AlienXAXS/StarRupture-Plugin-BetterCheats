@@ -35,8 +35,8 @@ namespace BetterCheats
 		static EPluginNetMode CurrentNetMode();
 		static void OnUIStateChanged(uint64_t oldState, uint64_t newState, void* userData);
 
-		static IPluginSelf*      s_self;
-		static std::atomic<bool> s_inChimeraMain;
+		static IPluginSelf*                s_self;
+		static std::atomic<bool>           s_inChimeraMain;
 		static std::atomic<EPluginNetMode> s_netMode;
 	};
 }

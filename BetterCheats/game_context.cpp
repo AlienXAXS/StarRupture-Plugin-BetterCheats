@@ -8,8 +8,8 @@
 
 namespace BetterCheats
 {
-	IPluginSelf*      GameContext::s_self          = nullptr;
-	std::atomic<bool> GameContext::s_inChimeraMain{ false };
+	IPluginSelf*                GameContext::s_self          = nullptr;
+	std::atomic<bool>           GameContext::s_inChimeraMain{ false };
 	std::atomic<EPluginNetMode> GameContext::s_netMode{ EPluginNetMode::Unknown };
 
 	void GameContext::Initialize(IPluginSelf* self)
@@ -39,7 +39,7 @@ namespace BetterCheats
 	{
 		s_inChimeraMain = (newState & PLUGIN_UI_IN_GAMEPLAY) != 0;
 
-		// A new world starts refused until the game thread has asked for its
+		// A new world starts unknown until the game thread has asked for its
 		// net mode, so the menu never shows a previous session's answer.
 		if (!s_inChimeraMain)
 			s_netMode = EPluginNetMode::Unknown;
@@ -57,7 +57,7 @@ namespace BetterCheats
 		if (s_netMode.exchange(mode) != mode)
 		{
 			const char* verdict = "allowed";
-			switch (ClassifyCheatGate(false, mode))
+			switch (ClassifyCheatGate(mode))
 			{
 			case CheatGate::SinglePlayerOnly: verdict = "refused (single player only)"; break;
 			case CheatGate::WaitingForWorld:  verdict = "waiting for the world"; break;
@@ -78,6 +78,6 @@ namespace BetterCheats
 		if (BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
 			return CheatGate::Allowed;
 
-		return ClassifyCheatGate(false, CurrentNetMode());
+		return ClassifyCheatGate(CurrentNetMode());
 	}
 }

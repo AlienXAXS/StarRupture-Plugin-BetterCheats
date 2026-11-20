@@ -12,12 +12,11 @@ namespace BetterCheats
 		WaitingForWorld   // the net mode is not known yet (no world, or no answer)
 	};
 
-	// `multiplayerEnabled` is the EnableCheatsInMultiplayer setting. Unknown is
-	// not a refusal: it is the answer before the world is up, and it changes
-	// once the game thread can read the net mode.
-	inline CheatGate ClassifyCheatGate(bool multiplayerEnabled, EPluginNetMode mode)
+	// Unknown is not a refusal: it is the answer before the world is up, and it
+	// changes once the game thread can read the net mode.
+	inline CheatGate ClassifyCheatGate(EPluginNetMode mode)
 	{
-		if (multiplayerEnabled || mode == EPluginNetMode::Standalone)
+		if (mode == EPluginNetMode::Standalone)
 			return CheatGate::Allowed;
 
 		return mode == EPluginNetMode::Unknown ? CheatGate::WaitingForWorld : CheatGate::SinglePlayerOnly;

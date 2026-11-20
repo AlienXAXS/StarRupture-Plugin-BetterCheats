@@ -235,6 +235,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 Found a bug? [Report it on GitHub](https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats/issues) and attach your `ModLoader.log` (in `<game>\StarRupture\Binaries\Win64\ModLoader\Logs\`).
 
 - **Menu opens but is empty:** load into a save. In multiplayer, set `EnableCheatsInMultiplayer=true`.
+- **Window says it is waiting for the game world:** the game has not told the plugin yet whether this is single player. It turns into the menu by itself once the world is up. A multiplayer session still shows "can only be used in single player".
 - **Toggle key does nothing:** check the keybind in the modloader settings -- it may have been rebound.
 - **Saved cheat settings not restored:** check `modloader.log` for errors loading `Plugins\BetterCheats\<SessionName>.json`. After a game update that hides the save's session name, per-save settings are neither saved nor restored until the loader learns the new build.
 - **Plugin not loading:** check `ModLoader.log` in `Binaries\Win64\ModLoader\Logs\` for errors.
