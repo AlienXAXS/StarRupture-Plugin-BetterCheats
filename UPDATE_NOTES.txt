@@ -4,3 +4,4 @@
 - Item spawner icons are bigger and sharper, at least 28 px
 - The item list is registered with the image library at start. Its icons load when the page shows them, or ahead of time if you turn on the loader's preload setting
 - Blueprint item icons fixed: Ammo and the building blueprints now show their own pictures. They used to all draw the Ammo picture. These items also get their own Item Stack Sizes rows and settings now, so a stack size you set for Ammo or a blueprint before this version has to be set again
+- The cheat window now says "waiting for the game world" while the game has not yet told the plugin whether this is single player, and turns into the menu by itself once it does. "Can only be used in single player" shows only in a real multiplayer session

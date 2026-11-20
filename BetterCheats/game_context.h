@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cheat_gate.h"
 #include "plugin_interface.h"
 
 #include <atomic>
@@ -17,11 +18,6 @@ namespace BetterCheats
 		// Any thread: the menu reads it on the render thread.
 		static bool IsInChimeraMain() { return s_inChimeraMain; }
 
-		// Any thread. On the game thread it asks the loader for the net mode
-		// now; elsewhere (the menu on the render thread, keybind callbacks) it
-		// returns the game thread's last answer, since the query reads UObjects.
-		static bool IsSinglePlayer();
-
 		// Single gate for "may this build touch game state?". Every path that reads
 		// or writes SDK objects — the menu and every per-tick feature module — must
 		// check this, not IsInChimeraMain() alone: a connected client also loads
@@ -29,11 +25,18 @@ namespace BetterCheats
 		// multiplayer.
 		static bool AreCheatsAllowed();
 
+		// The same answer with the reason, for the menu's message.
+		static CheatGate GetCheatGate();
+
 	private:
+		// Any thread. On the game thread it asks the loader for the net mode
+		// now; elsewhere (the menu on the render thread, keybind callbacks) it
+		// returns the game thread's last answer, since the query reads UObjects.
+		static EPluginNetMode CurrentNetMode();
 		static void OnUIStateChanged(uint64_t oldState, uint64_t newState, void* userData);
 
 		static IPluginSelf*      s_self;
 		static std::atomic<bool> s_inChimeraMain;
-		static std::atomic<bool> s_singlePlayer;
+		static std::atomic<EPluginNetMode> s_netMode;
 	};
 }

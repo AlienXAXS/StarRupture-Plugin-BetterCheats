@@ -283,10 +283,18 @@ namespace BetterCheats
 			return;
 		}
 
-		if (!GameContext::AreCheatsAllowed())
+		// Re-evaluated every frame, so a waiting window turns into the menu as
+		// soon as the game thread reads the net mode.
+		switch (GameContext::GetCheatGate())
 		{
+		case CheatGate::SinglePlayerOnly:
 			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu can only be used in single player");
 			return;
+		case CheatGate::WaitingForWorld:
+			RenderUnavailableMessage(imgui, avail_x, avail_y, "Cheat menu is waiting for the game world");
+			return;
+		case CheatGate::Allowed:
+			break;
 		}
 
 		// Sidebar

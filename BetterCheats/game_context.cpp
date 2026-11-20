@@ -10,7 +10,7 @@ namespace BetterCheats
 {
 	IPluginSelf*      GameContext::s_self          = nullptr;
 	std::atomic<bool> GameContext::s_inChimeraMain{ false };
-	std::atomic<bool> GameContext::s_singlePlayer{ false };
+	std::atomic<EPluginNetMode> GameContext::s_netMode{ EPluginNetMode::Unknown };
 
 	void GameContext::Initialize(IPluginSelf* self)
 	{
@@ -32,7 +32,7 @@ namespace BetterCheats
 			s_self->hooks->GameMenu->UnregisterOnUIStateChanged(&GameContext::OnUIStateChanged, nullptr);
 		s_self = nullptr;
 		s_inChimeraMain = false;
-		s_singlePlayer = false;
+		s_netMode = EPluginNetMode::Unknown;
 	}
 
 	void GameContext::OnUIStateChanged(uint64_t /*oldState*/, uint64_t newState, void* /*userData*/)
@@ -42,30 +42,42 @@ namespace BetterCheats
 		// A new world starts refused until the game thread has asked for its
 		// net mode, so the menu never shows a previous session's answer.
 		if (!s_inChimeraMain)
-			s_singlePlayer = false;
+			s_netMode = EPluginNetMode::Unknown;
 	}
 
-	bool GameContext::IsSinglePlayer()
+	EPluginNetMode GameContext::CurrentNetMode()
 	{
 		if (!s_self || !s_self->hooks->NetMode)
-			return false;
+			return EPluginNetMode::Unknown;
 
 		if (!s_self->hooks->Engine->IsGameThread())
-			return s_singlePlayer;
+			return s_netMode;
 
 		const EPluginNetMode mode = s_self->hooks->NetMode->GetNetMode();
-		const bool singlePlayer = mode == EPluginNetMode::Standalone;
-		if (s_singlePlayer.exchange(singlePlayer) != singlePlayer)
-			LOG_INFO("GameContext: net mode %d, cheats %s.", static_cast<int>(mode),
-				singlePlayer ? "allowed" : "refused (single player only)");
-		return singlePlayer;
+		if (s_netMode.exchange(mode) != mode)
+		{
+			const char* verdict = "allowed";
+			switch (ClassifyCheatGate(false, mode))
+			{
+			case CheatGate::SinglePlayerOnly: verdict = "refused (single player only)"; break;
+			case CheatGate::WaitingForWorld:  verdict = "waiting for the world"; break;
+			default: break;
+			}
+			LOG_INFO("GameContext: net mode %d, cheats %s.", static_cast<int>(mode), verdict);
+		}
+		return mode;
 	}
 
 	bool GameContext::AreCheatsAllowed()
 	{
-		if (BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
-			return true;
+		return GetCheatGate() == CheatGate::Allowed;
+	}
 
-		return IsSinglePlayer();
+	CheatGate GameContext::GetCheatGate()
+	{
+		if (BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
+			return CheatGate::Allowed;
+
+		return ClassifyCheatGate(false, CurrentNetMode());
 	}
 }
