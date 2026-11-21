@@ -412,6 +412,9 @@ namespace BetterCheats::Panels::Inventory
 		{
 			g_originalInitInventorySlots(self);
 
+			if (!Features::Inventory.On())
+				return;
+
 			try { OnSlotsBuilt(self); }
 			catch (...) { LOG_ERROR("Inventory: exception while scaling the inventory slots."); }
 		}

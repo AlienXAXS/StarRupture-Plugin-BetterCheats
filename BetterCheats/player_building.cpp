@@ -34,7 +34,7 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			if (g_noBuildCost)
+			if (g_noBuildCost && Features::BuildFree.On())
 				return 1; // EAuAPlacementConditionResult::Valid
 
 			return g_originalGetPlacementResourceConditionResult(self);
@@ -66,13 +66,13 @@ namespace BetterCheats::Panels::Building
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityCustom(self, placementData);
-			return g_noStabilityCheck ? true : result;
+			return (g_noStabilityCheck && Features::BuildFree.On()) ? true : result;
 		}
 
 		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
-			return g_noStabilityCheck ? true : result;
+			return (g_noStabilityCheck && Features::BuildFree.On()) ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -107,7 +107,7 @@ namespace BetterCheats::Panels::Building
 
 		bool __fastcall Detour_IsRecipeUnlocked(void* self, void* recipe)
 		{
-			if (g_unlockAllRecipes)
+			if (g_unlockAllRecipes && Features::BuildUnlock.On())
 				return true;
 
 			return g_originalIsRecipeUnlocked(self, recipe);
@@ -197,7 +197,7 @@ namespace BetterCheats::Panels::Building
 		SDK::AActor* __fastcall Detour_FindDeconstructibleTarget(SDK::ACrPlayerControllerBase* self, const void* traceData)
 		{
 			SDK::AActor* target = g_originalFindDeconstructibleTarget(self, traceData);
-			if (target || !g_deconstructWindowsDuringWaves.load())
+			if (target || !g_deconstructWindowsDuringWaves.load() || !Features::DeconstructWindows.On())
 				return target;
 
 			{
@@ -396,7 +396,7 @@ namespace BetterCheats::Panels::Building
 		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
 			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
 		{
-			const bool bench = g_buildBenchesAnywhere.load() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
+			const bool bench = g_buildBenchesAnywhere.load() && Features::BuildAnywhere.On() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
 			t_snappingBench = bench;
 			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
 			t_snappingBench = false;
