@@ -39,7 +39,7 @@ static bool g_enabled = true;
 static struct
 {
 	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items;
-	bool Stats, Power, BuildFree, BuildUnlock, BuildAnywhere;
+	bool Stats, PowerSection, BuildFree, BuildUnlock, BuildAnywhere;
 } g_initRan;
 
 // True once SessionConfig holds the world that is running now: set when load
@@ -199,7 +199,7 @@ static void OnExperienceLoadComplete()
 		BetterCheats::Panels::Tools::ApplySavedConfig();
 	if (g_initRan.Weapons && BetterCheats::Features::Weapons.On())
 		BetterCheats::Panels::Weapons::ApplySavedConfig();
-	if (g_initRan.Power && BetterCheats::Features::Power.On())
+	if (g_initRan.PowerSection && BetterCheats::Features::Power.On())
 		BetterCheats::Panels::Power::ApplySavedConfig();
 	if (g_initRan.Wave && BetterCheats::Features::Wave.On())
 		BetterCheats::Panels::Wave::ApplySavedConfig();
@@ -294,7 +294,7 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.Enemies, Features::Enemies.On(), g_wasOn.Enemies,
 				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
 			Panels::Enemies::Tick(deltaSeconds);
-		FollowFlag(g_initRan.Power, Features::Power.On(), g_wasOn.PowerSection,
+		FollowFlag(g_initRan.PowerSection, Features::Power.On(), g_wasOn.PowerSection,
 			nullptr, &Panels::Power::ApplySavedConfig);
 	}
 
@@ -425,7 +425,7 @@ extern "C" {
 		if (BetterCheats::Features::Power.On())
 		{
 			BetterCheats::Panels::Power::Initialize();
-			g_initRan.Power = true;
+			g_initRan.PowerSection = true;
 		}
 
 		LOG_INFO("Initializing Corporations panel...");
