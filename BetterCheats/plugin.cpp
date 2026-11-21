@@ -31,6 +31,15 @@
 static IPluginSelf* g_self = nullptr;
 static bool g_enabled = true;
 
+// Which sections PluginInit actually initialised (installed hooks, registered
+// keybinds). A host can switch a section's flag off after that, so PluginShutdown
+// undoes what ran, not what the flag says now: gating on the live flag skipped the
+// unhook and left detours pointing into the freed DLL.
+static struct
+{
+	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items;
+} g_initRan;
+
 IPluginSelf* GetSelf() { return g_self; }
 
 PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_WARN("%s", msg); });
@@ -245,31 +254,52 @@ extern "C" {
 
 		LOG_INFO("Initializing Item Spawner panel...");
 		if (BetterCheats::Features::Items.On())
+		{
 			BetterCheats::Panels::Items::Initialize();
+			g_initRan.Items = true;
+		}
 
 		LOG_INFO("Initializing Inventory panel...");
 		if (BetterCheats::Features::Inventory.On())
+		{
 			BetterCheats::Panels::Inventory::Initialize();
+			g_initRan.Inventory = true;
+		}
 
 		LOG_INFO("Initializing Movement panel...");
 		if (BetterCheats::Features::Movement.On())
+		{
 			BetterCheats::Panels::Movement::Initialize();
+			g_initRan.Movement = true;
+		}
 
 		LOG_INFO("Initializing Weapons panel...");
 		if (BetterCheats::Features::Weapons.On())
+		{
 			BetterCheats::Panels::Weapons::Initialize();
+			g_initRan.Weapons = true;
+		}
 
 		LOG_INFO("Initializing Tools panel...");
 		if (BetterCheats::Features::Mining.On())
+		{
 			BetterCheats::Panels::Tools::Initialize();
+			g_initRan.Mining = true;
+		}
 
 		LOG_INFO("Initializing Wave panel...");
 		if (BetterCheats::Features::Wave.On())
+		{
 			BetterCheats::Panels::Wave::Initialize();
+			g_initRan.Wave = true;
+		}
 
 		LOG_INFO("Initializing Wind mute...");
 		if (BetterCheats::Features::WindMute.On())
+		{
 			BetterCheats::Panels::Wind::Initialize();
+			g_initRan.WindMute = true;
+		}
 
 		LOG_INFO("Initializing Power panel...");
 		if (BetterCheats::Features::Power.On())
@@ -277,11 +307,17 @@ extern "C" {
 
 		LOG_INFO("Initializing Corporations panel...");
 		if (BetterCheats::Features::Corporations.On())
+		{
 			BetterCheats::Panels::Corporations::Initialize();
+			g_initRan.Corp = true;
+		}
 
 		LOG_INFO("Initializing Enemies panel...");
 		if (BetterCheats::Features::Enemies.On())
+		{
 			BetterCheats::Panels::Enemies::Initialize();
+			g_initRan.Enemies = true;
+		}
 
 #if BETTERCHEATS_DEV_BUILD
 		LOG_INFO("Initializing Dev Cheat Manager panel (debug build)...");
@@ -356,33 +392,34 @@ extern "C" {
 		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
 		// GetMiningDamage every frame.
 		// Detached first, a fault below is survivable.
-		if (BetterCheats::Features::Mining.On())
+		if (g_initRan.Mining)
 			BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Building::Shutdown();
 
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
-		if (BetterCheats::Features::Items.On())
+		if (g_initRan.Items)
 			BetterCheats::Panels::Items::Shutdown();
-		if (BetterCheats::Features::Inventory.On())
+		if (g_initRan.Inventory)
 			BetterCheats::Panels::Inventory::Shutdown();
-		if (BetterCheats::Features::Movement.On())
+		if (g_initRan.Movement)
 			BetterCheats::Panels::Movement::Shutdown();
-		if (BetterCheats::Features::Weapons.On())
+		if (g_initRan.Weapons)
 			BetterCheats::Panels::Weapons::Shutdown();
-		if (BetterCheats::Features::Wave.On())
+		if (g_initRan.Wave)
 			BetterCheats::Panels::Wave::Shutdown();
-		if (BetterCheats::Features::WindMute.On())
+		if (g_initRan.WindMute)
 			BetterCheats::Panels::Wind::Shutdown();
-		if (BetterCheats::Features::Corporations.On())
+		if (g_initRan.Corp)
 			BetterCheats::Panels::Corporations::Shutdown();
-		if (BetterCheats::Features::Enemies.On())
+		if (g_initRan.Enemies)
 			BetterCheats::Panels::Enemies::Shutdown();
 #if BETTERCHEATS_DEV_BUILD
 		BetterCheats::Panels::DevMenus::Shutdown();
 #endif
 		BetterCheats::SessionConfig::Shutdown();
 
+		g_initRan = {};
 		g_self = nullptr;
 	}
 
