@@ -1956,6 +1956,11 @@ namespace BetterCheats::Panels::Inventory
 			return;
 		}
 
+		ReleaseValues();
+	}
+
+	void ReleaseValues()
+	{
 		try { RestoreStackSizes(); }
 		catch (...) {}
 

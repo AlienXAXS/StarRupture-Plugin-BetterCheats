@@ -636,6 +636,34 @@ namespace BetterCheats::Panels::Building
 		}
 	}
 
+	// Turns the tech keeper's unlock-all flag off and has the game rebuild the
+	// available buildings, so the build menu drops what the cheat added.
+	static void ClearKeeperUnlock()
+	{
+		try
+		{
+			if (SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper())
+			{
+				if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+					*unlockAll = false;
+				if (g_checkAvailableBuildings)
+					g_checkAvailableBuildings(keeper, nullptr, 0);
+			}
+		}
+		catch (...) {}
+	}
+
+	void ReleaseValues()
+	{
+		// The user's choice stays (g_unlockAllBuildings); only the write into the
+		// keeper is undone, and Tick writes it again if the section comes back on.
+		if (!g_prevUnlockAllBuildings)
+			return;
+
+		g_prevUnlockAllBuildings = false;
+		ClearKeeperUnlock();
+	}
+
 	void Shutdown()
 	{
 		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;
@@ -691,17 +719,7 @@ namespace BetterCheats::Panels::Building
 		{
 			g_unlockAllBuildings     = false;
 			g_prevUnlockAllBuildings = false;
-			try
-			{
-				if (SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper())
-				{
-					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
-						*unlockAll = false;
-					if (g_checkAvailableBuildings)
-						g_checkAvailableBuildings(keeper, nullptr, 0);
-				}
-			}
-			catch (...) {}
+			ClearKeeperUnlock();
 		}
 		g_prevUnlockAllBuildings  = false;
 		g_checkAvailableBuildings = nullptr;

@@ -8,6 +8,12 @@ namespace BetterCheats::Panels::Enemies
 {
 	void Initialize();
 	void Shutdown();
+
+	// Switches the enemies' AI back on if Disable AI had it off, keeping the panel's
+	// setting. The plugin calls this when the Enemies section is switched off while
+	// the game runs; Tick turns the AI off again if the section comes back on.
+	// Game thread only.
+	void ReleaseValues();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
 	void ApplySavedConfig();

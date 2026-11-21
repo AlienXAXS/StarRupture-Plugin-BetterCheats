@@ -10,6 +10,12 @@ namespace BetterCheats::Panels::Inventory
 	// Unregisters the console command — call once during plugin shutdown.
 	void Shutdown();
 
+	// Puts the item stack sizes and gatherable values back to the game's own,
+	// keeping the command and the hooks. Shutdown ends with it; the plugin also
+	// calls it when the Inventory section is switched off while the game runs.
+	// The inventory grid size is not undone (it lives in the save). Game thread only.
+	void ReleaseValues();
+
 	// Applies any queued resize and refreshes the panel snapshot — call once per
 	// engine tick.
 	void Tick(float deltaSeconds);

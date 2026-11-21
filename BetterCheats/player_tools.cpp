@@ -814,6 +814,11 @@ namespace BetterCheats::Panels::Tools
 
 		RemoveHook(&g_hookGetMiningDamage, reinterpret_cast<void**>(&g_originalGetMiningDamage), "GetMiningDamage");
 
+		ReleaseValues();
+	}
+
+	void ReleaseValues()
+	{
 		ReleaseHeatTag();
 		try { ReleaseAllStats(); }
 		catch (...) {}

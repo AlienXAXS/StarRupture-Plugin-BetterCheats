@@ -40,6 +40,52 @@ static struct
 	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items;
 } g_initRan;
 
+// Each section's flag as the tick last saw it. A host (or a version-map miss) can
+// switch a flag off while the game runs: the tick notices the edge, gives back
+// what the section wrote, and on the way back on applies the session's saved
+// settings again, which a section that was off at world load never got.
+static struct
+{
+	bool Stats, Inventory, Movement, Mining, Weapons, Wave, Enemies;
+	bool BuildFree, BuildUnlock, BuildAnywhere, Power, WindMute;
+} g_wasOn;
+
+static void SeedWasOn()
+{
+	using namespace BetterCheats;
+	g_wasOn.Stats         = Features::Stats.On();
+	g_wasOn.Inventory     = Features::Inventory.On();
+	g_wasOn.Movement      = Features::Movement.On();
+	g_wasOn.Mining        = Features::Mining.On();
+	g_wasOn.Weapons       = Features::Weapons.On();
+	g_wasOn.Wave          = Features::Wave.On();
+	g_wasOn.Enemies       = Features::Enemies.On();
+	g_wasOn.BuildFree     = Features::BuildFree.On();
+	g_wasOn.BuildUnlock   = Features::BuildUnlock.On();
+	g_wasOn.BuildAnywhere = Features::BuildAnywhere.On();
+	g_wasOn.Power         = Features::Power.On();
+	g_wasOn.WindMute      = Features::WindMute.On();
+}
+
+// Runs the matching callback when a section's flag changed since the last tick.
+// Game thread only. `released` takes back what the section wrote; `rearm` applies
+// the session's saved settings again. Either may be null.
+static void FollowFlag(bool now, bool& was, void (*released)(), void (*rearm)())
+{
+	if (now == was)
+		return;
+	was = now;
+	if (now)
+	{
+		if (rearm)
+			rearm();
+	}
+	else if (released)
+	{
+		released();
+	}
+}
+
 IPluginSelf* GetSelf() { return g_self; }
 
 PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_WARN("%s", msg); });
@@ -152,6 +198,8 @@ static void OnEngineTick(float deltaSeconds)
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
 	// gives the sound back itself when the world goes away.
+	FollowFlag(BetterCheats::Features::WindMute.On(), g_wasOn.WindMute,
+		&BetterCheats::Panels::Wind::ReleaseValues, nullptr);
 	if (BetterCheats::Features::WindMute.On())
 		BetterCheats::Panels::Wind::Tick(deltaSeconds);
 
@@ -163,6 +211,35 @@ static void OnEngineTick(float deltaSeconds)
 	// with the menu correctly refusing to open.
 	if (!BetterCheats::GameContext::AreCheatsAllowed())
 		return;
+
+	// After the gates: the release and the re-apply both touch game objects, which
+	// only a cheats world has. A flag that changed while gated is picked up on
+	// the first tick back.
+	{
+		using namespace BetterCheats;
+		FollowFlag(Features::Stats.On(), g_wasOn.Stats, nullptr, &Panels::Attributes::ApplySavedConfig);
+		FollowFlag(Features::Inventory.On(), g_wasOn.Inventory,
+			&Panels::Inventory::ReleaseValues, &Panels::Inventory::ApplySavedConfig);
+		FollowFlag(Features::Movement.On(), g_wasOn.Movement,
+			[] { Panels::Movement::ReleaseValues(true); }, &Panels::Movement::ApplySavedConfig);
+		FollowFlag(Features::Mining.On(), g_wasOn.Mining,
+			&Panels::Tools::ReleaseValues, &Panels::Tools::ApplySavedConfig);
+		FollowFlag(Features::Weapons.On(), g_wasOn.Weapons,
+			&Panels::Weapons::ReleaseValues, &Panels::Weapons::ApplySavedConfig);
+		FollowFlag(Features::Wave.On(), g_wasOn.Wave,
+			&Panels::Wave::ReleaseValues, &Panels::Wave::ApplySavedConfig);
+		FollowFlag(Features::Enemies.On(), g_wasOn.Enemies,
+			&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig);
+		FollowFlag(Features::Power.On(), g_wasOn.Power, nullptr, &Panels::Power::ApplySavedConfig);
+
+		// Three flags share the Building panel: its saved settings are read per flag,
+		// so any of them coming back on re-reads them all; only Unlock All
+		// Buildings wrote something that has to be taken back.
+		FollowFlag(Features::BuildUnlock.On(), g_wasOn.BuildUnlock,
+			&Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig);
+		FollowFlag(Features::BuildFree.On(), g_wasOn.BuildFree, nullptr, &Panels::Building::ApplySavedConfig);
+		FollowFlag(Features::BuildAnywhere.On(), g_wasOn.BuildAnywhere, nullptr, &Panels::Building::ApplySavedConfig);
+	}
 
 	if (BetterCheats::Features::Stats.On())
 		BetterCheats::Panels::Attributes::Tick(deltaSeconds);
@@ -338,6 +415,7 @@ extern "C" {
 		self->hooks->Input->RegisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 		self->hooks->Input->RegisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 
+		SeedWasOn();
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
 		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 
@@ -420,6 +498,7 @@ extern "C" {
 		BetterCheats::SessionConfig::Shutdown();
 
 		g_initRan = {};
+		g_wasOn = {};
 		g_self = nullptr;
 	}
 

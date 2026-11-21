@@ -1438,10 +1438,10 @@ namespace BetterCheats::Panels::Movement
 			return;
 		}
 
-		ReleaseValues();
+		ReleaseValues(false);
 	}
 
-	void ReleaseValues()
+	void ReleaseValues(bool restoreRaw)
 	{
 		// Leaving a character permanently non-colliding would outlive the plugin,
 		// so put it back — but only if the pawn we changed is still the live one.
@@ -1494,6 +1494,15 @@ namespace BetterCheats::Panels::Movement
 					g_composedAttrs[a].Forget();
 				g_composedMaxEnergy.Forget();
 			}
+
+			// The raw component and actor fields are written straight into the game's
+			// objects, so a section switched off at runtime has to put them back itself.
+			// Shutdown does not (restoreRaw false): at process exit the pointers may be stale.
+			// MaxEnergy was handed back with the composed overrides above.
+			if (restoreRaw && character)
+				for (int r = 0; r < kRawCount; ++r)
+					if (r != kRawMaxEnergy && IsRawActive(r))
+						RestoreRawField(character, r);
 		}
 		catch (...) {}
 

@@ -25,4 +25,9 @@ namespace BetterCheats::Panels::Weapons
 	// the game if the owning character is still valid -- call once from
 	// PluginShutdown.
 	void Shutdown();
+
+	// Hands every composed attribute and grenade value back to the game, keeping
+	// the callbacks. Shutdown ends with it; the plugin also calls it when the
+	// Weapons section is switched off while the game runs. Game thread only.
+	void ReleaseValues();
 }
