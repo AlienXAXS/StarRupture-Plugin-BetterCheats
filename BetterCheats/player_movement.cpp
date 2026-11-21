@@ -1438,6 +1438,11 @@ namespace BetterCheats::Panels::Movement
 			return;
 		}
 
+		ReleaseValues();
+	}
+
+	void ReleaseValues()
+	{
 		// Leaving a character permanently non-colliding would outlive the plugin,
 		// so put it back — but only if the pawn we changed is still the live one.
 		try
