@@ -194,6 +194,8 @@ Mod console commands:
 
 - `bc_invsize <columns> <rows>` (alias `invsize`) resizes the inventory grid, clamped 8-40. No arguments prints the current grid.
 
+A host, or the version object map, can switch a section off while the game runs. The section stops and puts back what it wrote, and its saved settings apply again when it is switched back on. A section that was already off when the game started needs a RELOAD after it is switched on.
+
 ---
 
 ## Per-save settings
