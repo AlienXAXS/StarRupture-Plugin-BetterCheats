@@ -47,7 +47,7 @@ static struct
 static struct
 {
 	bool Stats, Inventory, Movement, Mining, Weapons, Wave, Enemies;
-	bool BuildFree, BuildUnlock, BuildAnywhere, Power, WindMute;
+	bool BuildFree, BuildUnlock, BuildAnywhere, PowerSection, WindMute;
 } g_wasOn;
 
 static void SeedWasOn()
@@ -63,7 +63,7 @@ static void SeedWasOn()
 	g_wasOn.BuildFree     = Features::BuildFree.On();
 	g_wasOn.BuildUnlock   = Features::BuildUnlock.On();
 	g_wasOn.BuildAnywhere = Features::BuildAnywhere.On();
-	g_wasOn.Power         = Features::Power.On();
+	g_wasOn.PowerSection = Features::Power.On();
 	g_wasOn.WindMute      = Features::WindMute.On();
 }
 
@@ -230,7 +230,7 @@ static void OnEngineTick(float deltaSeconds)
 			&Panels::Wave::ReleaseValues, &Panels::Wave::ApplySavedConfig);
 		FollowFlag(Features::Enemies.On(), g_wasOn.Enemies,
 			&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig);
-		FollowFlag(Features::Power.On(), g_wasOn.Power, nullptr, &Panels::Power::ApplySavedConfig);
+		FollowFlag(Features::Power.On(), g_wasOn.PowerSection, nullptr, &Panels::Power::ApplySavedConfig);
 
 		// Three flags share the Building panel: its saved settings are read per flag,
 		// so any of them coming back on re-reads them all; only Unlock All
