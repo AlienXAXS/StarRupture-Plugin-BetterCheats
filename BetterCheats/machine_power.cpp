@@ -382,6 +382,14 @@ namespace BetterCheats::Panels::Power
 		// -------------------------------------------------------------------------
 		void ScanEntriesOnGameThread(void* /*context*/)
 		{
+			// The scan re-applies the persisted overrides, so a host that switched the
+			// Power section off after this was posted must not get them written.
+			if (!BetterCheats::Features::Power.On())
+			{
+				g_refreshInFlight.store(false, std::memory_order_release);
+				return;
+			}
+
 			std::vector<PowerEntry> entries;
 
 			try
@@ -882,6 +890,8 @@ namespace BetterCheats::Panels::Power
 		void ApplyOnGameThread(void* context)
 		{
 			std::unique_ptr<std::vector<ApplyItem>> items(static_cast<std::vector<ApplyItem>*>(context));
+			if (!BetterCheats::Features::Power.On())
+				return;
 			for (const ApplyItem& item : *items)
 				ApplyItemOnGameThread(item);
 		}
