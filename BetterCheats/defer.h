@@ -26,9 +26,6 @@ namespace BetterCheats::Defer
 	};
 	inline constexpr size_t kRows = sizeof(kDeferTable) / sizeof(kDeferTable[0]);
 
-	// What the menu says on a greyed row.
-	inline constexpr const char* kControlledBy = "Controlled by Best Builder";
-
 	// How often Tick() asks again.
 	inline constexpr uint64_t kRefreshMs = 3000;
 
@@ -57,6 +54,17 @@ namespace BetterCheats::Defer
 		detail::g_asked = true;
 		for (size_t i = 0; i < kRows; ++i)
 			detail::g_running[i] = isRunning(kDeferTable[i].plugin);
+	}
+
+	// The plugin a feature is left to, or null when it has no row.
+	inline const char* PluginFor(const char* featureId)
+	{
+		for (size_t i = 0; i < kRows; ++i)
+		{
+			if (std::strcmp(kDeferTable[i].featureId, featureId) == 0)
+				return kDeferTable[i].plugin;
+		}
+		return nullptr;
 	}
 
 	// True while the feature is left to another plugin. Reads the cache only.

@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include "plugin_map.h"
@@ -788,9 +789,11 @@ namespace BetterCheats::Panels::Building
 		}
 
 		// Says why a row is greyed out, under its description.
-		void ControlledBy(IModLoaderImGui* imgui)
+		void ControlledBy(IModLoaderImGui* imgui, const char* featureId)
 		{
-			imgui->TextDisabled(Defer::kControlledBy);
+			char text[96];
+			snprintf(text, sizeof(text), "Controlled by %s", Defer::PluginFor(featureId));
+			imgui->TextDisabled(text);
 		}
 
 		// The row's description, wrapped to its column, under the title.
@@ -840,7 +843,7 @@ namespace BetterCheats::Panels::Building
 				"Lets habitat windows be deconstructed while a wave has heated them. Other heated buildings stay protected.");
 			const bool deconstructDeferred = Defer::DeferredTo("deconstruct-windows");
 			if (deconstructDeferred)
-				ControlledBy(imgui);
+				ControlledBy(imgui, "deconstruct-windows");
 			imgui->TableSetColumnIndex(1);
 			bool deconstructWindows = g_deconstructWindowsDuringWaves.load();
 			imgui->BeginDisabled(deconstructDeferred);
@@ -859,7 +862,7 @@ namespace BetterCheats::Panels::Building
 				"except players and drones in its collision box. "
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			if (anywhereDeferred)
-				ControlledBy(imgui);
+				ControlledBy(imgui, "build-anywhere");
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
@@ -878,7 +881,7 @@ namespace BetterCheats::Panels::Building
 				"wall slot even when a window, another piece or anything else is in it, except players and drones in its collision box. "
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			if (anywhereDeferred)
-				ControlledBy(imgui);
+				ControlledBy(imgui, "build-anywhere");
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
