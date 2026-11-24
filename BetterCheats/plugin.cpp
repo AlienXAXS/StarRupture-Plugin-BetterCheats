@@ -137,6 +137,14 @@ static bool IsPluginRunning(const char* name)
 	return registry && registry->GetPluginVersion(name, nullptr, 0);
 }
 
+// The loader's declared-features text, or -1 before it has finished starting.
+static int ReadDeclaredFeatures(char* buf, size_t size)
+{
+	IPluginHooks* hooks = GetHooks();
+	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	return registry ? registry->GetDeclaredFeatures(buf, size) : -1;
+}
+
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
@@ -151,10 +159,10 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::CheatMenu::TickPendingClose();
 	BetterCheats::CheatMenu::TickPendingOpen();
 
-	// Asks whether Best Builder is running, so its building features can be
-	// left to it. Game thread only; the answer is cached for the menu and the
+	// Asks whether Best Builder is running and has each building feature
+	// working in this game build, so those can be left to it. Game thread only; the answer is cached for the menu and the
 	// detours.
-	BetterCheats::Defer::Tick(GetTickCount64(), &IsPluginRunning);
+	BetterCheats::Defer::Tick(GetTickCount64(), &IsPluginRunning, &ReadDeclaredFeatures);
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
 	// gives the sound back itself when the world goes away.
