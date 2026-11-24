@@ -160,8 +160,8 @@ static void OnEngineTick(float deltaSeconds)
 	BetterCheats::CheatMenu::TickPendingOpen();
 
 	// Asks whether Best Builder is running and has each building feature
-	// working in this game build, so those can be left to it. Game thread only; the answer is cached for the menu and the
-	// detours.
+	// working in this game build, so those can be left to it. Game thread only; the answer is cached for
+	// the menu and the detours.
 	BetterCheats::Defer::Tick(GetTickCount64(), &IsPluginRunning, &ReadDeclaredFeatures);
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
