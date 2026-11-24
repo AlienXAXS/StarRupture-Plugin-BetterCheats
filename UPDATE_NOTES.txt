@@ -1,2 +1,3 @@
 - Item spawner icons now load only for the rows you stop on, plus a few around them, a few at a time. Dragging the scrollbar fast no longer starts loading every icon
 - When Best Builder is installed, Build Windows Anywhere, Build Benches Anywhere and Deconstruct Windows During Waves are controlled there, and BetterCheats greys them out, but only while that Best Builder feature is available in this game build
+- Loads on ModLoader v1.23.0 and newer. Deferring to Best Builder turns on when the loader reports interface 80

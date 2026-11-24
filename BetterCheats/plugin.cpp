@@ -66,7 +66,7 @@ static PluginInfo s_pluginInfo = {
 	MODLOADER_BUILD_TAG,
 	"AlienX",
 	"Modular in-game cheat menu for StarRupture",
-	PLUGIN_INTERFACE_VERSION,
+	PLUGIN_DECLARED_INTERFACE,
 	PLUGIN_TARGET_CLIENT,
 	PLUGIN_GAME_BUILT_CL,
 	PLUGIN_MAP_MIGRATED
@@ -129,11 +129,12 @@ static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
 }
 
 // Whether the named plugin is loaded and enabled. Loaders below interface 80 have
-// no registry, but they refuse this plugin before it gets here.
+// no registry: the accessor returns null there, so nothing counts as running and
+// BetterCheats acts on its own.
 static bool IsPluginRunning(const char* name)
 {
 	IPluginHooks* hooks = GetHooks();
-	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	IPluginRegistry* registry = PluginOptRegistry(hooks);
 	return registry && registry->GetPluginVersion(name, nullptr, 0);
 }
 
@@ -141,7 +142,7 @@ static bool IsPluginRunning(const char* name)
 static int ReadDeclaredFeatures(char* buf, size_t size)
 {
 	IPluginHooks* hooks = GetHooks();
-	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	IPluginRegistry* registry = PluginOptRegistry(hooks);
 	return registry ? registry->GetDeclaredFeatures(buf, size) : -1;
 }
 
@@ -211,6 +212,9 @@ static void OnEngineTick(float deltaSeconds)
 	// instead of one per Set() call.
 	BetterCheats::SessionConfig::Commit();
 }
+
+// Lets a loader that has interface 80 report its level, which turns the registry on.
+PLUGIN_EXPORT_HOST_INFO()
 
 extern "C" {
 
