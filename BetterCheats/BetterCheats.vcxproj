@@ -165,6 +165,7 @@
     <ClInclude Include="world_wind.h" />
     <ClInclude Include="world_corporations.h" />
     <ClInclude Include="player_attributes.h" />
+    <ClInclude Include="defer.h" />
     <ClInclude Include="player_building.h" />
     <ClInclude Include="player_inventory.h" />
     <ClInclude Include="player_items.h" />

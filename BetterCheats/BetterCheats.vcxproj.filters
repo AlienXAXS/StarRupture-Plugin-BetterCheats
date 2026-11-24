@@ -152,6 +152,9 @@
     <ClInclude Include="player_attributes.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>
+    <ClInclude Include="defer.h">
+      <Filter>Plugin Core\Helpers</Filter>
+    </ClInclude>
     <ClInclude Include="player_building.h">
       <Filter>Cheats\Player</Filter>
     </ClInclude>

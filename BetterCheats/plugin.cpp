@@ -7,6 +7,7 @@
 #include "cheat_menu.h"
 #include "player_attributes.h"
 #include "player_building.h"
+#include "defer.h"
 #include "player_inventory.h"
 #include "player_items.h"
 #include "player_movement.h"
@@ -127,6 +128,15 @@ static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
 	OnExperienceLoadComplete();
 }
 
+// Whether the named plugin is loaded and enabled. Loaders below interface 80 have
+// no registry, but they refuse this plugin before it gets here.
+static bool IsPluginRunning(const char* name)
+{
+	IPluginHooks* hooks = GetHooks();
+	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	return registry && registry->GetPluginVersion(name, nullptr, 0);
+}
+
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
@@ -140,6 +150,11 @@ static void OnEngineTick(float deltaSeconds)
 	// on the same tick for the same reason.
 	BetterCheats::CheatMenu::TickPendingClose();
 	BetterCheats::CheatMenu::TickPendingOpen();
+
+	// Asks whether Best Builder is running, so its building features can be
+	// left to it. Game thread only; the answer is cached for the menu and the
+	// detours.
+	BetterCheats::Defer::Tick(GetTickCount64(), &IsPluginRunning);
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
 	// gives the sound back itself when the world goes away.

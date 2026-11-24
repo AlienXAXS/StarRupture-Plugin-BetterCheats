@@ -2,6 +2,7 @@
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
+#include "defer.h"
 
 #include "AuActorPlacement_classes.hpp"
 #include "Chimera_classes.hpp"
@@ -197,7 +198,7 @@ namespace BetterCheats::Panels::Building
 		SDK::AActor* __fastcall Detour_FindDeconstructibleTarget(SDK::ACrPlayerControllerBase* self, const void* traceData)
 		{
 			SDK::AActor* target = g_originalFindDeconstructibleTarget(self, traceData);
-			if (target || !g_deconstructWindowsDuringWaves.load())
+			if (target || !g_deconstructWindowsDuringWaves.load() || Defer::DeferredTo("deconstruct-windows"))
 				return target;
 
 			{
@@ -257,6 +258,11 @@ namespace BetterCheats::Panels::Building
 
 		std::atomic<bool>        g_buildBenchesAnywhere{ false };
 
+		// What the detours read: the saved setting, unless Best Builder has the
+		// feature. The saved setting itself is never changed.
+		bool WindowsAnywhereOn() { return g_buildWindowsAnywhere.load() && !Defer::DeferredTo("build-anywhere"); }
+		bool BenchesAnywhereOn() { return g_buildBenchesAnywhere.load() && !Defer::DeferredTo("build-anywhere"); }
+
 		// The habitat machines, placed into wall slots like windows but not
 		// custom buildings. Personal storage is a module too, but it is a
 		// custom building and registers on the slot, so it is left out.
@@ -290,8 +296,8 @@ namespace BetterCheats::Panels::Building
 
 		bool IsRelaxedPiece(SDK::ECrBuildingID id)
 		{
-			return (IsWindowId(id) && g_buildWindowsAnywhere.load())
-			    || (IsBenchId(id) && g_buildBenchesAnywhere.load());
+			return (IsWindowId(id) && WindowsAnywhereOn())
+			    || (IsBenchId(id) && BenchesAnywhereOn());
 		}
 
 		bool IsRelaxedPieceInHabitatSlot(SDK::ACrAPHelper* helper)
@@ -328,7 +334,7 @@ namespace BetterCheats::Panels::Building
 		uint8_t RelaxForHabitatPiece(SDK::ACrAPHelper* helper, uint8_t result)
 		{
 			if ((result != kBuildingColliding && result != kIsColliding)
-			    || (!g_buildWindowsAnywhere.load() && !g_buildBenchesAnywhere.load()))
+			    || (!WindowsAnywhereOn() && !BenchesAnywhereOn()))
 				return result;
 
 			try
@@ -396,7 +402,7 @@ namespace BetterCheats::Panels::Building
 		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
 			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
 		{
-			const bool bench = g_buildBenchesAnywhere.load() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
+			const bool bench = BenchesAnywhereOn() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
 			t_snappingBench = bench;
 			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
 			t_snappingBench = false;
@@ -781,6 +787,12 @@ namespace BetterCheats::Panels::Building
 			return false;
 		}
 
+		// Says why a row is greyed out, under its description.
+		void ControlledBy(IModLoaderImGui* imgui)
+		{
+			imgui->TextDisabled(Defer::kControlledBy);
+		}
+
 		// The row's description, wrapped to its column, under the title.
 		void Description(IModLoaderImGui* imgui, const char* text)
 		{
@@ -796,6 +808,7 @@ namespace BetterCheats::Panels::Building
 		constexpr int kTableFlags    = (1 << 6) | (1 << 9) | (3 << 13);
 
 		imgui->SeparatorText("Placement");
+		const bool anywhereDeferred = Defer::DeferredTo("build-anywhere");
 
 		if (imgui->BeginTable("##building_placement_table", 2, kTableFlags))
 		{
@@ -825,13 +838,18 @@ namespace BetterCheats::Panels::Building
 			imgui->Text("Deconstruct Windows During Waves");
 			Description(imgui,
 				"Lets habitat windows be deconstructed while a wave has heated them. Other heated buildings stay protected.");
+			const bool deconstructDeferred = Defer::DeferredTo("deconstruct-windows");
+			if (deconstructDeferred)
+				ControlledBy(imgui);
 			imgui->TableSetColumnIndex(1);
 			bool deconstructWindows = g_deconstructWindowsDuringWaves.load();
+			imgui->BeginDisabled(deconstructDeferred);
 			if (imgui->Checkbox("##deconstruct_windows_waves", &deconstructWindows))
 			{
 				g_deconstructWindowsDuringWaves = deconstructWindows;
 				SessionConfig::Set("playerBuilding.deconstructWindowsDuringWaves", deconstructWindows);
 			}
+			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
@@ -840,13 +858,17 @@ namespace BetterCheats::Panels::Building
 				"Lets a window go into a habitat or Hub wall slot even when a machine or anything else is in it, "
 				"except players and drones in its collision box. "
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
+			if (anywhereDeferred)
+				ControlledBy(imgui);
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
+			imgui->BeginDisabled(anywhereDeferred);
 			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
 			{
 				g_buildWindowsAnywhere = buildWindowsAnywhere;
 				SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
 			}
+			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
@@ -855,13 +877,17 @@ namespace BetterCheats::Panels::Building
 				"Lets a habitat machine (Item Printer, Food Processor, Suit Workshop and the rest) go into a habitat or Hub "
 				"wall slot even when a window, another piece or anything else is in it, except players and drones in its collision box. "
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
+			if (anywhereDeferred)
+				ControlledBy(imgui);
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
+			imgui->BeginDisabled(anywhereDeferred);
 			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
 			{
 				g_buildBenchesAnywhere = buildBenchesAnywhere;
 				SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
 			}
+			imgui->EndDisabled();
 
 			imgui->EndTable();
 		}
