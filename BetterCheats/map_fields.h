@@ -630,14 +630,11 @@ namespace BetterCheats::Features
 		Fields::CrWeaponItemDataBase_WeakpointDamageMultiplier.key, Fields::CrWeaponItemDataBase_ShotAggro.key
 	} };
 
-	inline PluginMap::Feature Inventory{ "inventory", "Inventory size and stack limits", {
+	inline PluginMap::Feature Inventory{ "inventory", "Inventory size and plant pickup", {
 		"UCrUW_InventoryContainer::InitInventorySlots", Fields::CrUW_InventoryContainer_InventoryComponent.key,
 		Fields::CrCharacterPlayerBase_InventoryComponent.key, Fields::CrInventoryComponent_GridColumns.key,
 		Fields::CrInventoryComponent_GridRows.key, Fields::CrUW_InventoryContainer_ItemGridPanel.key,
-		Fields::AuItemDataBase_MaxStack.key, Fields::AuItemDataBase_StackingType.key,
-		Fields::AuItemDataBase_UIItemType.key, Fields::CrGatherableBaseActor_ResourceCount.key,
-		Fields::CrInventoryComponent_Slots.key, Fields::AuItemDataBase_UniqueItemName.key,
-		Fields::AuItemDataBase_ItemName.key
+		Fields::CrGatherableBaseActor_ResourceCount.key, Fields::CrInventoryComponent_Slots.key
 	} };
 
 	// Only the call into the widget's own SetSlotSize reads these, so a miss turns off that call and nothing
@@ -715,13 +712,22 @@ namespace BetterCheats::Features
 		Fields::AudioComponent_Sound.key, Fields::AudioComponent_VolumeMultiplier.key
 	}, { "Audio.MuteWindInPauseMenu" } };
 
+	// The item stack sizes, a section of their own so a host can switch them off without
+	// touching the grid size or plant pickup. Appended after the others: ids are never
+	// reused or renamed.
+	inline PluginMap::Feature StackSize{ "stack-size", "Stack sizes", {
+		Fields::AuItemDataBase_MaxStack.key, Fields::AuItemDataBase_StackingType.key,
+		Fields::AuItemDataBase_UIItemType.key, Fields::AuItemDataBase_UniqueItemName.key,
+		Fields::AuItemDataBase_ItemName.key
+	} };
+
 	// Declares every feature. Call before the resolves, so a miss lands on the
 	// feature, not on the plugin.
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
 			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute);
+			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute, StackSize);
 	}
 
 	// The loader's scanner and this plugin's handle, kept past OnPluginLoadHooks for
@@ -753,6 +759,6 @@ namespace BetterCheats::Features
 	inline void RenderOff(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
 	{
 		imgui->SeparatorText(feature.title);
-		imgui->TextDisabled("Off: this game build changed something it needs. See the loader's hook report.");
+		imgui->TextDisabled("Off: the host has turned this off, or this game build changed something it needs. See the loader's hook report.");
 	}
 }

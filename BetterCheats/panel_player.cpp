@@ -34,6 +34,8 @@ namespace BetterCheats::Panels
 			Inventory::RenderImGui(imgui);
 		else
 			Features::RenderOff(imgui, Features::Inventory);
+
+		Inventory::RenderStackSizes(imgui);
 	}
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)

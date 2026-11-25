@@ -1940,7 +1940,7 @@ namespace BetterCheats::Panels::Inventory
 
 		ForgetWidgets();
 
-		// Item stack sizes: same render-thread-Shutdown hazard as the weapon
+		// Plant Pickup: same render-thread-Shutdown hazard as the weapon
 		// panel's own composed fields -- the loader's own RELOAD button runs
 		// PluginShutdown from its D3D Present hook, not the
 		// game thread Tick() recorded, and every UObject touch below
@@ -1949,8 +1949,6 @@ namespace BetterCheats::Panels::Inventory
 		// leftover write on the next activation, off-thread or not.
 		if (!BetterCheats::IsGameThread())
 		{
-			for (auto& kv : g_stackComposed)
-				kv.second.composed.Forget();
 			for (auto& kv : g_gather)
 				kv.second.composed.Forget();
 			return;
@@ -1961,11 +1959,27 @@ namespace BetterCheats::Panels::Inventory
 
 	void ReleaseValues()
 	{
-		try { RestoreStackSizes(); }
-		catch (...) {}
-
-		// Plant Pickup: same render-thread-Shutdown hazard, same fix.
 		try { RestoreGatherables(); }
+		catch (...) {}
+	}
+
+	void ShutdownStackSizes()
+	{
+		// Same render-thread-Shutdown hazard as Shutdown() above: forget instead
+		// of Release off the game thread.
+		if (!BetterCheats::IsGameThread())
+		{
+			for (auto& kv : g_stackComposed)
+				kv.second.composed.Forget();
+			return;
+		}
+
+		ReleaseStackSizes();
+	}
+
+	void ReleaseStackSizes()
+	{
+		try { RestoreStackSizes(); }
 		catch (...) {}
 	}
 
@@ -1980,8 +1994,14 @@ namespace BetterCheats::Panels::Inventory
 		RescaleBuiltContainers();
 		RefreshSnapshot();
 
-		ApplyStackSizes();
 		ApplyGatherMultiplier(deltaSeconds);
+	}
+
+	void TickStackSizes()
+	{
+		BetterCheats::RecordGameThread();
+
+		ApplyStackSizes();
 	}
 
 	void ApplySavedConfig()
@@ -2015,6 +2035,33 @@ namespace BetterCheats::Panels::Inventory
 		g_baseSlotWidth  = 0.0f;
 		g_baseSlotHeight = 0.0f;
 		g_containers.clear();
+
+		// Plant Pickup. Hand every CDO its original back first, so the next
+		// tick captures the true base and persists it into this session's
+		// config rather than the last one's. This runs on the game thread;
+		// IsGameThread() is only false before the first Tick, when nothing has
+		// been written yet, so dropping state is enough there.
+		{
+			const nlohmann::json saved = SessionConfig::Get("playerInventory.gather.multiplier", kGatherMultDefault);
+			g_gatherMultiplier.store(ClampGatherMultiplier(saved.is_number() ? saved.get<float>() : kGatherMultDefault));
+		}
+		if (BetterCheats::IsGameThread())
+		{
+			try { RestoreGatherables(); }
+			catch (...) {}
+		}
+		else
+		{
+			for (auto& kv : g_gather)
+				kv.second.composed.Forget();
+		}
+		g_gatherScanNow.store(true);
+	}
+
+	void ApplySavedStackConfig()
+	{
+		if (!SessionConfig::IsLoaded())
+			return;
 
 		// Item stack sizes. Sizes replaced the old multipliers; a multiplier
 		// has no single size it maps to, so the old keys are dropped, not
@@ -2077,27 +2124,6 @@ namespace BetterCheats::Panels::Inventory
 		g_stackItemsGameThread.clear();
 		g_stackComposed.clear();
 		RequestRefreshStackList();
-
-		// Plant Pickup. Hand every CDO its original back first, so the next
-		// tick captures the true base and persists it into this session's
-		// config rather than the last one's. This runs on the game thread;
-		// IsGameThread() is only false before the first Tick, when nothing has
-		// been written yet, so dropping state is enough there.
-		{
-			const nlohmann::json saved = SessionConfig::Get("playerInventory.gather.multiplier", kGatherMultDefault);
-			g_gatherMultiplier.store(ClampGatherMultiplier(saved.is_number() ? saved.get<float>() : kGatherMultDefault));
-		}
-		if (BetterCheats::IsGameThread())
-		{
-			try { RestoreGatherables(); }
-			catch (...) {}
-		}
-		else
-		{
-			for (auto& kv : g_gather)
-				kv.second.composed.Forget();
-		}
-		g_gatherScanNow.store(true);
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
@@ -2222,8 +2248,19 @@ namespace BetterCheats::Panels::Inventory
 		imgui->Spacing();
 		imgui->TextDisabled("Console: bc_invsize <columns> <rows>");
 
-		// Plant Pickup first: the stack list below fills the rest of the panel.
 		RenderPlantPickup(imgui);
+	}
+
+	void RenderStackSizes(IModLoaderImGui* imgui)
+	{
+		if (!Features::StackSize.On())
+		{
+			imgui->Spacing();
+			imgui->Separator();
+			Features::RenderOff(imgui, Features::StackSize);
+			return;
+		}
+
 		RenderItemStackSizes(imgui);
 	}
 }

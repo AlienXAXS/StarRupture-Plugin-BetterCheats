@@ -39,7 +39,7 @@ static bool g_enabled = true;
 // unhook and left detours pointing into the freed DLL.
 static struct
 {
-	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items;
+	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items, StackSize;
 	bool Stats, PowerSection, BuildFree, BuildUnlock, BuildAnywhere;
 } g_initRan;
 
@@ -62,7 +62,7 @@ struct FlagEdge
 static struct
 {
 	FlagEdge Stats, Inventory, Movement, Mining, Weapons, Wave, Enemies;
-	FlagEdge BuildFree, BuildUnlock, BuildAnywhere, PowerSection, WindMute;
+	FlagEdge BuildFree, BuildUnlock, BuildAnywhere, PowerSection, WindMute, StackSize;
 } g_wasOn;
 
 static void SeedWasOn()
@@ -80,6 +80,7 @@ static void SeedWasOn()
 	g_wasOn.BuildAnywhere.was = Features::BuildAnywhere.On();
 	g_wasOn.PowerSection.was  = Features::Power.On();
 	g_wasOn.WindMute.was      = Features::WindMute.On();
+	g_wasOn.StackSize.was     = Features::StackSize.On();
 }
 
 // Follows one section's flag. Game thread only. A section whose Initialize never
@@ -194,6 +195,8 @@ static void OnExperienceLoadComplete()
 	BetterCheats::Panels::Building::ApplySavedConfig();
 	if (g_initRan.Inventory && BetterCheats::Features::Inventory.On())
 		BetterCheats::Panels::Inventory::ApplySavedConfig();
+	if (g_initRan.StackSize && BetterCheats::Features::StackSize.On())
+		BetterCheats::Panels::Inventory::ApplySavedStackConfig();
 	if (g_initRan.Movement && BetterCheats::Features::Movement.On())
 		BetterCheats::Panels::Movement::ApplySavedConfig();
 	if (g_initRan.Mining && BetterCheats::Features::Mining.On())
@@ -298,6 +301,9 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.Inventory, Features::Inventory.On(), g_wasOn.Inventory,
 				&Panels::Inventory::ReleaseValues, &Panels::Inventory::ApplySavedConfig))
 			Panels::Inventory::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.StackSize, Features::StackSize.On(), g_wasOn.StackSize,
+				&Panels::Inventory::ReleaseStackSizes, &Panels::Inventory::ApplySavedStackConfig))
+			Panels::Inventory::TickStackSizes();
 		if (FollowFlag(g_initRan.Movement, Features::Movement.On(), g_wasOn.Movement,
 				[] { Panels::Movement::ReleaseValues(true); }, &Panels::Movement::ApplySavedConfig))
 			Panels::Movement::Tick(deltaSeconds);
@@ -408,6 +414,9 @@ extern "C" {
 			BetterCheats::Panels::Inventory::Initialize();
 			g_initRan.Inventory = true;
 		}
+
+		// Stack sizes have no hooks or keybinds to set up: the section only ticks.
+		g_initRan.StackSize = BetterCheats::Features::StackSize.On();
 
 		LOG_INFO("Initializing Movement panel...");
 		if (BetterCheats::Features::Movement.On())
@@ -551,6 +560,8 @@ extern "C" {
 			BetterCheats::Panels::Items::Shutdown();
 		if (g_initRan.Inventory)
 			BetterCheats::Panels::Inventory::Shutdown();
+		if (g_initRan.StackSize)
+			BetterCheats::Panels::Inventory::ShutdownStackSizes();
 		if (g_initRan.Movement)
 			BetterCheats::Panels::Movement::Shutdown();
 		if (g_initRan.Weapons)
