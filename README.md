@@ -197,7 +197,7 @@ Mod console commands:
 
 - `bc_invsize <columns> <rows>` (alias `invsize`) resizes the inventory grid, clamped 8-40. No arguments prints the current grid.
 
-A host, or the version object map, can switch a section off while the game runs. The section stops and puts back what it changed in the game for Movement, Weapons, Tools, Inventory (gatherables), Stack sizes, Wave (the pause), Enemies (AI) and Unlock All Buildings. It does not put back Stats pins, Power overrides, Skills, Corporations, spawned items, the inventory grid size (it lives in the save), enemy one-hit-kill HP or queued wave actions. When the section is switched back on, your saved settings apply again once the world has finished loading. A section that was already off when the plugin loaded stays off until a RELOAD, including its hooks and keybinds.
+A host, or the version object map, can switch a section off while the game runs. The section stops and puts back what it changed in the game for Movement, Weapons, Tools, Inventory (gatherables), Stack sizes, Wave (the pause), Enemies (AI) and Unlock All Buildings. It does not put back Stats pins, Skills, Corporations, spawned items, the inventory grid size (it lives in the save), enemy one-hit-kill HP or queued wave actions. When the section is switched back on, your saved settings apply again once the world has finished loading. A section that was already off when the plugin loaded stays off until a RELOAD, including its hooks and keybinds.
 
 ---
 
@@ -231,7 +231,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires a ModLoader with plugin interface 80 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library, which 1.24.0 or newer carries.
+> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library. Handing the Building options to Best Builder needs ModLoader 1.28.0; an older loader just leaves them with BetterCheats.
 
 ---
 
