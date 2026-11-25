@@ -1,2 +1,9 @@
 - Item spawner icons now load only for the rows you stop on, plus a few around them, a few at a time. Dragging the scrollbar fast no longer starts loading every icon
 - When Best Builder is installed, all seven Building options (No Build Cost, No Stability Check, Deconstruct Windows During Waves, Build Windows Anywhere, Build Benches Anywhere, Unlock All Buildings and Unlock All Recipes) are controlled there, and BetterCheats greys them out. Your own setting is not changed and comes back when Best Builder is gone. This happens only while that Best Builder feature is available in this game build
+- Machine power and inventory slot sizing read their sizes from the loader's version object map, so they keep working when a game update changes them
+- Requires ModLoader 1.24.0 or newer
+- Item spawner icons now come from the loader's image library. They load for the rows on screen, and a row shows an empty slot until its icon is ready
+- Item spawner icons are bigger and sharper, at least 28 px
+- The item list is registered with the image library at start. Its icons load when the page shows them, or ahead of time if you turn on the loader's preload setting
+- Blueprint item icons fixed: Ammo and the building blueprints now show their own pictures. They used to all draw the Ammo picture. These items also get their own Item Stack Sizes rows and settings now, so a stack size you set for Ammo or a blueprint before this version has to be set again
+- A host, or the version object map, can switch a section off while the game runs. The section stops and gives back what it changed (weapon, movement and tool values, stack sizes, Unlock All Buildings, enemy AI, the wave pause). Stats pins, Power overrides, Skills, Corporations, spawned items and the inventory grid size stay as they are. Turn it back on and your saved settings apply again once the world has finished loading. A section that was off when the plugin loaded stays off until a RELOAD

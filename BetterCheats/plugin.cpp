@@ -23,6 +23,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include "Engine_classes.hpp"
@@ -31,6 +32,90 @@
 
 static IPluginSelf* g_self = nullptr;
 static bool g_enabled = true;
+
+// Which sections PluginInit actually initialised (installed hooks, registered
+// keybinds). A host can switch a section's flag off after that, so PluginShutdown
+// undoes what ran, not what the flag says now: gating on the live flag skipped the
+// unhook and left detours pointing into the freed DLL.
+static struct
+{
+	bool Inventory, Movement, Weapons, Mining, Wave, WindMute, Corp, Enemies, Items;
+	bool Stats, PowerSection, BuildFree, BuildUnlock, BuildAnywhere;
+} g_initRan;
+
+// True once SessionConfig holds the world that is running now: set when load
+// complete has reloaded it, cleared when a world ends. Until then it still holds
+// the previous world's data, which a re-apply must not read.
+static std::atomic<bool> g_sessionCurrent{ false };
+
+// Each section's flag as the tick last saw it, and whether it still owes a
+// re-apply. A host (or a version-map miss) can switch a flag off while the game
+// runs: the tick notices the edge, gives back what the section wrote, and on the
+// way back on applies the session's saved settings again, which a section that
+// was off at world load never got.
+struct FlagEdge
+{
+	bool was     = false;
+	bool pending = false;
+};
+
+static struct
+{
+	FlagEdge Stats, Inventory, Movement, Mining, Weapons, Wave, Enemies;
+	FlagEdge BuildFree, BuildUnlock, BuildAnywhere, PowerSection, WindMute;
+} g_wasOn;
+
+static void SeedWasOn()
+{
+	using namespace BetterCheats;
+	g_wasOn.Stats.was         = Features::Stats.On();
+	g_wasOn.Inventory.was     = Features::Inventory.On();
+	g_wasOn.Movement.was      = Features::Movement.On();
+	g_wasOn.Mining.was        = Features::Mining.On();
+	g_wasOn.Weapons.was       = Features::Weapons.On();
+	g_wasOn.Wave.was          = Features::Wave.On();
+	g_wasOn.Enemies.was       = Features::Enemies.On();
+	g_wasOn.BuildFree.was     = Features::BuildFree.On();
+	g_wasOn.BuildUnlock.was   = Features::BuildUnlock.On();
+	g_wasOn.BuildAnywhere.was = Features::BuildAnywhere.On();
+	g_wasOn.PowerSection.was  = Features::Power.On();
+	g_wasOn.WindMute.was      = Features::WindMute.On();
+}
+
+// Follows one section's flag. Game thread only. A section whose Initialize never
+// ran (its flag was off at PluginInit) stays inactive until RELOAD: it has no hooks
+// or world callbacks, so neither its tick nor an edge may touch it. `released` takes
+// back what the section wrote when the flag goes off; `rearm` applies the session's
+// saved settings once the flag is back on and the session config is the current
+// world's. Either may be null. Returns whether the section should tick.
+static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(), void (*rearm)())
+{
+	if (!initRan)
+		return false;
+
+	if (now != edge.was)
+	{
+		edge.was = now;
+		if (now)
+		{
+			edge.pending = true;
+		}
+		else
+		{
+			edge.pending = false;
+			if (released)
+				released();
+		}
+	}
+
+	if (edge.pending && g_sessionCurrent.load())
+	{
+		edge.pending = false;
+		if (rearm)
+			rearm();
+	}
+	return now;
+}
 
 IPluginSelf* GetSelf() { return g_self; }
 
@@ -100,26 +185,37 @@ static void OnExperienceLoadComplete()
 
 	if (!BetterCheats::SessionConfig::Reload())
 	{
+		g_sessionCurrent = false;
 		return;
 	}
 
-	if (BetterCheats::Features::Stats.On())
+	if (g_initRan.Stats && BetterCheats::Features::Stats.On())
 		BetterCheats::Panels::Attributes::ApplySavedConfig();
 	BetterCheats::Panels::Building::ApplySavedConfig();
-	if (BetterCheats::Features::Inventory.On())
+	if (g_initRan.Inventory && BetterCheats::Features::Inventory.On())
 		BetterCheats::Panels::Inventory::ApplySavedConfig();
-	if (BetterCheats::Features::Movement.On())
+	if (g_initRan.Movement && BetterCheats::Features::Movement.On())
 		BetterCheats::Panels::Movement::ApplySavedConfig();
-	if (BetterCheats::Features::Mining.On())
+	if (g_initRan.Mining && BetterCheats::Features::Mining.On())
 		BetterCheats::Panels::Tools::ApplySavedConfig();
-	if (BetterCheats::Features::Weapons.On())
+	if (g_initRan.Weapons && BetterCheats::Features::Weapons.On())
 		BetterCheats::Panels::Weapons::ApplySavedConfig();
-	if (BetterCheats::Features::Power.On())
+	if (g_initRan.PowerSection && BetterCheats::Features::Power.On())
 		BetterCheats::Panels::Power::ApplySavedConfig();
-	if (BetterCheats::Features::Wave.On())
+	if (g_initRan.Wave && BetterCheats::Features::Wave.On())
 		BetterCheats::Panels::Wave::ApplySavedConfig();
-	if (BetterCheats::Features::Enemies.On())
+	if (g_initRan.Enemies && BetterCheats::Features::Enemies.On())
 		BetterCheats::Panels::Enemies::ApplySavedConfig();
+
+	// Last, so a section re-armed by the tick never reads the previous world's data.
+	g_sessionCurrent = true;
+}
+
+// A world is gone: SessionConfig still holds its data until load complete reloads
+// it for the next one.
+static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
+{
+	g_sessionCurrent = false;
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
@@ -166,7 +262,8 @@ static void OnEngineTick(float deltaSeconds)
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
 	// gives the sound back itself when the world goes away.
-	if (BetterCheats::Features::WindMute.On())
+	if (FollowFlag(g_initRan.WindMute, BetterCheats::Features::WindMute.On(), g_wasOn.WindMute,
+			&BetterCheats::Panels::Wind::ReleaseValues, nullptr))
 		BetterCheats::Panels::Wind::Tick(deltaSeconds);
 
 	if (!BetterCheats::GameContext::IsInChimeraMain())
@@ -178,27 +275,51 @@ static void OnEngineTick(float deltaSeconds)
 	if (!BetterCheats::GameContext::AreCheatsAllowed())
 		return;
 
-	if (BetterCheats::Features::Stats.On())
-		BetterCheats::Panels::Attributes::Tick(deltaSeconds);
-	BetterCheats::Panels::Building::Tick(deltaSeconds);
-	if (BetterCheats::Features::Inventory.On())
-		BetterCheats::Panels::Inventory::Tick(deltaSeconds);
-	if (BetterCheats::Features::Movement.On())
-		BetterCheats::Panels::Movement::Tick(deltaSeconds);
-	if (BetterCheats::Features::Skills.On())
-		BetterCheats::Panels::Skills::Tick(deltaSeconds);
-	if (BetterCheats::Features::Mining.On())
-		BetterCheats::Panels::Tools::Tick(deltaSeconds);
-	if (BetterCheats::Features::Weapons.On())
-		BetterCheats::Panels::Weapons::Tick(deltaSeconds);
-	if (BetterCheats::Features::Wave.On())
-		BetterCheats::Panels::Wave::Tick(deltaSeconds);
-	if (BetterCheats::Features::Corporations.On())
-		BetterCheats::Panels::Corporations::Tick(deltaSeconds);
-	if (BetterCheats::Features::Enemies.On())
-		BetterCheats::Panels::Enemies::Tick(deltaSeconds);
-	if (BetterCheats::Features::Items.On())
-		BetterCheats::Panels::Items::Tick();
+	// After the gates: the release and the re-apply both touch game objects, which
+	// only a cheats world has. A flag that changed while gated is picked up on
+	// the first tick back.
+	{
+		using namespace BetterCheats;
+		if (FollowFlag(g_initRan.Stats, Features::Stats.On(), g_wasOn.Stats,
+				nullptr, &Panels::Attributes::ApplySavedConfig))
+			Panels::Attributes::Tick(deltaSeconds);
+
+		// Three flags share the Building panel: its saved settings are read per flag,
+		// so any of them coming back on re-reads them all. Only Unlock All Buildings
+		// wrote something that has to be taken back, and only it has a tick.
+		FollowFlag(g_initRan.BuildFree, Features::BuildFree.On(), g_wasOn.BuildFree,
+			nullptr, &Panels::Building::ApplySavedConfig);
+		FollowFlag(g_initRan.BuildAnywhere, Features::BuildAnywhere.On(), g_wasOn.BuildAnywhere,
+			nullptr, &Panels::Building::ApplySavedConfig);
+		if (FollowFlag(g_initRan.BuildUnlock, Features::BuildUnlock.On(), g_wasOn.BuildUnlock,
+				&Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig))
+			Panels::Building::Tick(deltaSeconds);
+
+		if (FollowFlag(g_initRan.Inventory, Features::Inventory.On(), g_wasOn.Inventory,
+				&Panels::Inventory::ReleaseValues, &Panels::Inventory::ApplySavedConfig))
+			Panels::Inventory::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.Movement, Features::Movement.On(), g_wasOn.Movement,
+				[] { Panels::Movement::ReleaseValues(true); }, &Panels::Movement::ApplySavedConfig))
+			Panels::Movement::Tick(deltaSeconds);
+		if (Features::Skills.On())
+			Panels::Skills::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.Mining, Features::Mining.On(), g_wasOn.Mining,
+				&Panels::Tools::ReleaseValues, &Panels::Tools::ApplySavedConfig))
+			Panels::Tools::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.Weapons, Features::Weapons.On(), g_wasOn.Weapons,
+				&Panels::Weapons::ReleaseValues, &Panels::Weapons::ApplySavedConfig))
+			Panels::Weapons::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.Wave, Features::Wave.On(), g_wasOn.Wave,
+				&Panels::Wave::ReleaseValues, &Panels::Wave::ApplySavedConfig))
+			Panels::Wave::Tick(deltaSeconds);
+		if (g_initRan.Corp && Features::Corporations.On())
+			Panels::Corporations::Tick(deltaSeconds);
+		if (FollowFlag(g_initRan.Enemies, Features::Enemies.On(), g_wasOn.Enemies,
+				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
+			Panels::Enemies::Tick(deltaSeconds);
+		FollowFlag(g_initRan.PowerSection, Features::Power.On(), g_wasOn.PowerSection,
+			nullptr, &Panels::Power::ApplySavedConfig);
+	}
 
 #if BETTERCHEATS_DEV_BUILD
 	BetterCheats::Panels::DevMenus::Tick(deltaSeconds);
@@ -232,6 +353,7 @@ extern "C" {
 		BetterCheats::Features::Declare(self, scanner);
 		BetterCheats::AOB::ResolveAll(self, scanner);
 		BetterCheats::Fields::Resolve(self, scanner);
+		BetterCheats::Features::ResolveSlotSize(self, scanner);
 	}
 
 	__declspec(dllexport) bool PluginInit(IPluginSelf* self)
@@ -262,50 +384,86 @@ extern "C" {
 
 		LOG_INFO("Initializing Attribute panel...");
 		if (BetterCheats::Features::Stats.On())
+		{
 			BetterCheats::Panels::Attributes::Initialize();
+			g_initRan.Stats = true;
+		}
 
 		LOG_INFO("Initializing Building panel...");
 		BetterCheats::Panels::Building::Initialize();
+		g_initRan.BuildFree     = BetterCheats::Features::BuildFree.On();
+		g_initRan.BuildUnlock   = BetterCheats::Features::BuildUnlock.On();
+		g_initRan.BuildAnywhere = BetterCheats::Features::BuildAnywhere.On();
 
 		LOG_INFO("Initializing Item Spawner panel...");
 		if (BetterCheats::Features::Items.On())
+		{
 			BetterCheats::Panels::Items::Initialize();
+			g_initRan.Items = true;
+		}
 
 		LOG_INFO("Initializing Inventory panel...");
 		if (BetterCheats::Features::Inventory.On())
+		{
 			BetterCheats::Panels::Inventory::Initialize();
+			g_initRan.Inventory = true;
+		}
 
 		LOG_INFO("Initializing Movement panel...");
 		if (BetterCheats::Features::Movement.On())
+		{
 			BetterCheats::Panels::Movement::Initialize();
+			g_initRan.Movement = true;
+		}
 
 		LOG_INFO("Initializing Weapons panel...");
 		if (BetterCheats::Features::Weapons.On())
+		{
 			BetterCheats::Panels::Weapons::Initialize();
+			g_initRan.Weapons = true;
+		}
 
 		LOG_INFO("Initializing Tools panel...");
 		if (BetterCheats::Features::Mining.On())
+		{
 			BetterCheats::Panels::Tools::Initialize();
+			g_initRan.Mining = true;
+		}
 
 		LOG_INFO("Initializing Wave panel...");
 		if (BetterCheats::Features::Wave.On())
+		{
 			BetterCheats::Panels::Wave::Initialize();
+			g_initRan.Wave = true;
+		}
 
 		LOG_INFO("Initializing Wind mute...");
 		if (BetterCheats::Features::WindMute.On())
+		{
 			BetterCheats::Panels::Wind::Initialize();
+			g_initRan.WindMute = true;
+		}
 
 		LOG_INFO("Initializing Power panel...");
 		if (BetterCheats::Features::Power.On())
+		{
 			BetterCheats::Panels::Power::Initialize();
+			g_initRan.PowerSection = true;
+		}
 
 		LOG_INFO("Initializing Corporations panel...");
 		if (BetterCheats::Features::Corporations.On())
+		{
 			BetterCheats::Panels::Corporations::Initialize();
+			g_initRan.Corp = true;
+		}
 
 		LOG_INFO("Initializing Enemies panel...");
 		if (BetterCheats::Features::Enemies.On())
+		{
 			BetterCheats::Panels::Enemies::Initialize();
+			g_initRan.Enemies = true;
+		}
 
 #if BETTERCHEATS_DEV_BUILD
 		LOG_INFO("Initializing Dev Cheat Manager panel (debug build)...");
@@ -326,8 +484,10 @@ extern "C" {
 		self->hooks->Input->RegisterKeybind(EModKey::Escape, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 		self->hooks->Input->RegisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 
+		SeedWasOn();
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
 		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
+		self->hooks->World->RegisterOnAfterWorldEndPlay(&OnAfterWorldEndPlay);
 
 		// Hot-reload: experience-load-complete may have already fired before we
 		// registered, so if a session is already in progress, run the same setup now.
@@ -369,6 +529,7 @@ extern "C" {
 			g_self->hooks->Input->UnregisterKeybind(EModKey::Q, EModKeyEvent::Pressed, &OnCloseKeyPressed);
 			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
 			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
+			g_self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnAfterWorldEndPlay);
 		}
 
 		// Detours come out FIRST, before anything that touches game objects.
@@ -380,33 +541,36 @@ extern "C" {
 		// detours that no longer existed, and ACrCharacterPlayerBase::Tick calls
 		// GetMiningDamage every frame.
 		// Detached first, a fault below is survivable.
-		if (BetterCheats::Features::Mining.On())
+		if (g_initRan.Mining)
 			BetterCheats::Panels::Tools::Shutdown();
 		BetterCheats::Panels::Building::Shutdown();
 
 		BetterCheats::CheatMenu::Shutdown();
 		BetterCheats::GameContext::Shutdown();
-		if (BetterCheats::Features::Items.On())
+		if (g_initRan.Items)
 			BetterCheats::Panels::Items::Shutdown();
-		if (BetterCheats::Features::Inventory.On())
+		if (g_initRan.Inventory)
 			BetterCheats::Panels::Inventory::Shutdown();
-		if (BetterCheats::Features::Movement.On())
+		if (g_initRan.Movement)
 			BetterCheats::Panels::Movement::Shutdown();
-		if (BetterCheats::Features::Weapons.On())
+		if (g_initRan.Weapons)
 			BetterCheats::Panels::Weapons::Shutdown();
-		if (BetterCheats::Features::Wave.On())
+		if (g_initRan.Wave)
 			BetterCheats::Panels::Wave::Shutdown();
-		if (BetterCheats::Features::WindMute.On())
+		if (g_initRan.WindMute)
 			BetterCheats::Panels::Wind::Shutdown();
-		if (BetterCheats::Features::Corporations.On())
+		if (g_initRan.Corp)
 			BetterCheats::Panels::Corporations::Shutdown();
-		if (BetterCheats::Features::Enemies.On())
+		if (g_initRan.Enemies)
 			BetterCheats::Panels::Enemies::Shutdown();
 #if BETTERCHEATS_DEV_BUILD
 		BetterCheats::Panels::DevMenus::Shutdown();
 #endif
 		BetterCheats::SessionConfig::Shutdown();
 
+		g_initRan = {};
+		g_wasOn = {};
+		g_sessionCurrent = false;
 		g_self = nullptr;
 	}
 

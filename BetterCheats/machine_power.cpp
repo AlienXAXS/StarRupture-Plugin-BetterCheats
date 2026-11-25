@@ -336,7 +336,38 @@ namespace BetterCheats::Panels::Power
 		// reload-override path in ScanEntriesOnGameThread can patch already-placed
 		// buildings and rebuild the template, same as the Apply button does.
 		void RebuildEntityTemplate(SDK::UMassEntityConfigAsset* configAsset, const char* assetName);
-		void PatchExistingSharedFragment(const SDK::FCrElectricityParameters& oldParams, float newValue, const char* assetName);
+		void PatchExistingSharedFragment(const PluginMap::StructBuffer& oldParams, float newValue, const char* assetName);
+
+		// The trait's Parameters, or null when that member is not as large as the
+		// FCrElectricityParameters this plugin copies and edits (a build that changed one
+		// of them): machine power stays off then.
+		SDK::FCrElectricityParameters* TraitParameters(SDK::UCrElectricityTrait* trait)
+		{
+			if (!trait) return nullptr;
+			if (BetterCheats::Fields::CrElectricityTrait_Parameters.resolvedSize != BetterCheats::Fields::CrElectricityParameters_Size.resolvedSize)
+			{
+				static bool s_logged = false;
+				if (!s_logged)
+				{
+					s_logged = true;
+					LOG_WARN("Power: the trait's Parameters is 0x%X bytes but FCrElectricityParameters is 0x%X - machine power stays off.",
+						BetterCheats::Fields::CrElectricityTrait_Parameters.resolvedSize, BetterCheats::Fields::CrElectricityParameters_Size.resolvedSize);
+				}
+				return nullptr;
+			}
+			return BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait);
+		}
+
+		// A whole-struct copy of the trait's Parameters, taken before an edit so the old
+		// content hash can be rebuilt afterwards. Sized from the running build's
+		// FCrElectricityParameters; empty when the size or the source is missing.
+		PluginMap::StructBuffer SaveElectricityParameters(const void* params)
+		{
+			PluginMap::StructBuffer saved(BetterCheats::Fields::CrElectricityParameters_Size);
+			if (!saved.CopyFrom(params))
+				return PluginMap::StructBuffer();
+			return saved;
+		}
 
 		// -------------------------------------------------------------------------
 		// Enumerates every MassEntityConfigAsset via the asset registry (mirrors
@@ -351,6 +382,14 @@ namespace BetterCheats::Panels::Power
 		// -------------------------------------------------------------------------
 		void ScanEntriesOnGameThread(void* /*context*/)
 		{
+			// The scan re-applies the persisted overrides, so a host that switched the
+			// Power section off after this was posted must not get them written.
+			if (!BetterCheats::Features::Power.On())
+			{
+				g_refreshInFlight.store(false, std::memory_order_release);
+				return;
+			}
+
 			std::vector<PowerEntry> entries;
 
 			try
@@ -400,7 +439,7 @@ namespace BetterCheats::Panels::Power
 							auto* configAsset = static_cast<SDK::UMassEntityConfigAsset*>(obj);
 
 							SDK::UCrElectricityTrait* trait = FindElectricityTrait(configAsset);
-							SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+							SDK::FCrElectricityParameters* params = TraitParameters(trait);
 							const SDK::ECrMassElectricityAgentType* agentType = BetterCheats::Fields::CrElectricityParameters_Type.In(params);
 							float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
 							if (!params || !agentType || !electricity || *agentType == SDK::ECrMassElectricityAgentType::None)
@@ -443,7 +482,7 @@ namespace BetterCheats::Panels::Power
 									LOG_DEBUG("Power:   [%s] re-applying persisted override %.2f -> %.2f.",
 										entry.name.c_str(), *electricity, overrideValue);
 
-									const SDK::FCrElectricityParameters oldParams = *params;
+									const PluginMap::StructBuffer oldParams = SaveElectricityParameters(params);
 									*electricity = overrideValue;
 
 									// Patch buildings already placed by this save's data so they
@@ -694,8 +733,14 @@ namespace BetterCheats::Panels::Power
 		// Patches the shared FCrElectricityParameters block that already-placed
 		// buildings of this config currently reference, so they pick up the new
 		// ElectricityValue immediately without reloading the save.
-		void PatchExistingSharedFragment(const SDK::FCrElectricityParameters& oldParams, float newValue, const char* assetName)
+		void PatchExistingSharedFragment(const PluginMap::StructBuffer& oldParams, float newValue, const char* assetName)
 		{
+			if (!oldParams)
+			{
+				LOG_WARN("Power: no saved copy of the parameters - skipping shared-fragment patch for '%s'.", assetName);
+				return;
+			}
+
 			if (!ResolveSharedFragmentFunctions())
 			{
 				LOG_WARN("Power: PatchExistingSharedFragment skipped for '%s' - shared-fragment functions unresolved.", assetName);
@@ -737,9 +782,9 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				const uint32_t oldHash = g_getStructInstanceCrc32(paramsStruct, reinterpret_cast<const uint8_t*>(&oldParams), 0);
+				const uint32_t oldHash = g_getStructInstanceCrc32(paramsStruct, oldParams.Data(), 0);
 
-				void* element = g_findOrAddConstShared(container, oldHash, paramsStruct, reinterpret_cast<const uint8_t*>(&oldParams));
+				void* element = g_findOrAddConstShared(container, oldHash, paramsStruct, oldParams.Data());
 				if (!element)
 				{
 					LOG_WARN("Power: FindOrAdd returned null - skipping shared-fragment patch for '%s'.", assetName);
@@ -756,8 +801,7 @@ namespace BetterCheats::Panels::Power
 					return;
 				}
 
-				SDK::FCrElectricityParameters* liveParams = reinterpret_cast<SDK::FCrElectricityParameters*>(
-					reinterpret_cast<uint8_t*>(sharedMemory) + kStructUtilsHeaderSize);
+				uint8_t* liveParams = reinterpret_cast<uint8_t*>(sharedMemory) + kStructUtilsHeaderSize;
 
 				float* liveValue = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(liveParams);
 				if (!liveValue)
@@ -800,11 +844,11 @@ namespace BetterCheats::Panels::Power
 				SDK::UMassEntityConfigAsset* configAsset = ResolveConfigAsset(item.packageName, item.assetName);
 				SDK::UCrElectricityTrait*    trait        = configAsset ? FindElectricityTrait(configAsset) : nullptr;
 
-				SDK::FCrElectricityParameters* params = trait ? BetterCheats::Fields::CrElectricityTrait_Parameters.In(trait) : nullptr;
+				SDK::FCrElectricityParameters* params = TraitParameters(trait);
 				float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(params);
 				if (trait && params && electricity)
 				{
-					const SDK::FCrElectricityParameters oldParams = *params;
+					const PluginMap::StructBuffer oldParams = SaveElectricityParameters(params);
 					const float oldValue = *electricity;
 
 					*electricity = item.value;
@@ -846,6 +890,8 @@ namespace BetterCheats::Panels::Power
 		void ApplyOnGameThread(void* context)
 		{
 			std::unique_ptr<std::vector<ApplyItem>> items(static_cast<std::vector<ApplyItem>*>(context));
+			if (!BetterCheats::Features::Power.On())
+				return;
 			for (const ApplyItem& item : *items)
 				ApplyItemOnGameThread(item);
 		}

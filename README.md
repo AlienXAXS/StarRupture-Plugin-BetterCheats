@@ -61,7 +61,7 @@ Tick **Locked** and an attribute is held at its slider value, even with the menu
 
 Search the item list (icon, name, stack size), set **Stacks** (1 or more) and press **Give Item**. You get stacks x stack size, shown as `xN (stack S)`. The page says so if the game build doesn't expose what it needs.
 
-Icons load a few at a time, only for the rows you stop on and a few around them. Dragging the scrollbar fast loads nothing until you slow down. A row shows an empty slot until its icon is ready, and names stay lined up while icons fill in.
+Icons come from the loader's image library. They load for the rows on screen, and a row shows an empty slot until its icon is ready, so names stay lined up while icons fill in. Ammo and each building blueprint show their own icon. Pictures are drawn sharper than before.
 
 ### Inventory
 
@@ -84,6 +84,7 @@ Raises stack caps from 1 to 9999 as one global value, per category (Combat, Reso
 - New stacks only: existing stacks keep their cap until picked up, split or merged.
 - Raise-only: an item that already stacks higher keeps its size.
 - Non-stacking items are shown but locked.
+- Ammo and each blueprint have their own row. A size you set for one of them before this version has to be set again.
 
 ### Weapon <sup>[✦](#msantoro12)</sup>
 
@@ -195,6 +196,8 @@ Mod console commands:
 
 - `bc_invsize <columns> <rows>` (alias `invsize`) resizes the inventory grid, clamped 8-40. No arguments prints the current grid.
 
+A host, or the version object map, can switch a section off while the game runs. The section stops and puts back what it changed in the game for Movement, Weapons, Tools, Inventory (stack sizes and gatherables), Wave (the pause), Enemies (AI) and Unlock All Buildings. It does not put back Stats pins, Power overrides, Skills, Corporations, spawned items, the inventory grid size (it lives in the save), enemy one-hit-kill HP or queued wave actions. When the section is switched back on, your saved settings apply again once the world has finished loading. A section that was already off when the plugin loaded stays off until a RELOAD, including its hooks and keybinds.
+
 ---
 
 ## Per-save settings
@@ -227,7 +230,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires [StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader) v1.23.0 or later** to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off.
+> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library, which 1.24.0 or newer carries.
 
 ---
 
@@ -246,9 +249,24 @@ Found a bug? [Report it on GitHub](https://github.com/AlienXAXS/StarRupture-Plug
 
 ## Building from Source
 
-Requires Visual Studio 2022 and the [StarRupture-Plugin-SDK](https://github.com/AlienXAXS/StarRupture-Plugin-SDK) and [StarRupture-Game-SDK](https://github.com/AlienXAXS/StarRupture-Game-SDK), checked out alongside this repo.
+Requires Visual Studio 2022.
 
-Clone the repo, open `StarRupture-Plugin-BetterCheats.sln`, and build the `Client Release|x64` configuration:
+Put the plugin next to `StarRupture-Plugin-SDK` and clone both with `--recursive`, so the game SDK submodules come along:
+
+```
+git clone --recursive https://github.com/AlienXAXS/StarRupture-Plugin-SDK.git
+git clone --recursive https://github.com/AlienXAXS/StarRupture-Plugin-BetterCheats.git
+```
+
+```
+<parent folder>/
+├── StarRupture-Plugin-SDK/
+└── StarRupture-Plugin-BetterCheats/
+```
+
+The game SDK comes from this plugin's own `StarRupture SDK` submodule when it has one, otherwise from the Plugin SDK's. To build against other folders, pass `/p:PluginSDKInclude=...` and `/p:GameSDKRoot=...` to msbuild.
+
+Then open `StarRupture-Plugin-BetterCheats.sln`, and build the `Client Release|x64` configuration:
 
 ```
 msbuild StarRupture-Plugin-BetterCheats.sln /p:Configuration="Client Release" /p:Platform=x64

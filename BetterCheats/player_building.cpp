@@ -36,7 +36,7 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			if (g_noBuildCost && !Defer::DeferredTo("no-build-cost"))
+			if (g_noBuildCost && Features::BuildFree.On() && !Defer::DeferredTo("no-build-cost"))
 				return 1; // EAuAPlacementConditionResult::Valid
 
 			return g_originalGetPlacementResourceConditionResult(self);
@@ -68,13 +68,13 @@ namespace BetterCheats::Panels::Building
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityCustom(self, placementData);
-			return (g_noStabilityCheck && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return (g_noStabilityCheck && Features::BuildFree.On() && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
-			return (g_noStabilityCheck && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return (g_noStabilityCheck && Features::BuildFree.On() && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -109,7 +109,7 @@ namespace BetterCheats::Panels::Building
 
 		bool __fastcall Detour_IsRecipeUnlocked(void* self, void* recipe)
 		{
-			if (g_unlockAllRecipes && !Defer::DeferredTo("unlock-all-recipes"))
+			if (g_unlockAllRecipes && Features::BuildUnlock.On() && !Defer::DeferredTo("unlock-all-recipes"))
 				return true;
 
 			return g_originalIsRecipeUnlocked(self, recipe);
@@ -199,7 +199,7 @@ namespace BetterCheats::Panels::Building
 		SDK::AActor* __fastcall Detour_FindDeconstructibleTarget(SDK::ACrPlayerControllerBase* self, const void* traceData)
 		{
 			SDK::AActor* target = g_originalFindDeconstructibleTarget(self, traceData);
-			if (target || !g_deconstructWindowsDuringWaves.load() || Defer::DeferredTo("deconstruct-windows"))
+			if (target || !g_deconstructWindowsDuringWaves.load() || !Features::DeconstructWindows.On() || Defer::DeferredTo("deconstruct-windows"))
 				return target;
 
 			{
@@ -403,7 +403,7 @@ namespace BetterCheats::Panels::Building
 		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
 			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
 		{
-			const bool bench = BenchesAnywhereOn() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
+			const bool bench = BenchesAnywhereOn() && Features::BuildAnywhere.On() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
 			t_snappingBench = bench;
 			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
 			t_snappingBench = false;
@@ -643,6 +643,34 @@ namespace BetterCheats::Panels::Building
 		}
 	}
 
+	// Turns the tech keeper's unlock-all flag off and has the game rebuild the
+	// available buildings, so the build menu drops what the cheat added.
+	static void ClearKeeperUnlock()
+	{
+		try
+		{
+			if (SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper())
+			{
+				if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+					*unlockAll = false;
+				if (g_checkAvailableBuildings)
+					g_checkAvailableBuildings(keeper, nullptr, 0);
+			}
+		}
+		catch (...) {}
+	}
+
+	void ReleaseValues()
+	{
+		// The user's choice stays (g_unlockAllBuildings); only the write into the
+		// keeper is undone, and Tick writes it again if the section comes back on.
+		if (!g_prevUnlockAllBuildings)
+			return;
+
+		g_prevUnlockAllBuildings = false;
+		ClearKeeperUnlock();
+	}
+
 	void Shutdown()
 	{
 		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;
@@ -698,17 +726,7 @@ namespace BetterCheats::Panels::Building
 		{
 			g_unlockAllBuildings     = false;
 			g_prevUnlockAllBuildings = false;
-			try
-			{
-				if (SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper())
-				{
-					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
-						*unlockAll = false;
-					if (g_checkAvailableBuildings)
-						g_checkAvailableBuildings(keeper, nullptr, 0);
-				}
-			}
-			catch (...) {}
+			ClearKeeperUnlock();
 		}
 		g_prevUnlockAllBuildings  = false;
 		g_checkAvailableBuildings = nullptr;

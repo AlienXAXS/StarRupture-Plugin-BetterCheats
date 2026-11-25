@@ -239,10 +239,15 @@ namespace BetterCheats::Panels::Wind
 		// The loader can run shutdown off the game thread (process exit); a component
 		// is only touched where the engine allows it.
 		if (self->hooks->Engine->IsGameThread())
-			ReleaseMuted();
+			ReleaseValues();
 		else
 			g_muted.clear();
 		g_controller.Reset();
+	}
+
+	void ReleaseValues()
+	{
+		ReleaseMuted();
 	}
 
 	void Tick(float deltaSeconds)

@@ -6,6 +6,7 @@
 #include "AuItems_classes.hpp"
 #include "AuActorPlacement_classes.hpp"
 #include "WBP_InventorySlot_classes.hpp"
+#include "WBP_InventorySlot_parameters.hpp"
 #include "plugin_map.h"
 #include "Engine_classes.hpp"
 #include "MassAIPrototypeEnemyRuntime_classes.hpp"
@@ -18,6 +19,11 @@
 // not resolve. The key is the class that declares the member.
 
 #define BC_FIELD(Class, Member) SR_FIELD(decltype(SDK::Class::Member), Class, Member, 0)
+
+// A game struct held as a single member: the same typed In(object), but the member
+// may be any size the game reflects (SR_FIELD_ANY_SIZE). Only for a member whose
+// size nothing reads: the code takes the pointer and reads members through their own rows.
+#define BC_FIELD_ANY_SIZE(Class, Member) PluginField<decltype(SDK::Class::Member)>{ SR_FIELD_ANY_SIZE(Class, Member, 0) }
 
 // A member the SDK dumps as padding, so it has no name or offset to compile in:
 // the loader's map holds it under this key, and Offset is the row for the build
@@ -116,10 +122,10 @@ namespace BetterCheats::Fields
 
 	// FMassEntityManager::ConstSharedFragmentsContainer: a TSharedFragmentsContainer<FConstSharedStruct>.
 	// Neither class is reflected (plain engine C++), so the loader serves them from the map's rows.
-	// The plugin only passes the member's address to FindOrAdd, so its bytes are opaque here.
-	struct ConstSharedFragmentsContainerBytes { uint8_t bytes[0xB0]; };
+	// The plugin only passes the member's address to FindOrAdd, so its bytes and size are
+	// opaque here: the size comes from the build's row.
 	inline auto MassEntityManager_ConstSharedFragmentsContainer =
-		BC_NATIVE(ConstSharedFragmentsContainerBytes, FMassEntityManager, ConstSharedFragmentsContainer, 0x120);
+		SR_NATIVE_ANY_SIZE(uint8_t, FMassEntityManager, ConstSharedFragmentsContainer, 0x120);
 
 	// Members the plugin reads and writes by name, one row each for the running build.
 
@@ -278,14 +284,14 @@ namespace BetterCheats::Fields
 	inline auto AuAddedItem_Amount = BC_FIELD(FAuAddedItem, Amount);
 
 	// UCrElectricityTrait
-	inline auto CrElectricityTrait_Parameters = BC_FIELD(UCrElectricityTrait, Parameters);
+	inline auto CrElectricityTrait_Parameters = BC_FIELD_ANY_SIZE(UCrElectricityTrait, Parameters);
 
 	// FCrElectricityParameters
 	inline auto CrElectricityParameters_ElectricityValue = BC_FIELD(FCrElectricityParameters, ElectricityValue);
 	inline auto CrElectricityParameters_Type = BC_FIELD(FCrElectricityParameters, Type);
 
 	// UAuActorPlacementData
-	inline auto AuActorPlacementData_EntityType = BC_FIELD(UAuActorPlacementData, EntityType);
+	inline auto AuActorPlacementData_EntityType = BC_FIELD_ANY_SIZE(UAuActorPlacementData, EntityType);
 	inline auto AuActorPlacementData_BuildingID = BC_FIELD(UAuActorPlacementData, BuildingID);
 
 	// FAuAPMassSpawnedEntityType
@@ -350,9 +356,16 @@ namespace BetterCheats::Fields
 	inline auto AuAddedItem_Size             = SR_SIZE(FAuAddedItem);
 	inline auto CrSkillData_Size             = SR_SIZE(FCrSkillData);
 
-	// A struct the plugin copies by value; it fails the plugin when the running build's
-	// size differs from the one compiled in.
-	inline auto CrElectricityParameters_Size = SR_SIZE_CHECK(FCrElectricityParameters);
+	// A struct the plugin saves whole before an edit and hands back to the game: the size
+	// of the buffer that holds the copy (PluginMap::StructBuffer), as the running build
+	// reflects it.
+	inline auto CrElectricityParameters_Size = SR_SIZE(FCrElectricityParameters);
+
+	// WBP_InventorySlot_C::SetSlotSize's parameter block: its size and where InSize sits in it, as the
+	// running build reflects them (PluginMap::ParamsBlockOf). A Blueprint function: its widget class is
+	// loaded with the inventory screen, so these resolve after the plugin loads (Features::ResolveSlotSizeLate).
+	inline auto WBP_InventorySlot_SetSlotSize        = SR_PARAMS_SIZE(WBP_InventorySlot_C, SetSlotSize);
+	inline auto WBP_InventorySlot_SetSlotSize_InSize = SR_PARAM(WBP_InventorySlot_C, SetSlotSize, InSize);
 
 	// The member's value, or a default when the object is null or the member did not resolve.
 	using PluginMap::ValueOr;
@@ -404,6 +417,25 @@ namespace BetterCheats::Fields
 	{
 		const SDK::FName* name = AuItemDataBase_UniqueItemName.In(static_cast<const void*>(item));
 		return name ? name->ToString() : std::string();
+	}
+
+	// What an item with no unique name carries in UniqueItemName.
+	inline constexpr const char* kUnsetUniqueName = "None";
+
+	// The key for an item: its unique name, or its asset name (the class name
+	// without the trailing "_C") where the unique name is empty or unset. Ammo
+	// and the blueprints have none, and the asset name tells them apart. It is
+	// the same for the default object and for an instance.
+	inline std::string ItemKeyOf(const SDK::UAuItemDataBase* item)
+	{
+		std::string key = UniqueNameOf(item);
+		if (!key.empty() && key != kUnsetUniqueName)
+			return key;
+
+		key = item->Class ? item->Class->GetName() : std::string();
+		if (key.size() > 2 && key.compare(key.size() - 2, 2, "_C") == 0)
+			key.resize(key.size() - 2);
+		return key;
 	}
 
 	// An item's localised display name, or empty.
@@ -608,6 +640,12 @@ namespace BetterCheats::Features
 		Fields::AuItemDataBase_ItemName.key
 	} };
 
+	// Only the call into the widget's own SetSlotSize reads these, so a miss turns off that call and nothing
+	// else: the slots are still resized by the direct SizeBox writes. Off until the widget class is loaded.
+	inline PluginMap::Feature InventorySlotSize{ "inventory-slot-size", "Inventory slot sizing through the widget", {
+		Fields::WBP_InventorySlot_SetSlotSize.key, Fields::WBP_InventorySlot_SetSlotSize_InSize.key
+	} };
+
 	inline PluginMap::Feature Items{ "item-spawner", "Item spawner", {
 		"UAuItemsComponent::AddNewItem", Fields::CrCharacterPlayerBase_InventoryComponent.key,
 		Fields::AuItemDataBase_MaxStack.key, Fields::AuItemDataBase_ItemIcon.key,
@@ -682,8 +720,33 @@ namespace BetterCheats::Features
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		return PluginMap::DeclareFeatures(scanner, self,
-			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, Items, Skills,
+			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
 			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute);
+	}
+
+	// The loader's scanner and this plugin's handle, kept past OnPluginLoadHooks for
+	// ResolveSlotSizeLate. Interfaces of the loader, not game objects.
+	inline IPluginHookScanner* g_slotSizeScanner = nullptr;
+	inline const IPluginSelf*  g_slotSizeSelf    = nullptr;
+
+	// Asks for the SetSlotSize rows in OnPluginLoadHooks. False is normal there: the widget
+	// class is not loaded yet, and the loader has switched InventorySlotSize off for now.
+	inline void ResolveSlotSize(IPluginSelf* self, IPluginHookScanner* scanner)
+	{
+		g_slotSizeScanner = scanner;
+		g_slotSizeSelf    = self;
+		PluginMap::ResolveFields(scanner, self, Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize);
+	}
+
+	// Asks again while InventorySlotSize is off. Game thread only; the loader rate-limits
+	// the look at the game's objects, and what it finds holds for the process.
+	inline void ResolveSlotSizeLate()
+	{
+		if (InventorySlotSize.On() || !g_slotSizeScanner || !g_slotSizeSelf)
+			return;
+		if (PluginMap::ResolveLateFields(g_slotSizeScanner, g_slotSizeSelf,
+				Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize))
+			InventorySlotSize.on = true;
 	}
 
 	// What an off feature shows in place of its menu page.

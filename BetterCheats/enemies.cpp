@@ -397,6 +397,36 @@ namespace BetterCheats::Panels::Enemies
 		g_lastDisableAI = false;
 	}
 
+	// Disable()/Enable() likely does real work (un/re-registering the entity
+	// from Mass simulation and replication) — only call it on the on/off
+	// transition, not every tick. New spawns are caught by RescanEnemies()'s
+	// top-up in Tick.
+	static void SwitchDisableAI(bool disableAI)
+	{
+		for (const TrackedEnemy& enemy : g_enemies)
+		{
+			SDK::UMassAgentComponent* agent = enemy.agent.Get();
+			if (!agent)
+				continue;
+
+			try { disableAI ? agent->Disable() : agent->Enable(); }
+			catch (...) { LOG_WARN("Enemies: exception toggling a Mass agent's Disable/Enable state."); }
+		}
+
+		if (!disableAI)
+			RestoreDisableAI();
+
+		g_lastDisableAI = disableAI;
+	}
+
+	void ReleaseValues()
+	{
+		// Only the AI switch is undone. A hit-kill HP write is not put back: the
+		// enemy it hit is already dead.
+		if (g_lastDisableAI)
+			SwitchDisableAI(false);
+	}
+
 	void Tick(float deltaSeconds)
 	{
 		const bool disableAI   = g_disableAI.load();
@@ -423,27 +453,8 @@ namespace BetterCheats::Panels::Enemies
 			catch (...) { LOG_WARN("Enemies: exception scanning GObjects."); }
 		}
 
-		// Disable()/Enable() likely does real work (un/re-registering the entity
-		// from Mass simulation and replication) — only call it on the on/off
-		// transition, not every tick. New spawns are caught by RescanEnemies()'s
-		// top-up above.
 		if (disableAI != g_lastDisableAI)
-		{
-			for (const TrackedEnemy& enemy : g_enemies)
-			{
-				SDK::UMassAgentComponent* agent = enemy.agent.Get();
-				if (!agent)
-					continue;
-
-				try { disableAI ? agent->Disable() : agent->Enable(); }
-				catch (...) { LOG_WARN("Enemies: exception toggling a Mass agent's Disable/Enable state."); }
-			}
-
-			if (!disableAI)
-				RestoreDisableAI();
-
-			g_lastDisableAI = disableAI;
-		}
+			SwitchDisableAI(disableAI);
 
 		if (disableAI || oneHitKill)
 		{

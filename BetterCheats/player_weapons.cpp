@@ -2398,6 +2398,11 @@ namespace BetterCheats::Panels::Weapons
 			return;
 		}
 
+		ReleaseValues();
+	}
+
+	void ReleaseValues()
+	{
 		// Same character the composed state was captured against -- safe to hand
 		// CurrentValue back. A different or null character means the attribute set
 		// this state refers to is already gone; ForgetComposedIfOwnerChanged would

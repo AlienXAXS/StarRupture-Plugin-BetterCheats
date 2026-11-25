@@ -218,6 +218,15 @@ namespace BetterCheats::Panels::Wave
 		std::atomic<bool> g_pauseWavesEnabled{ false };
 		static bool       g_pauseWritten = false;
 
+		void ClearWavePause()
+		{
+			if (!g_pauseWritten)
+				return;
+
+			WriteTimerPause(false);
+			g_pauseWritten = false;
+		}
+
 		void EnforceWavePause()
 		{
 			if (!g_timerSubsys)
@@ -230,10 +239,9 @@ namespace BetterCheats::Panels::Wave
 					WriteTimerPause(true);
 					g_pauseWritten = true;
 				}
-				else if (g_pauseWritten)
+				else
 				{
-					WriteTimerPause(false);
-					g_pauseWritten = false;
+					ClearWavePause();
 				}
 			}
 			catch (...)
@@ -373,6 +381,17 @@ namespace BetterCheats::Panels::Wave
 		g_scanned        = false;
 		g_scanRetryTimer = 0.0f;
 		g_scanAttempts   = 0;
+	}
+
+	void ReleaseValues()
+	{
+		// The Pause Waves Entirely choice stays; only the write into the timer is
+		// undone, and Tick writes it again if the section comes back on.
+		if (!g_timerSubsys)
+			return;
+
+		try { ClearWavePause(); }
+		catch (...) { LOG_WARN("Wave: exception clearing wave pause."); }
 	}
 
 	void Tick(float deltaSeconds)

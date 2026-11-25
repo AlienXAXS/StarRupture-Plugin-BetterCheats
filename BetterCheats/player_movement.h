@@ -11,6 +11,13 @@ namespace BetterCheats::Panels::Movement
 	// movement mode if no-clip is still on — call once during plugin shutdown.
 	void Shutdown();
 
+	// Puts back what no-clip and the attribute overrides changed, without
+	// unregistering anything. Shutdown ends with it (restoreRaw false); the plugin
+	// calls it with restoreRaw true when the Movement section is switched off while
+	// the game runs, which also writes the stock values back into the raw component
+	// and actor fields. Game thread only.
+	void ReleaseValues(bool restoreRaw);
+
 	// Drives no-clip: applies/reverts it, re-asserts flying mode, and feeds the
 	// vertical (Space / Left Ctrl) input — call once per engine tick.
 	void Tick(float deltaSeconds);
