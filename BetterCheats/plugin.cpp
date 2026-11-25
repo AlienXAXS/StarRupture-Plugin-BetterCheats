@@ -228,7 +228,7 @@ static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
 }
 
 // Whether the named plugin is loaded and enabled. Loaders below interface 80 have
-// no registry, but they refuse this plugin before it gets here.
+// no registry, so this answers false there.
 static bool IsPluginRunning(const char* name)
 {
 	IPluginHooks* hooks = GetHooks();
