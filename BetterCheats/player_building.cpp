@@ -36,7 +36,7 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			if (g_noBuildCost)
+			if (g_noBuildCost && !Defer::DeferredTo("no-build-cost"))
 				return 1; // EAuAPlacementConditionResult::Valid
 
 			return g_originalGetPlacementResourceConditionResult(self);
@@ -68,13 +68,13 @@ namespace BetterCheats::Panels::Building
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityCustom(self, placementData);
-			return g_noStabilityCheck ? true : result;
+			return (g_noStabilityCheck && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
-			return g_noStabilityCheck ? true : result;
+			return (g_noStabilityCheck && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -109,7 +109,7 @@ namespace BetterCheats::Panels::Building
 
 		bool __fastcall Detour_IsRecipeUnlocked(void* self, void* recipe)
 		{
-			if (g_unlockAllRecipes)
+			if (g_unlockAllRecipes && !Defer::DeferredTo("unlock-all-recipes"))
 				return true;
 
 			return g_originalIsRecipeUnlocked(self, recipe);
@@ -722,7 +722,11 @@ namespace BetterCheats::Panels::Building
 		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
 		// Writing the flag alone is insufficient; the function must run to rebuild
 		// AvailableBuildings and fire the delegate that refreshes the build menu.
-		if (Features::BuildUnlock.On() && g_unlockAllBuildings != g_prevUnlockAllBuildings)
+		// While Best Builder has this feature, leave the keeper flag to it. Resetting
+		// the applied state makes the player's value apply again when it goes away.
+		if (Defer::DeferredTo("unlock-all-buildings"))
+			g_prevUnlockAllBuildings = false;
+		else if (Features::BuildUnlock.On() && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 		{
 			g_prevUnlockAllBuildings = g_unlockAllBuildings;
 			LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
@@ -823,18 +827,28 @@ namespace BetterCheats::Panels::Building
 			imgui->Text("No Build Cost");
 			Description(imgui,
 				"Lets you place buildings without having the resources for them.");
+			const bool noBuildCostDeferred = Defer::DeferredTo("no-build-cost");
+			if (noBuildCostDeferred)
+				ControlledBy(imgui, "no-build-cost");
 			imgui->TableSetColumnIndex(1);
+			imgui->BeginDisabled(noBuildCostDeferred);
 			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_build_cost", &g_noBuildCost))
 				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
+			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Stability Check");
 			Description(imgui,
 				"Lets you place buildings that the stability check would otherwise refuse.");
+			const bool noStabilityDeferred = Defer::DeferredTo("no-stability-check");
+			if (noStabilityDeferred)
+				ControlledBy(imgui, "no-stability-check");
 			imgui->TableSetColumnIndex(1);
+			imgui->BeginDisabled(noStabilityDeferred);
 			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
 				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
+			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
@@ -911,18 +925,28 @@ namespace BetterCheats::Panels::Building
 			imgui->Text("Unlock All Buildings");
 			Description(imgui,
 				"Makes every building available in the build menu, without the research or reputation it needs.");
+			const bool unlockBuildingsDeferred = Defer::DeferredTo("unlock-all-buildings");
+			if (unlockBuildingsDeferred)
+				ControlledBy(imgui, "unlock-all-buildings");
 			imgui->TableSetColumnIndex(1);
+			imgui->BeginDisabled(unlockBuildingsDeferred);
 			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
 				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
+			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("Unlock All Recipes");
 			Description(imgui,
 				"Makes every crafting recipe available, researched or not.");
+			const bool unlockRecipesDeferred = Defer::DeferredTo("unlock-all-recipes");
+			if (unlockRecipesDeferred)
+				ControlledBy(imgui, "unlock-all-recipes");
 			imgui->TableSetColumnIndex(1);
+			imgui->BeginDisabled(unlockRecipesDeferred);
 			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
 				SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes);
+			imgui->EndDisabled();
 
 			imgui->EndTable();
 		}

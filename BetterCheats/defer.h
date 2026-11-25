@@ -24,8 +24,12 @@ namespace BetterCheats::Defer
 	};
 
 	inline constexpr Row kDeferTable[] = {
-		{ "build-anywhere",      "Best Builder", "build-anywhere" },
-		{ "deconstruct-windows", "Best Builder", "deconstruct-windows" },
+		{ "build-anywhere",       "Best Builder", "build-anywhere" },
+		{ "deconstruct-windows",  "Best Builder", "deconstruct-windows" },
+		{ "no-build-cost",        "Best Builder", "no-build-cost" },
+		{ "no-stability-check",   "Best Builder", "no-stability-check" },
+		{ "unlock-all-buildings", "Best Builder", "unlock-all-buildings" },
+		{ "unlock-all-recipes",   "Best Builder", "unlock-all-recipes" },
 	};
 	inline constexpr size_t kRows = sizeof(kDeferTable) / sizeof(kDeferTable[0]);
 

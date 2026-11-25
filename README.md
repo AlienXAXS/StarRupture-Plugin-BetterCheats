@@ -139,7 +139,7 @@ The two "anywhere" options relax only the collision check for the piece you plac
 - a window not snapped to a habitat or the Hub, or into a slot already holding a window, airlock or bridge;
 - anything checked separately: stability (unless **No Stability Check** is on), sockets, base-core areas, terrain, resources.
 
-While Best Builder is running, Build Windows Anywhere, Build Benches Anywhere and Deconstruct Windows During Waves are controlled there, and BetterCheats greys them out. A row is handed over only while that Best Builder feature is available in this game build; otherwise BetterCheats keeps it.
+While Best Builder is running, all seven Building options (No Build Cost, No Stability Check, Deconstruct Windows During Waves, Build Windows Anywhere, Build Benches Anywhere, Unlock All Buildings and Unlock All Recipes) are controlled there, and BetterCheats greys them out. Your own setting is not changed and comes back when Best Builder is gone. A row is handed over only while that Best Builder feature is available in this game build; otherwise BetterCheats keeps it.
 
 Creatures, characters and plants in the volume are let through only when a building is also there.
 
