@@ -232,7 +232,7 @@ static void OnExperienceLoadCompleteOnGameThread(void* /*context*/)
 static bool IsPluginRunning(const char* name)
 {
 	IPluginHooks* hooks = GetHooks();
-	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	IPluginRegistry* registry = PluginOptRegistry(hooks);
 	return registry && registry->GetPluginVersion(name, nullptr, 0);
 }
 
@@ -240,9 +240,12 @@ static bool IsPluginRunning(const char* name)
 static int ReadDeclaredFeatures(char* buf, size_t size)
 {
 	IPluginHooks* hooks = GetHooks();
-	IPluginRegistry* registry = hooks ? hooks->Registry : nullptr;
+	IPluginRegistry* registry = PluginOptRegistry(hooks);
 	return registry ? registry->GetDeclaredFeatures(buf, size) : -1;
 }
+
+// Lets a loader that has interface 80 report its level, which turns the registry on.
+PLUGIN_EXPORT_HOST_INFO()
 
 // Engine tick — drives continuous cheat effects (e.g. God Mode) regardless of
 // whether the menu is currently open.
@@ -324,7 +327,7 @@ static void OnEngineTick(float deltaSeconds)
 				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
 			Panels::Enemies::Tick(deltaSeconds);
 		FollowFlag(g_initRan.PowerSection, Features::Power.On(), g_wasOn.PowerSection,
-			nullptr, &Panels::Power::ApplySavedConfig);
+			&Panels::Power::ReleaseValues, &Panels::Power::ApplySavedConfig);
 	}
 
 #if BETTERCHEATS_DEV_BUILD

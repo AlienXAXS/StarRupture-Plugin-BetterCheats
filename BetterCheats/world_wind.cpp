@@ -148,19 +148,6 @@ namespace BetterCheats::Panels::Wind
 			}
 		}
 
-		void ReleaseMuted()
-		{
-			for (Muted& entry : g_muted)
-			{
-				SDK::UAudioComponent* comp = entry.comp.Get();
-				float* volume = comp ? Fields::AudioComponent_VolumeMultiplier.In(comp) : nullptr;
-				if (volume && std::fabs(*volume) <= kSilent && std::fabs(entry.gameVolume) > kSilent)
-					comp->SetVolumeMultiplier(entry.gameVolume);
-			}
-			g_muted.clear();
-			g_active = false;
-		}
-
 		bool ControllerInPauseMenu(float deltaSeconds)
 		{
 			IPluginSelf* self = GetSelf();
@@ -210,7 +197,7 @@ namespace BetterCheats::Panels::Wind
 
 		void OnWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
 		{
-			ReleaseMuted();
+			ReleaseValues();
 			g_controller.Reset();
 			g_controllerRetry = 0.0f;
 		}
@@ -247,7 +234,15 @@ namespace BetterCheats::Panels::Wind
 
 	void ReleaseValues()
 	{
-		ReleaseMuted();
+		for (Muted& entry : g_muted)
+		{
+			SDK::UAudioComponent* comp = entry.comp.Get();
+			float* volume = comp ? Fields::AudioComponent_VolumeMultiplier.In(comp) : nullptr;
+			if (volume && std::fabs(*volume) <= kSilent && std::fabs(entry.gameVolume) > kSilent)
+				comp->SetVolumeMultiplier(entry.gameVolume);
+		}
+		g_muted.clear();
+		g_active = false;
 	}
 
 	void Tick(float deltaSeconds)
@@ -289,7 +284,7 @@ namespace BetterCheats::Panels::Wind
 				return;
 			}
 		}
-		ReleaseMuted();
+		ReleaseValues();
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)

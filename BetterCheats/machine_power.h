@@ -15,4 +15,8 @@ namespace BetterCheats::Panels::Power
 	// Call on the game thread after SessionConfig::Reload(), e.g. from
 	// OnExperienceLoadComplete.
 	void ApplySavedConfig();
+
+	// Puts the game's own electricity values back where this plugin wrote an
+	// override. The saved overrides stay. Game thread only.
+	void ReleaseValues();
 }

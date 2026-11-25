@@ -54,6 +54,10 @@ namespace BetterCheats::Panels::Power
 		// so the default has to be remembered rather than re-read. Game thread only.
 		std::unordered_map<std::string, float> g_defaults;
 
+		// Assets that currently hold one of our overrides (asset name -> package name),
+		// so ReleaseValues can put their pristine values back. Game thread only.
+		std::unordered_map<std::string, std::string> g_applied;
+
 		std::mutex              g_pendingMutex;
 		std::vector<PowerEntry> g_pendingEntries;
 		bool                    g_pendingReady = false;
@@ -489,6 +493,7 @@ namespace BetterCheats::Panels::Power
 									// don't sit on the default value until Apply is hit again.
 									PatchExistingSharedFragment(oldParams, overrideValue, entry.assetName.c_str());
 									RebuildEntityTemplate(configAsset, entry.assetName.c_str());
+									g_applied[entry.assetName] = entry.packageName;
 								}
 								entry.value = overrideValue;
 							}
@@ -831,6 +836,9 @@ namespace BetterCheats::Panels::Power
 			// Set when this write restores the asset's pristine value, in which case
 			// the persisted override is cleared instead of updated.
 			bool        clearOverride;
+			// False when the write only takes our override back out of the game
+			// (ReleaseValues): the saved value stays, to apply again later.
+			bool        persist = true;
 		};
 
 		void ApplyItemOnGameThread(const ApplyItem& item)
@@ -860,6 +868,11 @@ namespace BetterCheats::Panels::Power
 					// they reference the old shared FCrElectricityParameters block
 					// directly and won't pick up a template rebuild.
 					PatchExistingSharedFragment(oldParams, item.value, item.assetName.c_str());
+
+					if (item.clearOverride || !item.persist)
+						g_applied.erase(item.assetName);
+					else
+						g_applied[item.assetName] = item.packageName;
 				}
 				else
 				{
@@ -870,10 +883,13 @@ namespace BetterCheats::Panels::Power
 				// Persist the override so it can be re-applied after a save reload
 				// reloads the asset from disk and discards this in-memory edit. A
 				// reset writes null instead, so the scan stops re-applying it.
-				if (item.clearOverride)
-					SessionConfig::Set("power." + item.assetName, nullptr);
-				else
-					SessionConfig::Set("power." + item.assetName, item.value);
+				if (item.persist)
+				{
+					if (item.clearOverride)
+						SessionConfig::Set("power." + item.assetName, nullptr);
+					else
+						SessionConfig::Set("power." + item.assetName, item.value);
+				}
 
 				// Force the cached Mass entity template to rebuild from the trait's
 				// new value, so newly-spawned buildings of this type pick it up
@@ -939,6 +955,20 @@ namespace BetterCheats::Panels::Power
 		// rescan is sufficient to restore this session's settings.
 		LOG_INFO("Power: applying saved config for session '%s' via rescan.", SessionConfig::GetSessionName().c_str());
 		RequestRescan();
+	}
+
+	void ReleaseValues()
+	{
+		// The saved overrides stay in the session config; the rescan that follows
+		// ApplySavedConfig puts them back when the section comes back on.
+		const std::unordered_map<std::string, std::string> applied = g_applied;
+		for (const auto& [assetName, packageName] : applied)
+		{
+			auto defaultIt = g_defaults.find(assetName);
+			if (defaultIt != g_defaults.end())
+				ApplyItemOnGameThread(ApplyItem{ packageName, assetName, defaultIt->second, true, false });
+		}
+		g_applied.clear();
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui)
