@@ -492,6 +492,8 @@ namespace BetterCheats::Panels::Building
 			aob.CheckAvailableBuildings = aob.IsRecipeUnlocked = 0;
 		if (!Features::BuildAnywhere.On())
 			aob.CheckMainMeshCollision_Custom = aob.GetBoxCollisionResult = aob.GetSnappedSocket = aob.IsSocketFree = 0;
+		if (!Features::DeconstructWindows.On())
+			aob.FindDeconstructibleTarget = aob.FindDeconstructibleTarget_HeatGate = 0;
 
 		uintptr_t addr = aob.GetPlacementResourceConditionResult;
 		if (!addr)
@@ -740,10 +742,12 @@ namespace BetterCheats::Panels::Building
 		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
 		// Writing the flag alone is insufficient; the function must run to rebuild
 		// AvailableBuildings and fire the delegate that refreshes the build menu.
-		// While Best Builder has this feature, leave the keeper flag to it. Resetting
-		// the applied state makes the player's value apply again when it goes away.
+		// While Best Builder has this feature, leave the keeper flag to it. If this
+		// plugin had written it, take that write back first, so Best Builder does not
+		// take it for the game's own value. The player's value applies again when
+		// Best Builder goes away.
 		if (Defer::DeferredTo("unlock-all-buildings"))
-			g_prevUnlockAllBuildings = false;
+			ReleaseValues();
 		else if (Features::BuildUnlock.On() && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 		{
 			g_prevUnlockAllBuildings = g_unlockAllBuildings;
@@ -879,7 +883,7 @@ namespace BetterCheats::Panels::Building
 			imgui->TableSetColumnIndex(1);
 			bool deconstructWindows = g_deconstructWindowsDuringWaves.load();
 			imgui->BeginDisabled(deconstructDeferred);
-			if (imgui->Checkbox("##deconstruct_windows_waves", &deconstructWindows))
+			if (RowOn(imgui, Features::DeconstructWindows) && imgui->Checkbox("##deconstruct_windows_waves", &deconstructWindows))
 			{
 				g_deconstructWindowsDuringWaves = deconstructWindows;
 				SessionConfig::Set("playerBuilding.deconstructWindowsDuringWaves", deconstructWindows);
