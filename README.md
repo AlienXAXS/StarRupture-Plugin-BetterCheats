@@ -85,7 +85,7 @@ Raises stack caps from 1 to 9999 as one global value, per category (Combat, Reso
 - Raise-only: an item that already stacks higher keeps its size.
 - Non-stacking items are shown but locked.
 - Ammo and each blueprint have their own row. A size you set for one of them before this version has to be set again.
-- Stack sizes are a section of their own, apart from the grid size and Plant Pickup, so a host or the version object map can switch just them off. While they are off the page says so and every item goes back to its own cap; when they come back on, your saved sizes apply again. With nothing switching them off, they work as before.
+- Stack sizes are a section of their own, apart from the grid size and Plant Pickup, so they can be switched off on their own. While they are off the page says so and every item goes back to its own cap; when they come back on, your saved sizes apply again. With nothing switching them off, they work as before.
 
 ### Weapon <sup>[✦](#msantoro12)</sup>
 

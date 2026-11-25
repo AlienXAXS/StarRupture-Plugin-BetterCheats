@@ -759,6 +759,6 @@ namespace BetterCheats::Features
 	inline void RenderOff(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
 	{
 		imgui->SeparatorText(feature.title);
-		imgui->TextDisabled("Off: the host has turned this off, or this game build changed something it needs. See the loader's hook report.");
+		imgui->TextDisabled("Off: switched off, or this game build changed something it needs. See the loader's hook report.");
 	}
 }

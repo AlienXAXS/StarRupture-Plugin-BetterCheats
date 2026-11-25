@@ -2112,7 +2112,7 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		// Hand every item its original MaxStack back first, the same way as
-		// Plant Pickup below, then rescan: the next tick captures from the true
+		// Plant Pickup above, then rescan: the next tick captures from the true
 		// base and persists into this session's config rather than the last
 		// one's. Off the game thread (only before the first Tick, when nothing
 		// has been written yet) dropping state is enough.
