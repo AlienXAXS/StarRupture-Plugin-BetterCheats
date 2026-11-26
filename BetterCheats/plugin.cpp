@@ -469,8 +469,10 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.Enemies, Features::Usable(Features::Enemies), g_wasOn.Enemies,
 				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
 			Panels::Enemies::Tick(deltaSeconds);
-		FollowFlag(g_initRan.PowerSection, Features::Usable(Features::Power), g_wasOn.PowerSection,
-			&Panels::Power::ReleaseValues, &Panels::Power::ApplySavedConfig);
+		if (!FollowFlag(g_initRan.PowerSection, Features::Usable(Features::Power), g_wasOn.PowerSection,
+				&Panels::Power::ReleaseValues, &Panels::Power::ApplySavedConfig)
+			&& g_initRan.PowerSection)
+			Panels::Power::RetryRelease();
 	}
 
 #if BETTERCHEATS_DEV_BUILD
@@ -690,6 +692,9 @@ extern "C" {
 			g_self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 		}
 
+		// Read before GameContext::Shutdown forgets it.
+		const bool worldUp = !BetterCheats::GameContext::IsBetweenWorlds();
+
 		// Detours come out FIRST, before anything that touches game objects.
 		//
 		// The loader wraps PluginShutdown in SEH: a fault anywhere in here is
@@ -729,7 +734,12 @@ extern "C" {
 		// The assets outlive a RELOAD, so the next instance would take an override
 		// for the stock value. Skipped off the game thread (older loaders' RELOAD).
 		if (g_initRan.PowerSection && g_self && g_self->hooks->Engine->IsGameThread())
+		{
+			// With the world up, its templates and placed buildings hold the override too.
+			if (worldUp)
+				BetterCheats::Panels::Power::ReleaseValues();
 			BetterCheats::Panels::Power::ForgetWorld();
+		}
 		BetterCheats::SessionConfig::Shutdown();
 
 		g_initRan = {};

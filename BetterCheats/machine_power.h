@@ -24,6 +24,10 @@ namespace BetterCheats::Panels::Power
 	// override. The saved overrides stay. Game thread only.
 	void ReleaseValues();
 
+	// Tries again, now and then, to take back an override ReleaseValues could not.
+	// Call each tick while the section is off. Game thread only.
+	void RetryRelease();
+
 	// Puts them back on the assets once the world they were written in has ended.
 	// Game thread only.
 	void ForgetWorld();

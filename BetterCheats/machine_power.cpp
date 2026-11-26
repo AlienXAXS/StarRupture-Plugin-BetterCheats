@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -64,6 +65,7 @@ namespace BetterCheats::Panels::Power
 		bool                    g_pendingReady = false;
 		std::atomic<bool>       g_refreshInFlight{ false };
 		bool                    g_scanSkipped = false;   // game thread only
+		std::chrono::steady_clock::time_point g_nextRetry; // game thread only
 
 		const char* AgentTypeName(SDK::ECrMassElectricityAgentType type)
 		{
@@ -987,7 +989,20 @@ namespace BetterCheats::Panels::Power
 			if (defaultIt != g_defaults.end())
 				ApplyItemOnGameThread(ApplyItem{ packageName, assetName, defaultIt->second, true, false });
 		}
-		g_applied.clear();
+		// A write that could not be taken back stays listed for RetryRelease.
+	}
+
+	void RetryRelease()
+	{
+		if (g_applied.empty())
+			return;
+
+		const auto now = std::chrono::steady_clock::now();
+		if (now < g_nextRetry)
+			return;
+
+		g_nextRetry = now + std::chrono::seconds(2);
+		ReleaseValues();
 	}
 
 	void ForgetWorld()
