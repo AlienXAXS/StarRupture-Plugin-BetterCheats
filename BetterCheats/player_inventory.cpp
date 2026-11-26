@@ -1290,6 +1290,15 @@ namespace BetterCheats::Panels::Inventory
 		constexpr const char* kStackNumberHint = "Number";
 		constexpr int         kStackListRows = 20;   // the item list is at least this tall
 
+		// The "Now" cell: wraps at the column's edge, so a narrow window cuts nothing off.
+		void StackNowText(IModLoaderImGui* imgui, const char* text)
+		{
+			imgui->AlignTextToFramePadding();
+			imgui->PushTextWrapPos(0.0f);
+			imgui->TextDisabled(text);
+			imgui->PopTextWrapPos();
+		}
+
 		// Render thread. The size box being typed in. A size is committed when
 		// the box is left, so a half-typed number is never applied.
 		std::string g_stackEditId;
@@ -1643,8 +1652,7 @@ namespace BetterCheats::Panels::Inventory
 				imgui->TableSetColumnIndex(3);
 				char tierText[64];
 				FormatStackTier(tierText, sizeof(tierText), globalSize);
-				imgui->AlignTextToFramePadding();
-				imgui->TextDisabled(greyed ? "-" : tierText);
+				StackNowText(imgui, greyed ? "-" : tierText);
 				imgui->TableSetColumnIndex(4);
 				if (StackResetButton(imgui, "Turn off: each item keeps its own size."))
 				{
@@ -1717,8 +1725,7 @@ namespace BetterCheats::Panels::Inventory
 					char nowText[96];
 					snprintf(nowText, sizeof(nowText), "%s%s",
 						!hasOverride && tier != kStackSizeOff ? "Follows above - " : "", tierText);
-					imgui->AlignTextToFramePadding();
-					imgui->TextDisabled(nowText);
+					StackNowText(imgui, nowText);
 					imgui->TableSetColumnIndex(4);
 					if (StackResetButton(imgui, "Follow the stack size above."))
 					{
