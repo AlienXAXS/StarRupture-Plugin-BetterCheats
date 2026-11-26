@@ -1128,13 +1128,13 @@ namespace BetterCheats::Panels::Movement
 		// live-values readout + joined slider/box + drawn reset button -- see
 		// ui_widgets.h's BuildRow, which does the actual drawing.
 
-		void RenderAttrRow(IModLoaderImGui* imgui, int attr, float labelReserve, int depth = 0, bool* openFlag = nullptr)
+		void RenderAttrRow(IModLoaderImGui* imgui, int attr, float labelReserve, int depth, bool* openFlag, bool greyed)
 		{
 			const AttrDef& def   = kAttrs[attr];
 			// ImGui writes through a plain float*, so the atomic is read into a local
 			// and only stored back when the widget actually reports a change.
-			float          value = g_attrValues[attr].load();
-			const bool     active = IsAttrActive(attr);
+			float          value = greyed ? def.defaultValue : g_attrValues[attr].load();
+			const bool     active = !greyed && IsAttrActive(attr);
 
 			imgui->PushIDInt(attr);
 			imgui->TableNextRow(0, 0.0f);
@@ -1170,6 +1170,7 @@ namespace BetterCheats::Panels::Movement
 			spec.tagWord      = "buff";
 			spec.baseLabel    = "Base (no LEMs/buffs)";
 			spec.labelReserve = labelReserve;
+			spec.greyed       = greyed;
 
 			if (BetterCheats::UI::BuildRow(imgui, spec).changed)
 			{
@@ -1181,14 +1182,14 @@ namespace BetterCheats::Panels::Movement
 			imgui->PopID();
 		}
 
-		void RenderRawRow(IModLoaderImGui* imgui, int raw, float labelReserve, int depth = 1, bool* openFlag = nullptr)
+		void RenderRawRow(IModLoaderImGui* imgui, int raw, float labelReserve, int depth, bool* openFlag, bool greyed)
 		{
 			const RawDef& def   = kRaws[raw];
 			// ImGui writes through a plain float*, so the atomic is read into a local
 			// and only stored back when the widget actually reports a change.
-			float         value = g_rawValues[raw].load();
-			const bool    active = IsRawActive(raw);
-			const bool    baselineReady = g_rawBaselineReady.load();
+			float         value = greyed ? 1.0f : g_rawValues[raw].load();
+			const bool    active = !greyed && IsRawActive(raw);
+			const bool    baselineReady = greyed || g_rawBaselineReady.load();
 
 			imgui->PushIDInt(1000 + raw);
 			imgui->TableNextRow(0, 0.0f);
@@ -1231,6 +1232,7 @@ namespace BetterCheats::Panels::Movement
 			spec.tagWord      = "buff";
 			spec.baseLabel    = "Base (no LEMs/buffs)";
 			spec.labelReserve = labelReserve;
+			spec.greyed       = greyed;
 			spec.resetTooltip = "Put the game's stock value back (turns this row off).";
 
 			const BetterCheats::UI::RowResult result = BuildRow(imgui, spec);
@@ -1332,9 +1334,9 @@ namespace BetterCheats::Panels::Movement
 		#undef KIDS
 		constexpr int kTuneGroupCount = static_cast<int>(sizeof(kTuneGroups) / sizeof(kTuneGroups[0]));
 
-		void RenderTuneGroups(IModLoaderImGui* imgui)
+		void RenderTuneGroups(IModLoaderImGui* imgui, bool greyed)
 		{
-			if (!g_rawBaselineReady.load())
+			if (!greyed && !g_rawBaselineReady.load())
 				imgui->TextDisabled("Advanced rows stay greyed until the game's stock values are read - load a save.");
 
 			// Widest label across both row kinds decides where the live-values
@@ -1369,16 +1371,16 @@ namespace BetterCheats::Panels::Movement
 					const TuneRow& row = grp.rows[r];
 					bool* openFlag = (row.openId >= 0) ? &g_rowOpen[row.openId] : nullptr;
 
-					if (row.kind == RowAttr) RenderAttrRow(imgui, row.index, labelReserve, 0, openFlag);
-					else                     RenderRawRow(imgui, row.index, labelReserve, 0, openFlag);
+					if (row.kind == RowAttr) RenderAttrRow(imgui, row.index, labelReserve, 0, openFlag, greyed);
+					else                     RenderRawRow(imgui, row.index, labelReserve, 0, openFlag, greyed);
 
 					if (!openFlag || !*openFlag)
 						continue;
 
 					for (int k = 0; k < row.kidCount; ++k)
 					{
-						if (row.kids[k].kind == RowAttr) RenderAttrRow(imgui, row.kids[k].index, labelReserve, 1, nullptr);
-						else                             RenderRawRow(imgui, row.kids[k].index, labelReserve, 1, nullptr);
+						if (row.kids[k].kind == RowAttr) RenderAttrRow(imgui, row.kids[k].index, labelReserve, 1, nullptr, greyed);
+						else                             RenderRawRow(imgui, row.kids[k].index, labelReserve, 1, nullptr, greyed);
 					}
 				}
 
@@ -1628,45 +1630,24 @@ namespace BetterCheats::Panels::Movement
 			SessionConfig::GetSessionName().c_str(), haveBaseline ? "restored" : "not yet captured");
 	}
 
-	namespace
-	{
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Fly / No-Clip Movement");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Fly Mode");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Pass Through Walls (Clipping)");
-
-			imgui->Spacing();
-			imgui->SeparatorText("Movement Attributes");
-			if (imgui->BeginTable("##movement_unavailable", 2, kTableFlags))
-			{
-				for (const AttrDef& def : kAttrs)
-					BetterCheats::UI::UnavailableRow(imgui, def.label);
-				imgui->EndTable();
-			}
-
-			imgui->Spacing();
-			imgui->SmallButton("Reset all movement attributes");
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
+		// A greyed page draws every control, with no values from the game and
+		// none of the saved settings.
+		MovementSnapshot snap;
 		if (greyed)
 		{
-			RenderUnavailable(imgui);
-			return;
+			snap.characterFound = true;
+			Keybind::CancelCapture();
 		}
-
-		if (!g_loggedRender.exchange(true))
-			LOG_INFO("Movement: live values readout rendering.");
-
-		EnsureAttrDefaults();
-		EnsureRawDefaults();
-
-		MovementSnapshot snap;
+		else
 		{
+			if (!g_loggedRender.exchange(true))
+				LOG_INFO("Movement: live values readout rendering.");
+
+			EnsureAttrDefaults();
+			EnsureRawDefaults();
+
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snap = g_snapshot;
 		}
@@ -1681,12 +1662,13 @@ namespace BetterCheats::Panels::Movement
 			return;
 		}
 
-		char currentKey[64];
-		ReadNoClipKey(currentKey, sizeof(currentKey));
+		char currentKey[64] = "-";
+		if (!greyed)
+			ReadNoClipKey(currentKey, sizeof(currentKey));
 
-		bool  noClip = g_noClipWanted.load();
-		bool  ghost  = g_passThroughWalls.load();
-		float speed  = g_flySpeedMultiplier.load();
+		bool  noClip = !greyed && g_noClipWanted.load();
+		bool  ghost  = !greyed && g_passThroughWalls.load();
+		float speed  = greyed ? kMinFlySpeedMultiplier : g_flySpeedMultiplier.load();
 
 		if (imgui->BeginTable("##noclip_table", 2, kTableFlags))
 		{
@@ -1740,7 +1722,8 @@ namespace BetterCheats::Panels::Movement
 			imgui->Text("Fly Speed Multiplier");
 			imgui->TableSetColumnIndex(1);
 			imgui->SetNextItemWidth(BetterCheats::UI::GetSliderWidthCap(imgui));
-			if (imgui->SliderFloat("##fly_speed", &speed, kMinFlySpeedMultiplier, kMaxFlySpeedMultiplier, "%.1fx"))
+			if (imgui->SliderFloat("##fly_speed", &speed, kMinFlySpeedMultiplier, kMaxFlySpeedMultiplier,
+				greyed ? "-" : "%.1fx"))
 			{
 				g_flySpeedMultiplier.store(speed);
 				SessionConfig::Set("playerMovement.flySpeedMultiplier", speed);
@@ -1779,7 +1762,10 @@ namespace BetterCheats::Panels::Movement
 		float topCms = snap.baseFlySpeed * speed;
 		float topKmh = topCms * 0.036f;
 		float topMph = topCms * 0.0223693629f;
-		snprintf(buffer, sizeof(buffer), "Top speed: %.1f km/h  (%.1f mph | %.0f cm/s)", topKmh, topMph, topCms);
+		if (greyed)
+			snprintf(buffer, sizeof(buffer), "Top speed: -");
+		else
+			snprintf(buffer, sizeof(buffer), "Top speed: %.1f km/h  (%.1f mph | %.0f cm/s)", topKmh, topMph, topCms);
 		imgui->TextDisabled(buffer);
 
 		imgui->Spacing();
@@ -1811,6 +1797,11 @@ namespace BetterCheats::Panels::Movement
 		}
 
 		imgui->Spacing();
+		if (greyed)
+		{
+			BetterCheats::UI::UnavailablePresetRow(imgui, "movement_saved_presets", kMovementPresetGroup);
+		}
+		else
 		{
 			PluginPresets::Field fields[kMovementFieldCount];
 			PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "movement_saved_presets", kMovementPresetGroup,
@@ -1831,6 +1822,9 @@ namespace BetterCheats::Panels::Movement
 			BetterCheats::UI::FormatLiveValue(jumpZ,  sizeof(jumpZ),  g_dbgJumpZVelocity.load());
 			BetterCheats::UI::FormatLiveValue(staCur, sizeof(staCur), g_dbgStaminaCurrent.load());
 			BetterCheats::UI::FormatLiveValue(staMax, sizeof(staMax), g_dbgStaminaMax.load());
+			if (greyed)
+				for (char* out : { walk, horiz, jumpZ, staCur, staMax })
+					snprintf(out, sizeof(walk), "-");
 			char line[220];
 			snprintf(line, sizeof(line),
 				"  live: MaxWalkSpeed %s cm/s   horiz speed %s cm/s   JumpZVelocity %s   stamina %s / %s",
@@ -1838,7 +1832,7 @@ namespace BetterCheats::Panels::Movement
 			imgui->TextDisabled(line);
 		}
 
-		RenderTuneGroups(imgui);
+		RenderTuneGroups(imgui, greyed);
 
 		imgui->Spacing();
 		if (imgui->SmallButton("Reset all movement attributes"))

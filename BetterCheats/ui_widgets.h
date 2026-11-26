@@ -397,6 +397,7 @@ namespace BetterCheats::UI
 		const char* baseLabel   = "Base (no LEMs/buffs)";
 		const char* estimateNote = "Estimated -- equip this weapon to see live values.";
 		float       labelReserve = 0.0f;
+		bool        greyed       = false;    // a greyed-out page: "-" for every value
 
 		const char* resetTooltip = "Reset to the game default (turns this row off).";
 	};
@@ -486,9 +487,12 @@ namespace BetterCheats::UI
 		if (spec.showLive)
 		{
 			imgui->SameLine(spec.labelReserve, 0.0f);
-			RenderLiveValue(imgui, spec.expected, spec.game, spec.composing, spec.hasBase,
-				spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel,
-				spec.hasOurs, spec.ours, spec.estimate, spec.estimateNote);
+			if (spec.greyed)
+				imgui->Text("-");
+			else
+				RenderLiveValue(imgui, spec.expected, spec.game, spec.composing, spec.hasBase,
+					spec.base, spec.unmodified, spec.changeDesc, spec.tagWord, spec.baseLabel,
+					spec.hasOurs, spec.ours, spec.estimate, spec.estimateNote);
 		}
 
 		if (!spec.openFlag && spec.padForArrow)
@@ -523,14 +527,15 @@ namespace BetterCheats::UI
 		float sliderW = (availX > numBoxW + frameH * 2.0f) ? (availX - numBoxW) : (availX * 0.55f);
 		if (sliderW > cap) sliderW = cap;
 
+		const char* shown = spec.greyed ? "-" : spec.format;
 		bool changed = false;
 		imgui->SetNextItemWidth(sliderW);
-		if (imgui->SliderFloat("##slider", spec.value, spec.minValue, spec.maxValue, spec.format))
+		if (imgui->SliderFloat("##slider", spec.value, spec.minValue, spec.maxValue, shown))
 			changed = true;
 
 		imgui->SameLine(0.0f, 0.0f);
 		imgui->SetNextItemWidth(numBoxW);
-		if (imgui->InputFloat("##num", spec.value, spec.step, spec.step * 10.0f, spec.format))
+		if (imgui->InputFloat("##num", spec.value, spec.step, spec.step * 10.0f, shown))
 			changed = true;
 
 		if (changed)
