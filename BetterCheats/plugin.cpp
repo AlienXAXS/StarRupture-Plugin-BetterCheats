@@ -372,6 +372,7 @@ static void OnEngineTick(float deltaSeconds)
 	// single-player or the world unloaded out from under an open panel.
 	// TickPendingOpen applies a click on the pause menu's BETTER CHEATS row,
 	// on the same tick for the same reason.
+	BetterCheats::CheatMenu::FollowFeature();
 	BetterCheats::CheatMenu::TickPendingClose();
 	BetterCheats::CheatMenu::TickPendingOpen();
 

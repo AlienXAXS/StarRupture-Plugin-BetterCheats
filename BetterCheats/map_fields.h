@@ -726,11 +726,18 @@ namespace BetterCheats::Features
 		Fields::AuItemDataBase_ItemName.key
 	} };
 
+	// The in-game menu itself: its panel, pause menu row and keys. It needs no game
+	// value, and a feature must list a key, so this one is a name no map row has
+	// and nothing resolves: no game build can switch the menu off.
+	inline PluginMap::Feature CheatMenu{ "cheat-menu", "Cheat menu", {
+		"BetterCheats::CheatMenu"
+	} };
+
 	template <class Fn>
 	inline auto WithAll(Fn fn)
 	{
 		return fn(Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute, StackSize);
+			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute, StackSize, CheatMenu);
 	}
 
 	// Declares every feature. Call before the resolves, so a miss lands on the

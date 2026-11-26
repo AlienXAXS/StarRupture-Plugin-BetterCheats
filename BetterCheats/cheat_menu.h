@@ -50,6 +50,10 @@ namespace BetterCheats
 		static void Initialize(IPluginSelf* self);
 		static void Shutdown();
 
+		// Takes the panel, pause menu row and open menu down while the cheat-menu
+		// feature is off, and puts them back (closed) once it is on. Game thread.
+		static void FollowFeature();
+
 		// The deliberate user action (the toggle key): flips which of
 		// OpenMenu/CloseMenu applies. Every OTHER close source (Escape/Q, the
 		// loader's own OnPanelClosed notification, shutdown) must call
@@ -80,6 +84,8 @@ namespace BetterCheats
 		// flip, so a second close signal for an already-closed menu is always
 		// a no-op instead of reopening it.
 		static void ApplyMenuClosed(const char* reason);
+		static void Show();
+		static void Hide();
 
 		static void OnPanelClosed(PanelHandle handle);
 		static void OnPauseMenuRowClicked(void* userData);

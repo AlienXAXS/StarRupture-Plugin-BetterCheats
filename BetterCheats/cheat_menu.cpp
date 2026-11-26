@@ -9,6 +9,7 @@
 #include "panel_dev.h"
 #include "keybind_picker.h"
 #include "ui_widgets.h"
+#include "map_fields.h"
 
 // ---------------------------------------------------------------------------
 // ImGui style constant aliases — mirror imgui.h, must match modloader's ImGui
@@ -92,19 +93,36 @@ namespace BetterCheats
 	void CheatMenu::Initialize(IPluginSelf* self)
 	{
 		s_self = self;
+		s_self->hooks->UI->RegisterOnPanelWindowClosed(OnPanelClosed);
+		FollowFeature();
+	}
 
+	void CheatMenu::FollowFeature()
+	{
+		if (!s_self)
+			return;
+
+		const bool on = Features::CheatMenu.On();
+		if (on && !s_panelHandle)
+			Show();
+		else if (!on)
+			Hide();
+	}
+
+	// Puts up the panel and the pause menu row, with the menu closed.
+	void CheatMenu::Show()
+	{
 		static PluginPanelDesc desc{};
 		desc.buttonLabel = "BetterCheats";
 		desc.windowTitle = "BetterCheats";
 		desc.renderFn    = &CheatMenu::OnRender;
 
-		s_panelHandle = self->hooks->UI->RegisterPanel(&desc);
-		s_self->hooks->UI->RegisterOnPanelWindowClosed(OnPanelClosed);
+		s_panelHandle = s_self->hooks->UI->RegisterPanel(&desc);
 
 		// Server builds have no game menu (hooks->GameMenu is null), and a
 		// client whose menu patterns did not resolve is not worth a row nobody
 		// will see; the toggle key still opens the panel either way.
-		if (self->hooks->GameMenu && self->hooks->GameMenu->IsAvailable())
+		if (s_self->hooks->GameMenu && s_self->hooks->GameMenu->IsAvailable())
 		{
 			PluginGameMenuEntryDesc row{};
 			row.id      = "bettercheats";
@@ -113,34 +131,42 @@ namespace BetterCheats
 			row.anchor  = PLUGIN_GAME_MENU_ANCHOR_AFTER_OPTIONS;
 			row.onClick = OnPauseMenuRowClicked;
 
-			if (!self->hooks->GameMenu->AddEntry(self, &row))
-				LOG_WARN("CheatMenu::Initialize: could not add the pause menu row");
+			if (!s_self->hooks->GameMenu->AddEntry(s_self, &row))
+				LOG_WARN("CheatMenu::Show: could not add the pause menu row");
 		}
+	}
+
+	// Closes the menu, hands input back and takes the panel and row down. A
+	// pending open or close is dropped, so it can't apply once they are back.
+	void CheatMenu::Hide()
+	{
+		s_openRequested.store(false);
+		s_closeRequested.store(false);
+
+		if (!s_panelHandle || !s_self)
+			return;
+
+		if (s_self->hooks->GameMenu)
+			s_self->hooks->GameMenu->RemoveAllEntries(s_self);
+
+		s_self->hooks->UI->SetPanelClose(s_panelHandle);
+		ApplyMenuClosed("Hide");
+		s_self->hooks->UI->UnregisterPanel(s_panelHandle);
+		s_panelHandle = nullptr;
 	}
 
 	void CheatMenu::Shutdown()
 	{
-		if (s_self && s_self->hooks && s_self->hooks->GameMenu)
-			s_self->hooks->GameMenu->RemoveAllEntries(s_self);
-
-		s_openRequested.store(false);
-
-		if (s_panelHandle && s_self)
-		{
-			s_self->hooks->UI->SetPanelClose(s_panelHandle);
-			ApplyMenuClosed("Shutdown");
-
+		Hide();
+		if (s_self)
 			s_self->hooks->UI->UnregisterOnPanelWindowClosed(OnPanelClosed);
-			s_self->hooks->UI->UnregisterPanel(s_panelHandle);
-			s_panelHandle = nullptr;
-		}
 		s_self = nullptr;
 	}
 
 	// Idempotent: no-op if already open. Never call this from a close path.
 	void CheatMenu::OpenMenu()
 	{
-		if (!s_panelHandle || !s_self) return;
+		if (!s_panelHandle || !s_self || !Features::CheatMenu.On()) return;
 
 		if (s_open.exchange(true))
 		{
