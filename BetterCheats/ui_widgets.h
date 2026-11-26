@@ -30,6 +30,20 @@ namespace BetterCheats::UI
 		imgui->Text("-");
 	}
 
+	// A greyed-out Saved Presets row: the real row over a store that never holds
+	// a preset, so it names none of the player's and has nothing to read.
+	inline void UnavailablePresetRow(IModLoaderImGui* imgui, const char* idScope, const char* group)
+	{
+		static PluginPresets::Store none;
+		PluginPresets::RowState state;
+		state.pickedNone = true;
+		PluginPresets::Field unused[1] = {};
+		PluginPresets::RenderSavedRow(imgui, none, idScope, group, unused, 0,
+			[](PluginPresets::Field*) {}, [](const PluginPresets::Field*, int) {},
+			[](const char*) { return false; },
+			[](char* out, int cap) { if (cap > 0) out[0] = 0; }, state);
+	}
+
 	// A greyed-out checkbox: unticked, because nothing is being applied.
 	inline void UnavailableCheckbox(IModLoaderImGui* imgui, const char* label)
 	{

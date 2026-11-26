@@ -425,67 +425,22 @@ namespace BetterCheats::Panels::Wave
 		g_pauseWavesEnabled = SessionConfig::Get("wave.pauseWavesEnabled", false);
 	}
 
-	namespace
-	{
-		void RenderUnavailableRow(IModLoaderImGui* imgui, const char* label, const char* value, const char* button)
-		{
-			imgui->TableNextRow(0, 0.0f);
-			imgui->TableSetColumnIndex(0); imgui->Text(label);
-			imgui->TableSetColumnIndex(1); imgui->Text(value);
-			imgui->TableSetColumnIndex(2);
-			if (button)
-				imgui->SmallButton(button);
-		}
-
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Wave Status");
-			if (imgui->BeginTable("##wave_status", 3, kTableFlags))
-			{
-				SetupWaveTableColumns(imgui);
-				RenderUnavailableRow(imgui, "Type", "-", nullptr);
-				RenderUnavailableRow(imgui, "Stage", "-", "Skip##stage");
-				RenderUnavailableRow(imgui, "Progress", "-", nullptr);
-				imgui->EndTable();
-			}
-
-			imgui->Spacing();
-			imgui->SeparatorText("Wave Controls");
-			if (imgui->BeginTable("##wave_ctrl", 3, kTableFlags))
-			{
-				SetupWaveTableColumns(imgui);
-				RenderUnavailableRow(imgui, "Start Wave", "-", "Heat");
-				RenderUnavailableRow(imgui, "Pause", "-", "Pause");
-				RenderUnavailableRow(imgui, "Cancel Wave", "-", "Cancel");
-				RenderUnavailableRow(imgui, "Pause Waves", "-", "Pause##wave_timer");
-				imgui->EndTable();
-			}
-
-			imgui->Spacing();
-			imgui->SeparatorText("Wave Spawning Timer");
-			if (imgui->BeginTable("##wave_timer", 3, kTableFlags))
-			{
-				SetupWaveTableColumns(imgui);
-				RenderUnavailableRow(imgui, "Next Wave", "-", nullptr);
-				imgui->EndTable();
-			}
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
+		// A greyed page draws the same rows and every button, with "-" where a
+		// value would be. It reads no game state and no saved setting.
+		WaveSnapshot snap;
 		if (greyed)
 		{
-			RenderUnavailable(imgui);
-			return;
+			snap.subsysFound = true;
+			snap.timerFound  = true;
 		}
-
-		WaveSnapshot snap;
+		else
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snap = g_snapshot;
 		}
+		const bool showWaveButtons = greyed || snap.inProgress;
 
 		// ----- Status -----
 		imgui->SeparatorText("Wave Status");
@@ -501,15 +456,15 @@ namespace BetterCheats::Panels::Wave
 			// Type
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Type");
-			imgui->TableSetColumnIndex(1); imgui->Text(WaveTypeName(snap.waveType));
+			imgui->TableSetColumnIndex(1); imgui->Text(greyed ? "-" : WaveTypeName(snap.waveType));
 			imgui->TableSetColumnIndex(2);
 
 			// Stage
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Stage");
-			imgui->TableSetColumnIndex(1); imgui->Text(WaveStageName(snap.waveStage));
+			imgui->TableSetColumnIndex(1); imgui->Text(greyed ? "-" : WaveStageName(snap.waveStage));
 			imgui->TableSetColumnIndex(2);
-			if (snap.inProgress)
+			if (showWaveButtons)
 			{
 				if (imgui->SmallButton("Skip##stage"))
 					g_pendingAction.store(static_cast<int>(PendingAction::SkipSegment));
@@ -524,7 +479,10 @@ namespace BetterCheats::Panels::Wave
 				imgui->SetNextItemWidth(-1.0f);
 				float prog = snap.progress;
 				char fmt[16];
-				snprintf(fmt, sizeof(fmt), "%.0f%%", prog * 100.0f);
+				if (greyed)
+					snprintf(fmt, sizeof(fmt), "-");
+				else
+					snprintf(fmt, sizeof(fmt), "%.0f%%", prog * 100.0f);
 				imgui->SliderFloat("##wave_prog", &prog, 0.0f, 1.0f, fmt);
 			}
 			imgui->TableSetColumnIndex(2);
@@ -556,11 +514,12 @@ namespace BetterCheats::Panels::Wave
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Pause");
 			imgui->TableSetColumnIndex(1);
-			if (!snap.inProgress)   imgui->TextDisabled("Planet Stable");
+			if (greyed)             imgui->Text("-");
+			else if (!snap.inProgress) imgui->TextDisabled("Planet Stable");
 			else if (snap.isPaused) imgui->Text("Paused");
 			else                    imgui->Text("Running");
 			imgui->TableSetColumnIndex(2);
-			if (snap.inProgress)
+			if (showWaveButtons)
 			{
 				if (snap.isPaused)
 				{
@@ -577,9 +536,9 @@ namespace BetterCheats::Panels::Wave
 			// Cancel
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Cancel Wave");
-			imgui->TableSetColumnIndex(1); imgui->Text(snap.inProgress ? "In Progress" : "Planet Stable");
+			imgui->TableSetColumnIndex(1); imgui->Text(greyed ? "-" : snap.inProgress ? "In Progress" : "Planet Stable");
 			imgui->TableSetColumnIndex(2);
-			if (snap.inProgress)
+			if (showWaveButtons)
 			{
 				if (imgui->SmallButton("Cancel"))
 					g_pendingAction.store(static_cast<int>(PendingAction::Cancel));
@@ -587,10 +546,10 @@ namespace BetterCheats::Panels::Wave
 
 			// Pause Waves Entirely
 			{
-				const bool pauseWaves = g_pauseWavesEnabled.load();
+				const bool pauseWaves = !greyed && g_pauseWavesEnabled.load();
 				imgui->TableNextRow(0, 0.0f);
 				imgui->TableSetColumnIndex(0); imgui->Text("Pause Waves");
-				imgui->TableSetColumnIndex(1); imgui->Text(pauseWaves ? "Paused" : "Running");
+				imgui->TableSetColumnIndex(1); imgui->Text(greyed ? "-" : pauseWaves ? "Paused" : "Running");
 				imgui->TableSetColumnIndex(2);
 				if (imgui->SmallButton(pauseWaves ? "Unpause##wave_timer" : "Pause##wave_timer"))
 				{
@@ -624,7 +583,9 @@ namespace BetterCheats::Panels::Wave
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Next Wave");
 			imgui->TableSetColumnIndex(1);
-			if (snap.inProgress)
+			if (greyed)
+				imgui->Text("-");
+			else if (snap.inProgress)
 				imgui->TextDisabled("Wave in progress");
 			else if (snap.stopWaves)
 				imgui->Text("Waves disabled");

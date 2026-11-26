@@ -76,6 +76,7 @@ namespace BetterCheats::Panels::Attributes
 		{
 			imgui->TableSetupColumn("Attribute", kColumnWidthFixed, 110.0f);
 			imgui->TableSetupColumn("Value", 0, 0.0f);
+			imgui->TableSetupColumn("Action", kColumnWidthFixed, 0.0f);
 			imgui->TableSetupColumn("Locked", kColumnWidthFixed, 50.0f);
 		}
 
@@ -388,12 +389,14 @@ namespace BetterCheats::Panels::Attributes
 		// Shared row widget — one aligned table row: label, a slider that both
 		// displays and edits the live value (dragging it queues a write that
 		// Tick() applies on the game thread), a snap-to button (max for resources,
-		// min for afflictions), and the Locked checkbox on the right of the bar.
+		// min for afflictions) in its own column, and the Locked checkbox.
+		// A greyed row shows "-", unticked, and leaves the saved lock alone.
 		// -------------------------------------------------------------------------
 		void RenderAttributeRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr,
-			const char* snapLabel, float snapTarget)
+			const char* snapLabel, float snapTarget, bool greyed)
 		{
-			LockSlot& lock = g_locks[static_cast<int>(id)];
+			LockSlot unavailable;
+			LockSlot& lock = greyed ? unavailable : g_locks[static_cast<int>(id)];
 
 			// While unlocked, keep the slider following the live attribute value;
 			// once locked, it holds steady at the value Tick() pins to.
@@ -409,14 +412,17 @@ namespace BetterCheats::Panels::Attributes
 			imgui->TableSetColumnIndex(1);
 			imgui->SetNextItemWidth(-1.0f);
 			char format[32];
-			snprintf(format, sizeof(format), "%%.0f / %.0f", attr.max);
+			if (greyed)
+				snprintf(format, sizeof(format), "-");
+			else
+				snprintf(format, sizeof(format), "%%.0f / %.0f", attr.max);
 			if (imgui->SliderFloat("##value", &lock.value, attr.min, attr.max, format))
 			{
 				QueueAttributeEdit(id, lock.value);
 				PersistLock(id, lock);
 			}
 
-			imgui->SameLine(0.0f, -1.0f);
+			imgui->TableSetColumnIndex(2);
 			if (imgui->SmallButton(snapLabel))
 			{
 				lock.value = snapTarget;
@@ -424,7 +430,7 @@ namespace BetterCheats::Panels::Attributes
 				PersistLock(id, lock);
 			}
 
-			imgui->TableSetColumnIndex(2);
+			imgui->TableSetColumnIndex(3);
 			const bool wasLocked = lock.locked;
 			RenderLockCheckbox(imgui, lock);
 			if (lock.locked != wasLocked)
@@ -433,14 +439,14 @@ namespace BetterCheats::Panels::Attributes
 			imgui->PopID();
 		}
 
-		void RenderResourceRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr)
+		void RenderResourceRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr, bool greyed)
 		{
-			RenderAttributeRow(imgui, label, id, attr, "Fill", attr.max);
+			RenderAttributeRow(imgui, label, id, attr, "Fill", attr.max, greyed);
 		}
 
-		void RenderAfflictionRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr)
+		void RenderAfflictionRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr, bool greyed)
 		{
-			RenderAttributeRow(imgui, label, id, attr, "Clear", attr.min);
+			RenderAttributeRow(imgui, label, id, attr, "Clear", attr.min, greyed);
 		}
 	}
 
@@ -541,58 +547,21 @@ namespace BetterCheats::Panels::Attributes
 		}
 	}
 
-	namespace
-	{
-		void RenderUnavailableTable(IModLoaderImGui* imgui, const char* id,
-			std::initializer_list<const char*> labels, const char* button)
-		{
-			if (!imgui->BeginTable(id, 3, kAttributeTableFlags))
-				return;
-			SetupAttributeTableColumns(imgui);
-
-			for (const char* label : labels)
-			{
-				imgui->PushIDStr(label);
-				BetterCheats::UI::UnavailableRow(imgui, label);
-				imgui->SameLine(0.0f, -1.0f);
-				imgui->SmallButton(button);
-				imgui->TableSetColumnIndex(2);
-				BetterCheats::UI::UnavailableCheckbox(imgui, "##locked");
-				imgui->PopID();
-			}
-
-			imgui->EndTable();
-		}
-
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Health");
-			RenderUnavailableTable(imgui, "##health_table", { "Health" }, "Full Heal");
-
-			imgui->Spacing();
-			imgui->SeparatorText("Survival Resources");
-			RenderUnavailableTable(imgui, "##survival_table",
-				{ "Energy", "Shield", "Hydration", "Calories", "Oxygen" }, "Fill");
-
-			imgui->SeparatorText("Afflictions");
-			RenderUnavailableTable(imgui, "##afflictions_table",
-				{ "Toxicity", "Radiation", "Heat", "Drain", "Corrosion", "Infection", "Temperature" }, "Clear");
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
-		if (greyed)
-		{
-			RenderUnavailable(imgui);
-			return;
-		}
-
 		// RenderImGui() runs on the ImGui render thread, not the game thread —
 		// it must only ever read the snapshot Tick() refreshed, never touch
 		// SDK/UObjects directly (see GetLocalCharacter()'s comment for why).
+		// A greyed page draws every row, with no values from the game.
 		AttributesSnapshot snapshot;
+		if (greyed)
+		{
+			snapshot.hasCharacter = true;
+			snapshot.hasHealth    = true;
+			for (AttrSnapshot& slot : snapshot.slots)
+				slot.present = true;
+		}
+		else
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snapshot = g_snapshot;
@@ -608,6 +577,11 @@ namespace BetterCheats::Panels::Attributes
 		// same "above every control" position every group uses. Field order
 		// is kAttrCount pairs of {locked, value} in AttrId order, then Max
 		// Health's own value -- GetLive/ApplyFields must agree on that order.
+		if (greyed)
+		{
+			BetterCheats::UI::UnavailablePresetRow(imgui, "self_saved_presets", "Self");
+		}
+		else
 		{
 			static PluginPresets::RowState s_presetRow;
 			constexpr int kFieldCount = kAttrCount * 2 + 1;
@@ -670,10 +644,10 @@ namespace BetterCheats::Panels::Attributes
 		const AttrSnapshot& health = snapshot.slots[static_cast<int>(AttrId::Health)];
 		if (snapshot.hasHealth && health.present)
 		{
-			if (imgui->BeginTable("##health_table", 3, kAttributeTableFlags))
+			if (imgui->BeginTable("##health_table", 4, kAttributeTableFlags))
 			{
 				SetupAttributeTableColumns(imgui);
-				RenderAttributeRow(imgui, "Health", AttrId::Health, health, "Full Heal", health.max);
+				RenderAttributeRow(imgui, "Health", AttrId::Health, health, "Full Heal", health.max, greyed);
 				imgui->EndTable();
 			}
 
@@ -681,13 +655,13 @@ namespace BetterCheats::Panels::Attributes
 
 			static float maxHealthValue = 0.0f;
 			static bool  maxHealthInit  = false;
-			if (!maxHealthInit)
+			if (!maxHealthInit && !greyed)
 			{
 				maxHealthValue = snapshot.maxHealth;
 				maxHealthInit  = true;
 			}
 
-			if (imgui->BeginTable("##max_health_table", 3, kAttributeTableFlags))
+			if (imgui->BeginTable("##max_health_table", 4, kAttributeTableFlags))
 			{
 				SetupAttributeTableColumns(imgui);
 
@@ -697,9 +671,11 @@ namespace BetterCheats::Panels::Attributes
 				imgui->Text("Max Health");
 
 				imgui->TableSetColumnIndex(1);
-				imgui->SetNextItemWidth(-60.0f);
-				imgui->InputFloat("##max_health", &maxHealthValue, 10.0f, 100.0f, "%.0f");
-				imgui->SameLine(0.0f, -1.0f);
+				imgui->SetNextItemWidth(-1.0f);
+				float unavailableMax = 0.0f;
+				imgui->InputFloat("##max_health", greyed ? &unavailableMax : &maxHealthValue,
+					10.0f, 100.0f, greyed ? "-" : "%.0f");
+				imgui->TableSetColumnIndex(2);
 				if (imgui->Button("Set##max_health"))
 				{
 					QueueMaxHealthEdit(maxHealthValue);
@@ -707,8 +683,8 @@ namespace BetterCheats::Panels::Attributes
 					SessionConfig::Set("playerAttributes.maxHealth.value", maxHealthValue);
 				}
 
-				// Column 3 left blank — Max Health has no lock toggle.
-				imgui->TableSetColumnIndex(2);
+				// Last column left blank — Max Health has no lock toggle.
+				imgui->TableSetColumnIndex(3);
 
 				imgui->EndTable();
 			}
@@ -724,7 +700,7 @@ namespace BetterCheats::Panels::Attributes
 		imgui->Spacing();
 		imgui->SeparatorText("Survival Resources");
 
-		if (imgui->BeginTable("##survival_table", 3, kAttributeTableFlags))
+		if (imgui->BeginTable("##survival_table", 4, kAttributeTableFlags))
 		{
 			SetupAttributeTableColumns(imgui);
 
@@ -732,7 +708,7 @@ namespace BetterCheats::Panels::Attributes
 			{
 				const AttrSnapshot& attr = snapshot.slots[static_cast<int>(id)];
 				if (attr.present)
-					RenderResourceRow(imgui, label, id, attr);
+					RenderResourceRow(imgui, label, id, attr, greyed);
 			};
 
 			renderIfPresent("Energy",    AttrId::Energy);
@@ -749,7 +725,7 @@ namespace BetterCheats::Panels::Attributes
 		// ---------------------------------------------------------------------
 		imgui->SeparatorText("Afflictions");
 
-		if (imgui->BeginTable("##afflictions_table", 3, kAttributeTableFlags))
+		if (imgui->BeginTable("##afflictions_table", 4, kAttributeTableFlags))
 		{
 			SetupAttributeTableColumns(imgui);
 
@@ -757,7 +733,7 @@ namespace BetterCheats::Panels::Attributes
 			{
 				const AttrSnapshot& attr = snapshot.slots[static_cast<int>(id)];
 				if (attr.present)
-					RenderAfflictionRow(imgui, label, id, attr);
+					RenderAfflictionRow(imgui, label, id, attr, greyed);
 			};
 
 			renderIfPresent("Toxicity",    AttrId::Toxicity);
