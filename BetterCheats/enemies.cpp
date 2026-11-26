@@ -284,6 +284,7 @@ namespace BetterCheats::Panels::Enemies
 			if (cache.actor.Get() != actor)
 			{
 				cache.brainSeen = false;
+				cache.brainTicked = false;
 				cache.actor.Set(actor);
 				cache.distance         = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor);
 				cache.coneHalfAngle    = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor);
