@@ -744,11 +744,19 @@ namespace BetterCheats::Features
 		PluginMap::ResolveFields(scanner, self, Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize);
 	}
 
-	// Asks again while InventorySlotSize is off. Game thread only; the loader rate-limits
+	inline bool SlotSizeRowsResolved()
+	{
+		return PluginMap::IsResolved(Fields::WBP_InventorySlot_SetSlotSize)
+			&& PluginMap::IsResolved(Fields::WBP_InventorySlot_SetSlotSize_InSize);
+	}
+
+	// Asks again until the rows resolve. Game thread only; the loader rate-limits
 	// the look at the game's objects, and what it finds holds for the process.
+	// Only the call that resolves them sets the flag. From then on it is the
+	// loader's, so a feature a server switches off stays off.
 	inline void ResolveSlotSizeLate()
 	{
-		if (InventorySlotSize.On() || !g_slotSizeScanner || !g_slotSizeSelf)
+		if (SlotSizeRowsResolved() || InventorySlotSize.On() || !g_slotSizeScanner || !g_slotSizeSelf)
 			return;
 		if (PluginMap::ResolveLateFields(g_slotSizeScanner, g_slotSizeSelf,
 				Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize))

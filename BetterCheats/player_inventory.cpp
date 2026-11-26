@@ -209,6 +209,9 @@ namespace BetterCheats::Panels::Inventory
 		float g_baseSlotWidth  = 0.0f;
 		float g_baseSlotHeight = 0.0f;
 
+		// Game thread. The widget's own resize rows were resolved before this tick.
+		bool g_slotSizeSettled = false;
+
 		// Prefer the widget's own resize entry point: it drives the SizeBox the
 		// same way we would, and whatever else the Blueprint does to keep the
 		// slot's insides in proportion comes along with it. The direct SizeBox
@@ -220,7 +223,7 @@ namespace BetterCheats::Panels::Inventory
 		// ObjectRef, looked up again once it's gone.
 		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height)
 		{
-			if (!BetterCheats::Features::InventorySlotSize.On()) return;
+			if (!g_slotSizeSettled || !BetterCheats::Features::InventorySlotSize.On()) return;
 
 			static ObjectRef<SDK::UFunction> s_function;
 
@@ -1988,6 +1991,9 @@ namespace BetterCheats::Panels::Inventory
 		BetterCheats::RecordGameThread();
 
 		// The widget class may load after the plugin does; asks the loader again until it has.
+		// A late resolve sets the flag before the loader can apply a server's rules to it,
+		// which it does before the next tick, so the call waits for that tick.
+		g_slotSizeSettled = BetterCheats::Features::SlotSizeRowsResolved();
 		BetterCheats::Features::ResolveSlotSizeLate();
 
 		ApplyPendingResize();
