@@ -58,9 +58,10 @@ namespace BetterCheats::UI
 		const bool hovered = imgui->IsItemHovered();
 		const bool active  = imgui->IsItemActive();
 
-		// ImGui packs colours as 0xAABBGGRR.
-		const unsigned int col = (active || hovered) ? 0xFFFFFFFFu    // white while hovered/held
-		                                              : 0xFFB0B0B0u;  // muted grey at rest
+		// White while hovered or held, muted grey at rest. GetColorU32FromVec4
+		// applies the style alpha, so the icon dims inside a disabled block.
+		const float        shade = (active || hovered) ? 1.0f : 0.69f;
+		const unsigned int col   = imgui->GetColorU32FromVec4(shade, shade, shade, 1.0f);
 
 		PluginDrawList dl = imgui->GetWindowDrawList();
 		if (!dl)
