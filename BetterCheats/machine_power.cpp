@@ -1019,8 +1019,19 @@ namespace BetterCheats::Panels::Power
 		g_applied.clear();
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
+		// The machine list is found by scanning the game, so a greyed section has
+		// none: only the controls above it, and no scan.
+		if (greyed)
+		{
+			imgui->SeparatorText("Power Output / Consumption");
+			imgui->Button("Rescan");
+			imgui->SameLine(0.0f, 8.0f);
+			imgui->Button("Reset All");
+			return;
+		}
+
 		AdoptPendingIfReady();
 
 		// No built-in presets here, so saved presets sit at the very top -- same

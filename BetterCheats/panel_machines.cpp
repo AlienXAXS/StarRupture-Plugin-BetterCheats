@@ -13,10 +13,7 @@ namespace BetterCheats::Panels
 
 	void RenderMachines_Power(IModLoaderImGui* imgui)
 	{
-		if (Features::Power.On())
-			Power::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Power);
+		Features::Section(imgui, Features::Power, [&](bool greyed) { Power::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)
