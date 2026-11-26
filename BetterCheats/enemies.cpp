@@ -1,5 +1,6 @@
 #include "enemies.h"
 #include "object_ref.h"
+#include "game_thread.h"
 #include "plugin_helpers.h"
 #include "aob_resolver.h"
 #include "session_config.h"
@@ -105,6 +106,11 @@ namespace BetterCheats::Panels::Enemies
 		// register as "in range" to attack. Original values restored on toggle-off.
 		struct AttackRangeCache
 		{
+			// Who was changed. The map key is only an address, which a later
+			// enemy can reuse, so these say whether the entry is still its own.
+			ObjectRef<SDK::AMassEnemyCharacterBase> actor;
+			ObjectRef<SDK::UMassAgentComponent>     agent;
+
 			float distance         = 0.0f;
 			float coneHalfAngle    = 0.0f;
 			float buildingDistance = 0.0f;
@@ -254,7 +260,7 @@ namespace BetterCheats::Panels::Enemies
 			return g_getFragmentDataPtr(entityManager, handle, g_healthFragmentStruct);
 		}
 
-		void EnforceDisableAI(SDK::AMassEnemyCharacterBase* actor)
+		void EnforceDisableAI(SDK::AMassEnemyCharacterBase* actor, SDK::UMassAgentComponent* agent)
 		{
 			if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
 			{
@@ -262,46 +268,52 @@ namespace BetterCheats::Panels::Enemies
 					aiController->BrainComponent->SetComponentTickEnabled(false);
 			}
 
-			auto it = g_attackRangeCache.find(actor);
-			if (it == g_attackRangeCache.end())
+			AttackRangeCache& cache = g_attackRangeCache[actor];
+			if (cache.actor.Get() != actor)
 			{
-				AttackRangeCache cache;
+				cache.actor.Set(actor);
 				cache.distance         = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor);
 				cache.coneHalfAngle    = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor);
 				cache.buildingDistance = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor);
-				g_attackRangeCache.emplace(actor, cache);
 			}
+			cache.agent.Set(agent);
 
 			BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor, 0.0f);
 			BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor, 0.0f);
 			BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor, 0.0f);
 		}
 
-		// Restores whatever EnforceDisableAI zeroed, for actors still in g_enemies
-		// when the cheat is turned back off.
+		// Undoes Disable AI on every enemy EnforceDisableAI changed that is still
+		// alive, including any the latest rescan no longer lists.
 		void RestoreDisableAI()
 		{
-			for (const TrackedEnemy& enemy : g_enemies)
+			for (const auto& entry : g_attackRangeCache)
 			{
-				SDK::AMassEnemyCharacterBase* actor = enemy.actor.Get();
+				const AttackRangeCache& cache = entry.second;
+
+				SDK::AMassEnemyCharacterBase* actor = cache.actor.Get();
 				if (!actor)
 					continue;
 
 				try
 				{
-					if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
+					// A pooled actor's agent and AI are left for the pool to
+					// switch on when it hands the actor out again.
+					if (!BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_bIsInPool, actor))
 					{
-						if (aiController->BrainComponent)
-							aiController->BrainComponent->SetComponentTickEnabled(true);
+						if (SDK::UMassAgentComponent* agent = cache.agent.Get())
+							agent->Enable();
+
+						if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
+						{
+							if (aiController->BrainComponent)
+								aiController->BrainComponent->SetComponentTickEnabled(true);
+						}
 					}
 
-					auto it = g_attackRangeCache.find(actor);
-					if (it != g_attackRangeCache.end())
-					{
-						BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor, it->second.distance);
-						BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor, it->second.coneHalfAngle);
-						BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor, it->second.buildingDistance);
-					}
+					BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor, cache.distance);
+					BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor, cache.coneHalfAngle);
+					BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor, cache.buildingDistance);
 				}
 				catch (...)
 				{
@@ -389,12 +401,27 @@ namespace BetterCheats::Panels::Enemies
 			LOG_WARN("Enemies: failed to resolve FMassEnemyHealthFragment UScriptStruct — One-Hit Kill will fall back to KillEntity only.");
 	}
 
-	void Shutdown()
+	void ForgetWorld()
 	{
 		g_enemies.clear();
 		g_killedEnemies.clear();
 		g_attackRangeCache.clear();
+		g_entitySubsystem.Reset();
+		g_actorSubsystem.Reset();
 		g_lastDisableAI = false;
+		g_rescanTimer = 0.0f;
+
+		std::lock_guard<std::mutex> lock(g_snapshotMutex);
+		g_snapshot = {};
+	}
+
+	void Shutdown()
+	{
+		// Left switched off, the zeroed ranges would be read back as the
+		// originals after a reload.
+		if (BetterCheats::IsGameThread())
+			ReleaseValues();
+		ForgetWorld();
 	}
 
 	// Disable()/Enable() likely does real work (un/re-registering the entity
@@ -403,18 +430,22 @@ namespace BetterCheats::Panels::Enemies
 	// top-up in Tick.
 	static void SwitchDisableAI(bool disableAI)
 	{
-		for (const TrackedEnemy& enemy : g_enemies)
+		if (disableAI)
 		{
-			SDK::UMassAgentComponent* agent = enemy.agent.Get();
-			if (!agent)
-				continue;
+			for (const TrackedEnemy& enemy : g_enemies)
+			{
+				SDK::UMassAgentComponent* agent = enemy.agent.Get();
+				if (!agent)
+					continue;
 
-			try { disableAI ? agent->Disable() : agent->Enable(); }
-			catch (...) { LOG_WARN("Enemies: exception toggling a Mass agent's Disable/Enable state."); }
+				try { agent->Disable(); }
+				catch (...) { LOG_WARN("Enemies: exception disabling a Mass agent."); }
+			}
 		}
-
-		if (!disableAI)
+		else
+		{
 			RestoreDisableAI();
+		}
 
 		g_lastDisableAI = disableAI;
 	}
@@ -466,7 +497,7 @@ namespace BetterCheats::Panels::Enemies
 
 				try
 				{
-					if (disableAI)   EnforceDisableAI(actor);
+					if (disableAI)   EnforceDisableAI(actor, enemy.agent.Get());
 					if (oneHitKill)  EnforceOneHitKill(actor, enemy.agent.Get());
 				}
 				catch (...)

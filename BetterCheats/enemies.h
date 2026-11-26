@@ -7,7 +7,12 @@ namespace SDK { class AActor; }
 namespace BetterCheats::Panels::Enemies
 {
 	void Initialize();
+	// Gives back what Disable AI changed when called on the game thread.
 	void Shutdown();
+
+	// The world's enemies are gone: drops everything tracked about them without
+	// writing to the game.
+	void ForgetWorld();
 
 	// Switches the enemies' AI back on if Disable AI had it off, keeping the panel's
 	// setting. The plugin calls this when the Enemies section is switched off while

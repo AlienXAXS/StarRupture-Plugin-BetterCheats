@@ -275,7 +275,10 @@ static void ForgetWorldSettings()
 	if (g_initRan.Wave)
 		Panels::Wave::ApplySavedConfig();
 	if (g_initRan.Enemies)
+	{
+		Panels::Enemies::ForgetWorld();
 		Panels::Enemies::ApplySavedConfig();
+	}
 	if (g_initRan.PowerSection)
 		Panels::Power::ForgetWorld();
 }
