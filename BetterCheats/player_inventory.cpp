@@ -1319,6 +1319,10 @@ namespace BetterCheats::Panels::Inventory
 				g_stackEditId.clear();
 				if (entered.find_first_not_of("0123456789") != std::string::npos)
 					return false;
+				// An edit that ends on what the box already showed, Escape
+				// included, changes nothing.
+				if (entered == (shown > 0 ? std::to_string(shown) : std::string()))
+					return false;
 				typed = entered.empty() ? 0 : ClampStackValue(atoi(entered.c_str()));
 				return true;
 			}
