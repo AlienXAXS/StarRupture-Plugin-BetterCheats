@@ -238,7 +238,7 @@ namespace BetterCheats::Panels::Movement
 
 		void OnNoClipKeyPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 		{
-			if (!GameContext::IsInChimeraMain() || !GameContext::AreCheatsAllowed() || !Features::Movement.On())
+			if (!GameContext::IsInChimeraMain() || !GameContext::AreCheatsAllowed() || !Features::Usable(Features::Movement))
 				return;
 
 			g_noClipWanted.store(!g_noClipWanted.load());

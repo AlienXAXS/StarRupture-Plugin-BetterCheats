@@ -367,7 +367,7 @@ namespace BetterCheats::Panels::Items
 			std::unique_ptr<GiveItemContext> ctx(static_cast<GiveItemContext*>(context));
 
 			// The click came from the render thread, a frame or more ago.
-			if (!Features::Items.On() || !BetterCheats::GameContext::AreCheatsAllowed()
+			if (!Features::Usable(Features::Items) || !BetterCheats::GameContext::AreCheatsAllowed()
 				|| BetterCheats::GameContext::IsBetweenWorlds())
 				return;
 

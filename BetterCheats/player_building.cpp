@@ -36,7 +36,7 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			if (g_noBuildCost && Features::BuildFree.On() && !Defer::DeferredTo("no-build-cost"))
+			if (g_noBuildCost && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-build-cost"))
 				return 1; // EAuAPlacementConditionResult::Valid
 
 			return g_originalGetPlacementResourceConditionResult(self);
@@ -68,13 +68,13 @@ namespace BetterCheats::Panels::Building
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityCustom(self, placementData);
-			return (g_noStabilityCheck && Features::BuildFree.On() && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return (g_noStabilityCheck && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
-			return (g_noStabilityCheck && Features::BuildFree.On() && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return (g_noStabilityCheck && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check")) ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -109,7 +109,7 @@ namespace BetterCheats::Panels::Building
 
 		bool __fastcall Detour_IsRecipeUnlocked(void* self, void* recipe)
 		{
-			if (g_unlockAllRecipes && Features::BuildUnlock.On() && !Defer::DeferredTo("unlock-all-recipes"))
+			if (g_unlockAllRecipes && Features::Usable(Features::BuildUnlock) && !Defer::DeferredTo("unlock-all-recipes"))
 				return true;
 
 			return g_originalIsRecipeUnlocked(self, recipe);
@@ -199,7 +199,7 @@ namespace BetterCheats::Panels::Building
 		SDK::AActor* __fastcall Detour_FindDeconstructibleTarget(SDK::ACrPlayerControllerBase* self, const void* traceData)
 		{
 			SDK::AActor* target = g_originalFindDeconstructibleTarget(self, traceData);
-			if (target || !g_deconstructWindowsDuringWaves.load() || !Features::DeconstructWindows.On() || Defer::DeferredTo("deconstruct-windows"))
+			if (target || !g_deconstructWindowsDuringWaves.load() || !Features::Usable(Features::DeconstructWindows) || Defer::DeferredTo("deconstruct-windows"))
 				return target;
 
 			{
@@ -304,7 +304,7 @@ namespace BetterCheats::Panels::Building
 		bool IsRelaxedPieceInHabitatSlot(SDK::ACrAPHelper* helper)
 		{
 			// SnappedActors, read below, is part of this feature: without it, or with the feature off, collision is left alone.
-			if (!Features::BuildAnywhere.On())
+			if (!Features::Usable(Features::BuildAnywhere))
 				return false;
 
 			SDK::UCrBuildingData* buildingData = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrAPHelper_BuildingData, helper);
@@ -403,7 +403,7 @@ namespace BetterCheats::Panels::Building
 		void* __fastcall Detour_GetSnappedSocket(void* self, const SDK::UAuActorPlacementData* data, void* a3, void* a4,
 			void* a5, void* a6, void* a7, void* a8, void* a9, void* a10)
 		{
-			const bool bench = BenchesAnywhereOn() && Features::BuildAnywhere.On() && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
+			const bool bench = BenchesAnywhereOn() && Features::Usable(Features::BuildAnywhere) && data && IsBenchId(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuActorPlacementData_BuildingID, data));
 			t_snappingBench = bench;
 			void* socket = g_originalGetSnappedSocket(self, data, a3, a4, a5, a6, a7, a8, a9, a10);
 			t_snappingBench = false;
@@ -486,13 +486,13 @@ namespace BetterCheats::Panels::Building
 
 		// A feature that is off installs nothing: its addresses are cleared here.
 		AOB::ResolvedAddresses aob = AOB::Resolved();
-		if (!Features::BuildFree.On())
+		if (!Features::Usable(Features::BuildFree))
 			aob.GetPlacementResourceConditionResult = aob.CheckStability_Custom = aob.CheckStability_DynamicPillar = 0;
-		if (!Features::BuildUnlock.On())
+		if (!Features::Usable(Features::BuildUnlock))
 			aob.CheckAvailableBuildings = aob.IsRecipeUnlocked = 0;
-		if (!Features::BuildAnywhere.On())
+		if (!Features::Usable(Features::BuildAnywhere))
 			aob.CheckMainMeshCollision_Custom = aob.GetBoxCollisionResult = aob.GetSnappedSocket = aob.IsSocketFree = 0;
-		if (!Features::DeconstructWindows.On())
+		if (!Features::Usable(Features::DeconstructWindows))
 			aob.FindDeconstructibleTarget = aob.FindDeconstructibleTarget_HeatGate = 0;
 
 		uintptr_t addr = aob.GetPlacementResourceConditionResult;
@@ -767,7 +767,7 @@ namespace BetterCheats::Panels::Building
 		// Best Builder goes away.
 		if (Defer::DeferredTo("unlock-all-buildings"))
 			ReleaseValues();
-		else if (Features::BuildUnlock.On() && g_unlockAllBuildings != g_prevUnlockAllBuildings)
+		else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 		{
 			g_prevUnlockAllBuildings = g_unlockAllBuildings;
 			LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
@@ -802,18 +802,18 @@ namespace BetterCheats::Panels::Building
 		if (!SessionConfig::IsLoaded())
 			return;
 
-		if (Features::BuildFree.On())
+		if (Features::Usable(Features::BuildFree))
 		{
 			g_noBuildCost      = SessionConfig::Get("playerBuilding.noBuildCost", false);
 			g_noStabilityCheck = SessionConfig::Get("playerBuilding.noStabilityCheck", false);
 		}
-		if (Features::BuildUnlock.On())
+		if (Features::Usable(Features::BuildUnlock))
 		{
 			g_unlockAllBuildings = SessionConfig::Get("playerBuilding.unlockAllBuildings", false);
 			g_unlockAllRecipes   = SessionConfig::Get("playerBuilding.unlockAllRecipes", false);
 		}
 		g_deconstructWindowsDuringWaves = SessionConfig::Get("playerBuilding.deconstructWindowsDuringWaves", false);
-		if (Features::BuildAnywhere.On())
+		if (Features::Usable(Features::BuildAnywhere))
 		{
 			g_buildWindowsAnywhere = SessionConfig::Get("playerBuilding.buildWindowsAnywhere", false);
 			g_buildBenchesAnywhere = SessionConfig::Get("playerBuilding.buildBenchesAnywhere", false);

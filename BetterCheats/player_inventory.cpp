@@ -223,7 +223,7 @@ namespace BetterCheats::Panels::Inventory
 		// ObjectRef, looked up again once it's gone.
 		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height)
 		{
-			if (!g_slotSizeSettled || !BetterCheats::Features::InventorySlotSize.On()) return;
+			if (!g_slotSizeSettled || !BetterCheats::Features::Usable(BetterCheats::Features::InventorySlotSize)) return;
 
 			static ObjectRef<SDK::UFunction> s_function;
 
@@ -415,7 +415,7 @@ namespace BetterCheats::Panels::Inventory
 		{
 			g_originalInitInventorySlots(self);
 
-			if (!Features::Inventory.On() || !BetterCheats::GameContext::AreCheatsAllowed())
+			if (!Features::Usable(Features::Inventory) || !BetterCheats::GameContext::AreCheatsAllowed())
 				return;
 
 			try { OnSlotsBuilt(self); }
@@ -569,9 +569,10 @@ namespace BetterCheats::Panels::Inventory
 				return;
 			}
 
-			if (!Features::Inventory.On())
+			const Features::Why why = Features::StateOf(Features::Inventory);
+			if (why != Features::Why::Live)
 			{
-				console->Write(sink, PluginConsoleLineKind::Error, Features::kOffText);
+				console->Write(sink, PluginConsoleLineKind::Error, Features::ReasonText(why));
 				return;
 			}
 

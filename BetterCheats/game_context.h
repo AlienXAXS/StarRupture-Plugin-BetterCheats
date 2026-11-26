@@ -29,6 +29,12 @@ namespace BetterCheats
 		// returns the game thread's last answer, since the query reads UObjects.
 		static bool IsSinglePlayer();
 
+		// Any thread. The world is one joined on a server, as the game thread last found it.
+		static bool IsJoinedClient() { return s_joinedClient; }
+
+		// Game thread. Asks the loader for the net mode; an unknown one keeps the last answer.
+		static void RefreshJoinedClient();
+
 		// Single gate for "may this build touch game state?". Every path that reads
 		// or writes SDK objects — the menu and every per-tick feature module — must
 		// check this, not IsInChimeraMain() alone: a connected client also loads
@@ -51,5 +57,6 @@ namespace BetterCheats
 		static std::atomic<bool> s_inChimeraMain;
 		static std::atomic<bool> s_singlePlayer;
 		static std::atomic<bool> s_betweenWorlds;
+		static std::atomic<bool> s_joinedClient;
 	};
 }

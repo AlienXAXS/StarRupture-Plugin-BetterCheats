@@ -12,6 +12,7 @@ namespace BetterCheats
 	std::atomic<bool> GameContext::s_inChimeraMain{ false };
 	std::atomic<bool> GameContext::s_betweenWorlds{ false };
 	std::atomic<bool> GameContext::s_singlePlayer{ false };
+	std::atomic<bool> GameContext::s_joinedClient{ false };
 
 	void GameContext::Initialize(IPluginSelf* self)
 	{
@@ -34,6 +35,7 @@ namespace BetterCheats
 		s_self = nullptr;
 		s_inChimeraMain = false;
 		s_singlePlayer = false;
+		s_joinedClient = false;
 		s_betweenWorlds = false;
 	}
 
@@ -44,7 +46,20 @@ namespace BetterCheats
 		// A new world starts refused until the game thread has asked for its
 		// net mode, so the menu never shows a previous session's answer.
 		if (!s_inChimeraMain)
+		{
 			s_singlePlayer = false;
+			s_joinedClient = false;
+		}
+	}
+
+	void GameContext::RefreshJoinedClient()
+	{
+		if (!s_self || !s_self->hooks->NetMode || !s_self->hooks->Engine->IsGameThread())
+			return;
+
+		const EPluginNetMode mode = s_self->hooks->NetMode->GetNetMode();
+		if (mode != EPluginNetMode::Unknown)
+			s_joinedClient = mode == EPluginNetMode::Client;
 	}
 
 	bool GameContext::IsSinglePlayer()

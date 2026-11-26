@@ -390,7 +390,7 @@ namespace BetterCheats::Panels::Power
 		{
 			// The scan re-applies the persisted overrides, so a host that switched the
 			// Power section off after this was posted must not get them written.
-			if (!BetterCheats::Features::Power.On())
+			if (!BetterCheats::Features::Usable(BetterCheats::Features::Power))
 			{
 				g_refreshInFlight.store(false, std::memory_order_release);
 				return;
@@ -916,7 +916,7 @@ namespace BetterCheats::Panels::Power
 		{
 			std::unique_ptr<std::vector<ApplyItem>> items(static_cast<std::vector<ApplyItem>*>(context));
 			// An edit still queued between worlds belongs to the world that ended.
-			if (!BetterCheats::Features::Power.On() || BetterCheats::GameContext::IsBetweenWorlds())
+			if (!BetterCheats::Features::Usable(BetterCheats::Features::Power) || BetterCheats::GameContext::IsBetweenWorlds())
 				return;
 			for (const ApplyItem& item : *items)
 				ApplyItemOnGameThread(item);

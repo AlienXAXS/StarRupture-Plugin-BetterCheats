@@ -483,7 +483,7 @@ namespace BetterCheats::Panels::Enemies
 	void PrepareHealthReads(float deltaSeconds)
 	{
 		// Called by the weapon hit tracker, which runs whether or not this feature is on.
-		if (!Features::Enemies.On())
+		if (!Features::Usable(Features::Enemies))
 			return;
 		static float cooldown = 0.0f;
 		cooldown -= deltaSeconds;
@@ -498,7 +498,7 @@ namespace BetterCheats::Panels::Enemies
 
 	bool TryReadMassHealth(SDK::AActor* actor, float& hp)
 	{
-		if (!Features::Enemies.On())
+		if (!Features::Usable(Features::Enemies))
 			return false;
 		if (!actor || !actor->IsA(SDK::AMassEnemyCharacterBase::StaticClass()))
 			return false;

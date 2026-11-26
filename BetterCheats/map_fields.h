@@ -8,6 +8,11 @@
 #include "WBP_InventorySlot_classes.hpp"
 #include "WBP_InventorySlot_parameters.hpp"
 #include "plugin_map.h"
+#include "game_context.h"
+
+#include <algorithm>
+#include <iterator>
+#include <vector>
 #include "Engine_classes.hpp"
 #include "MassAIPrototypeEnemyRuntime_classes.hpp"
 #include <string>
@@ -721,13 +726,34 @@ namespace BetterCheats::Features
 		Fields::AuItemDataBase_ItemName.key
 	} };
 
+	template <class Fn>
+	inline auto WithAll(Fn fn)
+	{
+		return fn(Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
+			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute, StackSize);
+	}
+
 	// Declares every feature. Call before the resolves, so a miss lands on the
 	// feature, not on the plugin.
 	inline bool Declare(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
-		return PluginMap::DeclareFeatures(scanner, self,
-			Stats, Movement, Weapons, GrenadeProbe, Mining, Inventory, InventorySlotSize, Items, Skills,
-			BuildFree, BuildUnlock, BuildAnywhere, DeconstructWindows, Enemies, Power, Corporations, Wave, SessionName, WindMute, StackSize);
+		return WithAll([&](auto&... features) { return PluginMap::DeclareFeatures(scanner, self, features...); });
+	}
+
+	// The features this game build has everything for.
+	inline std::vector<const PluginMap::Feature*> g_built;
+
+	// Call last in OnPluginLoadHooks. The loader applies a server's rules after it
+	// returns, so a feature on here and off later was switched off, not missed.
+	inline void RecordBuilt()
+	{
+		g_built.clear();
+		WithAll([](auto&... features) { ((features.On() ? g_built.push_back(&features) : void()), ...); });
+	}
+
+	inline bool Built(const PluginMap::Feature& feature)
+	{
+		return std::find(g_built.begin(), g_built.end(), &feature) != g_built.end();
 	}
 
 	// The loader's scanner and this plugin's handle, kept past OnPluginLoadHooks for
@@ -763,13 +789,75 @@ namespace BetterCheats::Features
 			InventorySlotSize.on = true;
 	}
 
+	// What only the server can change: a joined client gets these greyed out.
+	inline const PluginMap::Feature* const kNeedsServer[] = {
+		&Wave,
+		&Corporations,
+		&Items,
+		&Enemies,
+		&Power,
+		&StackSize,
+	};
+
+	enum class Why
+	{
+		Live,
+		HostRules,   // the joined server's rules switched it off
+		ServerOnly,  // only the server can change it
+		Off,         // switched off, or this game build is missing something it needs
+	};
+
+	// Any thread.
+	inline Why StateOf(const PluginMap::Feature& feature)
+	{
+		using BetterCheats::GameContext;
+
+		if (!feature.On())
+			return Built(feature) && GameContext::ServerSetsRules() ? Why::HostRules : Why::Off;
+
+		const bool needsServer = std::find(std::begin(kNeedsServer), std::end(kNeedsServer), &feature) != std::end(kNeedsServer);
+		return needsServer && GameContext::IsJoinedClient() ? Why::ServerOnly : Why::Live;
+	}
+
+	// Any thread. Whether the feature may write to the game. Every such path asks this.
+	inline bool Usable(const PluginMap::Feature& feature) { return StateOf(feature) == Why::Live; }
+
 	inline constexpr const char* kOffText =
 		"Off: switched off, or this game build changed something it needs. See the loader's hook report.";
 
-	// What an off feature shows in place of its menu page.
-	inline void RenderOff(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
+	inline const char* ReasonText(Why why)
 	{
-		imgui->SeparatorText(feature.title);
-		imgui->TextDisabled(kOffText);
+		switch (why)
+		{
+		case Why::HostRules:  return "Turned off by this server's rules. Ask the server's admin.";
+		case Why::ServerOnly: return "Not available on a server yet. The server has to do this.";
+		default:              return kOffText;
+		}
+	}
+
+	// Draws a feature's menu section. One the server holds back is drawn greyed out
+	// under the reason. One that is off shows only that, in place of its controls.
+	// `draw` is told whether it is greyed: it then reads no game data, shows none and
+	// asks for none.
+	template <class Draw>
+	inline void Section(IModLoaderImGui* imgui, const PluginMap::Feature& feature, Draw draw)
+	{
+		const Why why = StateOf(feature);
+		if (why == Why::Live)
+		{
+			draw(false);
+			return;
+		}
+		if (why == Why::Off)
+		{
+			imgui->SeparatorText(feature.title);
+			imgui->TextDisabled(kOffText);
+			return;
+		}
+
+		imgui->TextWrapped("%s", ReasonText(why));
+		imgui->BeginDisabled(true);
+		draw(true);
+		imgui->EndDisabled();
 	}
 }

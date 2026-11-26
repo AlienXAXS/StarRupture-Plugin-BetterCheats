@@ -480,7 +480,7 @@ namespace BetterCheats::Panels::Tools
 
 		float __fastcall Detour_GetMiningDamage(void* self, bool isHittingWeakSpot)
 		{
-			if (g_overload.load() && Features::Mining.On())
+			if (g_overload.load() && Features::Usable(Features::Mining))
 				return kOneHitKillDamage;
 
 			return g_originalGetMiningDamage(self, isHittingWeakSpot);

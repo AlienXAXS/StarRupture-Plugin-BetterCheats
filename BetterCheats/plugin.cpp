@@ -75,19 +75,19 @@ static struct
 static void SeedWasOn()
 {
 	using namespace BetterCheats;
-	g_wasOn.Stats.was         = Features::Stats.On();
-	g_wasOn.Inventory.was     = Features::Inventory.On();
-	g_wasOn.Movement.was      = Features::Movement.On();
-	g_wasOn.Mining.was        = Features::Mining.On();
-	g_wasOn.Weapons.was       = Features::Weapons.On();
-	g_wasOn.Wave.was          = Features::Wave.On();
-	g_wasOn.Enemies.was       = Features::Enemies.On();
-	g_wasOn.BuildFree.was     = Features::BuildFree.On();
-	g_wasOn.BuildUnlock.was   = Features::BuildUnlock.On();
-	g_wasOn.BuildAnywhere.was = Features::BuildAnywhere.On();
-	g_wasOn.PowerSection.was  = Features::Power.On();
-	g_wasOn.WindMute.was      = Features::WindMute.On();
-	g_wasOn.StackSize.was     = Features::StackSize.On();
+	g_wasOn.Stats.was         = Features::Usable(Features::Stats);
+	g_wasOn.Inventory.was     = Features::Usable(Features::Inventory);
+	g_wasOn.Movement.was      = Features::Usable(Features::Movement);
+	g_wasOn.Mining.was        = Features::Usable(Features::Mining);
+	g_wasOn.Weapons.was       = Features::Usable(Features::Weapons);
+	g_wasOn.Wave.was          = Features::Usable(Features::Wave);
+	g_wasOn.Enemies.was       = Features::Usable(Features::Enemies);
+	g_wasOn.BuildFree.was     = Features::Usable(Features::BuildFree);
+	g_wasOn.BuildUnlock.was   = Features::Usable(Features::BuildUnlock);
+	g_wasOn.BuildAnywhere.was = Features::Usable(Features::BuildAnywhere);
+	g_wasOn.PowerSection.was  = Features::Usable(Features::Power);
+	g_wasOn.WindMute.was      = Features::Usable(Features::WindMute);
+	g_wasOn.StackSize.was     = Features::Usable(Features::StackSize);
 }
 
 // Follows one section's flag. Game thread only. A section whose Initialize never
@@ -212,6 +212,7 @@ static void OnExperienceLoadComplete()
 {
 	// A joining client has no server rules yet, so a shut gate only postpones
 	// this: the tick runs it when the gate opens.
+	BetterCheats::GameContext::RefreshJoinedClient();
 	g_loadWaiting = !BetterCheats::GameContext::AreCheatsAllowed();
 	if (g_loadWaiting)
 		return;
@@ -220,24 +221,24 @@ static void OnExperienceLoadComplete()
 
 	BetterCheats::SessionConfig::Reload();
 
-	if (g_initRan.Stats && BetterCheats::Features::Stats.On())
+	if (g_initRan.Stats && BetterCheats::Features::Usable(BetterCheats::Features::Stats))
 		BetterCheats::Panels::Attributes::ApplySavedConfig();
 	BetterCheats::Panels::Building::ApplySavedConfig();
-	if (g_initRan.Inventory && BetterCheats::Features::Inventory.On())
+	if (g_initRan.Inventory && BetterCheats::Features::Usable(BetterCheats::Features::Inventory))
 		BetterCheats::Panels::Inventory::ApplySavedConfig();
-	if (g_initRan.StackSize && BetterCheats::Features::StackSize.On())
+	if (g_initRan.StackSize && BetterCheats::Features::Usable(BetterCheats::Features::StackSize))
 		BetterCheats::Panels::Inventory::ApplySavedStackConfig();
-	if (g_initRan.Movement && BetterCheats::Features::Movement.On())
+	if (g_initRan.Movement && BetterCheats::Features::Usable(BetterCheats::Features::Movement))
 		BetterCheats::Panels::Movement::ApplySavedConfig();
-	if (g_initRan.Mining && BetterCheats::Features::Mining.On())
+	if (g_initRan.Mining && BetterCheats::Features::Usable(BetterCheats::Features::Mining))
 		BetterCheats::Panels::Tools::ApplySavedConfig();
-	if (g_initRan.Weapons && BetterCheats::Features::Weapons.On())
+	if (g_initRan.Weapons && BetterCheats::Features::Usable(BetterCheats::Features::Weapons))
 		BetterCheats::Panels::Weapons::ApplySavedConfig();
-	if (g_initRan.PowerSection && BetterCheats::Features::Power.On())
+	if (g_initRan.PowerSection && BetterCheats::Features::Usable(BetterCheats::Features::Power))
 		BetterCheats::Panels::Power::ApplySavedConfig();
-	if (g_initRan.Wave && BetterCheats::Features::Wave.On())
+	if (g_initRan.Wave && BetterCheats::Features::Usable(BetterCheats::Features::Wave))
 		BetterCheats::Panels::Wave::ApplySavedConfig();
-	if (g_initRan.Enemies && BetterCheats::Features::Enemies.On())
+	if (g_initRan.Enemies && BetterCheats::Features::Usable(BetterCheats::Features::Enemies))
 		BetterCheats::Panels::Enemies::ApplySavedConfig();
 
 	// Last, so a section re-armed by the tick never reads the previous world's data.
@@ -348,12 +349,14 @@ static void OnEngineTick(float deltaSeconds)
 
 	// An audio option, not a cheat: it does not wait for the cheats gate, and it
 	// gives the sound back itself when the world goes away.
-	if (FollowFlag(g_initRan.WindMute, BetterCheats::Features::WindMute.On(), g_wasOn.WindMute,
+	if (FollowFlag(g_initRan.WindMute, BetterCheats::Features::Usable(BetterCheats::Features::WindMute), g_wasOn.WindMute,
 			&BetterCheats::Panels::Wind::ReleaseValues, nullptr))
 		BetterCheats::Panels::Wind::Tick(deltaSeconds);
 
 	if (!BetterCheats::GameContext::IsInChimeraMain())
 		return;
+
+	BetterCheats::GameContext::RefreshJoinedClient();
 
 	// A connected client loads ChimeraMain too, so without this the whole fan-out
 	// below ran against server-replicated state on join — crashing the client even
@@ -381,47 +384,47 @@ static void OnEngineTick(float deltaSeconds)
 	// the first tick back.
 	{
 		using namespace BetterCheats;
-		if (FollowFlag(g_initRan.Stats, Features::Stats.On(), g_wasOn.Stats,
+		if (FollowFlag(g_initRan.Stats, Features::Usable(Features::Stats), g_wasOn.Stats,
 				&Panels::Attributes::ReleaseValues, &Panels::Attributes::ApplySavedConfig))
 			Panels::Attributes::Tick(deltaSeconds);
 
 		// Three flags share the Building panel: its saved settings are read per flag,
 		// so any of them coming back on re-reads them all. Only Unlock All Buildings
 		// wrote something that has to be taken back, and only it has a tick.
-		FollowFlag(g_initRan.BuildFree, Features::BuildFree.On(), g_wasOn.BuildFree,
+		FollowFlag(g_initRan.BuildFree, Features::Usable(Features::BuildFree), g_wasOn.BuildFree,
 			nullptr, &Panels::Building::ApplySavedConfig);
-		FollowFlag(g_initRan.BuildAnywhere, Features::BuildAnywhere.On(), g_wasOn.BuildAnywhere,
+		FollowFlag(g_initRan.BuildAnywhere, Features::Usable(Features::BuildAnywhere), g_wasOn.BuildAnywhere,
 			nullptr, &Panels::Building::ApplySavedConfig);
-		if (FollowFlag(g_initRan.BuildUnlock, Features::BuildUnlock.On(), g_wasOn.BuildUnlock,
+		if (FollowFlag(g_initRan.BuildUnlock, Features::Usable(Features::BuildUnlock), g_wasOn.BuildUnlock,
 				&Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig))
 			Panels::Building::Tick(deltaSeconds);
 
-		if (FollowFlag(g_initRan.Inventory, Features::Inventory.On(), g_wasOn.Inventory,
+		if (FollowFlag(g_initRan.Inventory, Features::Usable(Features::Inventory), g_wasOn.Inventory,
 				&Panels::Inventory::ReleaseValues, &Panels::Inventory::ApplySavedConfig))
 			Panels::Inventory::Tick(deltaSeconds);
-		if (FollowFlag(g_initRan.StackSize, Features::StackSize.On(), g_wasOn.StackSize,
+		if (FollowFlag(g_initRan.StackSize, Features::Usable(Features::StackSize), g_wasOn.StackSize,
 				&Panels::Inventory::ReleaseStackSizes, &Panels::Inventory::ApplySavedStackConfig))
 			Panels::Inventory::TickStackSizes();
-		if (FollowFlag(g_initRan.Movement, Features::Movement.On(), g_wasOn.Movement,
+		if (FollowFlag(g_initRan.Movement, Features::Usable(Features::Movement), g_wasOn.Movement,
 				[] { Panels::Movement::ReleaseValues(true); }, &Panels::Movement::ApplySavedConfig))
 			Panels::Movement::Tick(deltaSeconds);
-		if (Features::Skills.On())
+		if (Features::Usable(Features::Skills))
 			Panels::Skills::Tick(deltaSeconds);
-		if (FollowFlag(g_initRan.Mining, Features::Mining.On(), g_wasOn.Mining,
+		if (FollowFlag(g_initRan.Mining, Features::Usable(Features::Mining), g_wasOn.Mining,
 				&Panels::Tools::ReleaseValues, &Panels::Tools::ApplySavedConfig))
 			Panels::Tools::Tick(deltaSeconds);
-		if (FollowFlag(g_initRan.Weapons, Features::Weapons.On(), g_wasOn.Weapons,
+		if (FollowFlag(g_initRan.Weapons, Features::Usable(Features::Weapons), g_wasOn.Weapons,
 				&Panels::Weapons::ReleaseValues, &Panels::Weapons::ApplySavedConfig))
 			Panels::Weapons::Tick(deltaSeconds);
-		if (FollowFlag(g_initRan.Wave, Features::Wave.On(), g_wasOn.Wave,
+		if (FollowFlag(g_initRan.Wave, Features::Usable(Features::Wave), g_wasOn.Wave,
 				&Panels::Wave::ReleaseValues, &Panels::Wave::ApplySavedConfig))
 			Panels::Wave::Tick(deltaSeconds);
-		if (g_initRan.Corp && Features::Corporations.On())
+		if (g_initRan.Corp && Features::Usable(Features::Corporations))
 			Panels::Corporations::Tick(deltaSeconds);
-		if (FollowFlag(g_initRan.Enemies, Features::Enemies.On(), g_wasOn.Enemies,
+		if (FollowFlag(g_initRan.Enemies, Features::Usable(Features::Enemies), g_wasOn.Enemies,
 				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
 			Panels::Enemies::Tick(deltaSeconds);
-		FollowFlag(g_initRan.PowerSection, Features::Power.On(), g_wasOn.PowerSection,
+		FollowFlag(g_initRan.PowerSection, Features::Usable(Features::Power), g_wasOn.PowerSection,
 			&Panels::Power::ReleaseValues, &Panels::Power::ApplySavedConfig);
 	}
 
@@ -458,6 +461,7 @@ extern "C" {
 		BetterCheats::AOB::ResolveAll(self, scanner);
 		BetterCheats::Fields::Resolve(self, scanner);
 		BetterCheats::Features::ResolveSlotSize(self, scanner);
+		BetterCheats::Features::RecordBuilt();
 	}
 
 	__declspec(dllexport) bool PluginInit(IPluginSelf* self)
@@ -485,9 +489,11 @@ extern "C" {
 
 		LOG_INFO("Initializing game context and panels...");
 		BetterCheats::GameContext::Initialize(self);
+		if (BetterCheats::GameContext::IsInChimeraMain())
+			BetterCheats::GameContext::RefreshJoinedClient();
 
 		LOG_INFO("Initializing Attribute panel...");
-		if (BetterCheats::Features::Stats.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Stats))
 		{
 			BetterCheats::Panels::Attributes::Initialize();
 			g_initRan.Stats = true;
@@ -495,78 +501,78 @@ extern "C" {
 
 		LOG_INFO("Initializing Building panel...");
 		BetterCheats::Panels::Building::Initialize();
-		g_initRan.BuildFree     = BetterCheats::Features::BuildFree.On();
-		g_initRan.BuildUnlock   = BetterCheats::Features::BuildUnlock.On();
-		g_initRan.BuildAnywhere = BetterCheats::Features::BuildAnywhere.On();
+		g_initRan.BuildFree     = BetterCheats::Features::Built(BetterCheats::Features::BuildFree);
+		g_initRan.BuildUnlock   = BetterCheats::Features::Built(BetterCheats::Features::BuildUnlock);
+		g_initRan.BuildAnywhere = BetterCheats::Features::Built(BetterCheats::Features::BuildAnywhere);
 
 		LOG_INFO("Initializing Item Spawner panel...");
-		if (BetterCheats::Features::Items.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Items))
 		{
 			BetterCheats::Panels::Items::Initialize();
 			g_initRan.Items = true;
 		}
 
 		LOG_INFO("Initializing Inventory panel...");
-		if (BetterCheats::Features::Inventory.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Inventory))
 		{
 			BetterCheats::Panels::Inventory::Initialize();
 			g_initRan.Inventory = true;
 		}
 
 		// Stack sizes have no hooks or keybinds to set up: the section only ticks.
-		g_initRan.StackSize = BetterCheats::Features::StackSize.On();
+		g_initRan.StackSize = BetterCheats::Features::Built(BetterCheats::Features::StackSize);
 
 		LOG_INFO("Initializing Movement panel...");
-		if (BetterCheats::Features::Movement.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Movement))
 		{
 			BetterCheats::Panels::Movement::Initialize();
 			g_initRan.Movement = true;
 		}
 
 		LOG_INFO("Initializing Weapons panel...");
-		if (BetterCheats::Features::Weapons.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Weapons))
 		{
 			BetterCheats::Panels::Weapons::Initialize();
 			g_initRan.Weapons = true;
 		}
 
 		LOG_INFO("Initializing Tools panel...");
-		if (BetterCheats::Features::Mining.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Mining))
 		{
 			BetterCheats::Panels::Tools::Initialize();
 			g_initRan.Mining = true;
 		}
 
 		LOG_INFO("Initializing Wave panel...");
-		if (BetterCheats::Features::Wave.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Wave))
 		{
 			BetterCheats::Panels::Wave::Initialize();
 			g_initRan.Wave = true;
 		}
 
 		LOG_INFO("Initializing Wind mute...");
-		if (BetterCheats::Features::WindMute.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::WindMute))
 		{
 			BetterCheats::Panels::Wind::Initialize();
 			g_initRan.WindMute = true;
 		}
 
 		LOG_INFO("Initializing Power panel...");
-		if (BetterCheats::Features::Power.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Power))
 		{
 			BetterCheats::Panels::Power::Initialize();
 			g_initRan.PowerSection = true;
 		}
 
 		LOG_INFO("Initializing Corporations panel...");
-		if (BetterCheats::Features::Corporations.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Corporations))
 		{
 			BetterCheats::Panels::Corporations::Initialize();
 			g_initRan.Corp = true;
 		}
 
 		LOG_INFO("Initializing Enemies panel...");
-		if (BetterCheats::Features::Enemies.On())
+		if (BetterCheats::Features::Built(BetterCheats::Features::Enemies))
 		{
 			BetterCheats::Panels::Enemies::Initialize();
 			g_initRan.Enemies = true;
