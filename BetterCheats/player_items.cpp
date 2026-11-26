@@ -12,6 +12,7 @@
 
 #include "aob_resolver.h"
 #include "item_registry.h"
+#include "game_context.h"
 #include "Chimera_classes.hpp"
 #include "AuItems_classes.hpp"
 #include "Engine_classes.hpp"
@@ -354,6 +355,10 @@ namespace BetterCheats::Panels::Items
 		void GiveItemOnGameThread(void* context)
 		{
 			std::unique_ptr<GiveItemContext> ctx(static_cast<GiveItemContext*>(context));
+
+			// The click came from the render thread, a frame or more ago.
+			if (!Features::Items.On() || !BetterCheats::GameContext::AreCheatsAllowed())
+				return;
 
 			try
 			{

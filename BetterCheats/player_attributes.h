@@ -16,4 +16,8 @@ namespace BetterCheats::Panels::Attributes
 	// config (see session_config.h). Call on the game thread after
 	// SessionConfig::Reload(), e.g. from OnExperienceLoadComplete.
 	void ApplySavedConfig();
+
+	// Hands the Max Health raise back and drops queued edits, for a section
+	// switched off at runtime. Game thread only.
+	void ReleaseValues();
 }

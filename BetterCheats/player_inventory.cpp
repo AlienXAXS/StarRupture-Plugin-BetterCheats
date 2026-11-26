@@ -415,7 +415,7 @@ namespace BetterCheats::Panels::Inventory
 		{
 			g_originalInitInventorySlots(self);
 
-			if (!Features::Inventory.On())
+			if (!Features::Inventory.On() || !BetterCheats::GameContext::AreCheatsAllowed())
 				return;
 
 			try { OnSlotsBuilt(self); }
@@ -566,6 +566,12 @@ namespace BetterCheats::Panels::Inventory
 			{
 				console->Write(sink, PluginConsoleLineKind::Error,
 					"Cheats are only available in single player.");
+				return;
+			}
+
+			if (!Features::Inventory.On())
+			{
+				console->Write(sink, PluginConsoleLineKind::Error, Features::kOffText);
 				return;
 			}
 

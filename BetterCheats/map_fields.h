@@ -763,10 +763,13 @@ namespace BetterCheats::Features
 			InventorySlotSize.on = true;
 	}
 
+	inline constexpr const char* kOffText =
+		"Off: switched off, or this game build changed something it needs. See the loader's hook report.";
+
 	// What an off feature shows in place of its menu page.
 	inline void RenderOff(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
 	{
 		imgui->SeparatorText(feature.title);
-		imgui->TextDisabled("Off: switched off, or this game build changed something it needs. See the loader's hook report.");
+		imgui->TextDisabled(kOffText);
 	}
 }

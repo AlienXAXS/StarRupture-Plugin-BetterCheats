@@ -4,11 +4,13 @@
 #include "session_config.h"
 #include "player_lookup.h"
 #include "ui_widgets.h"
+#include "attribute_compose.h"
 
 #include "Chimera_classes.hpp"
 #include "ChimeraUI_classes.hpp"
 #include "UMG_classes.hpp"
 
+#include <cfloat>
 #include <mutex>
 #include "plugin_map.h"
 #include "map_fields.h"
@@ -278,6 +280,11 @@ namespace BetterCheats::Panels::Attributes
 		PendingEdit g_pendingValue[kAttrCount];
 		PendingEdit g_pendingMaxHealth;
 
+		// The Max Health raise, kept so ReleaseValues can hand it back. If the
+		// save already held the raised value, there is no older one to return to.
+		ComposedAttribute g_maxHealthBase;
+		ComposedAttribute g_maxHealthCurrent;
+
 		void QueueAttributeEdit(AttrId id, float value)
 		{
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
@@ -359,7 +366,10 @@ namespace BetterCheats::Panels::Attributes
 					SDK::FGameplayAttributeData* currentHealth = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_CurrentHealth, character);
 					if (maxHealth && currentHealth)
 					{
-						SetAttributeValue(*maxHealth, g_pendingMaxHealth.value);
+						g_maxHealthBase.Apply(character, maxHealth->BaseValue, nullptr, g_pendingMaxHealth.value,
+							ComposedAttribute::Mode::Absolute, -FLT_MAX, FLT_MAX);
+						g_maxHealthCurrent.Apply(character, maxHealth->CurrentValue, nullptr, g_pendingMaxHealth.value,
+							ComposedAttribute::Mode::Absolute, -FLT_MAX, FLT_MAX);
 						SetAttributeValue(*currentHealth, g_pendingMaxHealth.value);
 						refreshHud = true;
 					}
@@ -461,6 +471,40 @@ namespace BetterCheats::Panels::Attributes
 			QueueMaxHealthEdit(SessionConfig::Get("playerAttributes.maxHealth.value", 0.0f));
 
 		LOG_INFO("Attributes: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
+	}
+
+	void ReleaseValues()
+	{
+		{
+			std::lock_guard<std::mutex> lock(g_pendingMutex);
+			for (PendingEdit& edit : g_pendingValue)
+				edit.pending = false;
+			g_pendingMaxHealth.pending = false;
+		}
+
+		try
+		{
+			// Only the character that got the raise takes the old values back.
+			SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
+			SDK::FGameplayAttributeData* maxHealth = character
+				? AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character)
+				: nullptr;
+			if (maxHealth && g_maxHealthCurrent.IsActive())
+			{
+				g_maxHealthBase.Release(character, maxHealth->BaseValue);
+				g_maxHealthCurrent.Release(character, maxHealth->CurrentValue);
+
+				SDK::FGameplayAttributeData* health = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_CurrentHealth, character);
+				if (health && health->CurrentValue > maxHealth->CurrentValue)
+					SetAttributeValue(*health, maxHealth->CurrentValue);
+
+				RefreshHealthHudOnGameThread(nullptr);
+			}
+		}
+		catch (...) {}
+
+		g_maxHealthBase.Forget();
+		g_maxHealthCurrent.Forget();
 	}
 
 	void Tick(float /*deltaSeconds*/)

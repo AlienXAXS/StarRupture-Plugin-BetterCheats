@@ -131,7 +131,7 @@ static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(
 static void ReleaseForShutGate()
 {
 	using namespace BetterCheats;
-	FollowFlag(g_initRan.Stats, false, g_wasOn.Stats, nullptr, nullptr);
+	FollowFlag(g_initRan.Stats, false, g_wasOn.Stats, &Panels::Attributes::ReleaseValues, nullptr);
 	FollowFlag(g_initRan.BuildFree, false, g_wasOn.BuildFree, nullptr, nullptr);
 	FollowFlag(g_initRan.BuildAnywhere, false, g_wasOn.BuildAnywhere, nullptr, nullptr);
 	FollowFlag(g_initRan.BuildUnlock, false, g_wasOn.BuildUnlock, nullptr, nullptr);
@@ -337,7 +337,7 @@ static void OnEngineTick(float deltaSeconds)
 	{
 		using namespace BetterCheats;
 		if (FollowFlag(g_initRan.Stats, Features::Stats.On(), g_wasOn.Stats,
-				nullptr, &Panels::Attributes::ApplySavedConfig))
+				&Panels::Attributes::ReleaseValues, &Panels::Attributes::ApplySavedConfig))
 			Panels::Attributes::Tick(deltaSeconds);
 
 		// Three flags share the Building panel: its saved settings are read per flag,
