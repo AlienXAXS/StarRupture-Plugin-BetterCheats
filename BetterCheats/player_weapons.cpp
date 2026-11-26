@@ -2539,42 +2539,17 @@ namespace BetterCheats::Panels::Weapons
 			SessionConfig::GetSessionName().c_str(), profileCount);
 	}
 
-	namespace
-	{
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Ammo");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Infinite clip - ALL weapons");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Keep ammo stocked");
-
-			imgui->Spacing();
-			imgui->SeparatorText("Per-Weapon");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "One Hit Kill");
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Infinite magazine");
-			if (imgui->BeginTable("##weapon_attr_table", 2, kWeaponsTableFlags))
-			{
-				for (const AttrDef& def : kAttrs)
-					BetterCheats::UI::UnavailableRow(imgui, def.label);
-				imgui->EndTable();
-			}
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
-		if (greyed)
-		{
-			RenderUnavailable(imgui);
-			return;
-		}
-
-		if (!g_loggedRender.exchange(true))
+		// A greyed page draws every control, with no values from the game and
+		// none of the saved settings.
+		if (!greyed && !g_loggedRender.exchange(true))
 			LOG_INFO("Weapons: live values readout rendering (%d rows).", kAttrCount);
 
 		imgui->TextDisabled("Live values show the weapon in your hand; other tabs show an estimate.");
 		imgui->TextDisabled("Multipliers apply to the weapon's base stats. Attachments still add on top.");
 
+		if (!greyed)
 		{
 			std::lock_guard<std::mutex> lock(g_profilesMutex);
 			EnsureBuiltInProfiles();
@@ -2582,7 +2557,7 @@ namespace BetterCheats::Panels::Weapons
 
 		imgui->SeparatorText("Ammo");
 
-		bool allInfiniteMagazine = g_allInfiniteMagazine.load();
+		bool allInfiniteMagazine = !greyed && g_allInfiniteMagazine.load();
 		if (imgui->Checkbox("Infinite clip - ALL weapons", &allInfiniteMagazine))
 		{
 			g_allInfiniteMagazine.store(allInfiniteMagazine);
@@ -2593,7 +2568,7 @@ namespace BetterCheats::Panels::Weapons
 			                  "because it never reloads, your reserve is never drawn from either.\n\n"
 			                  "Per-weapon equivalents are on each weapon's tab below.");
 
-		bool autoRestock = g_autoRestock.load();
+		bool autoRestock = !greyed && g_autoRestock.load();
 		if (imgui->Checkbox("Keep ammo stocked", &autoRestock))
 		{
 			g_autoRestock.store(autoRestock);
@@ -2610,11 +2585,11 @@ namespace BetterCheats::Panels::Weapons
 			                  "It follows whatever you are holding, using the ammo type the weapon\n"
 			                  "itself declares, and only ever adds the shortfall.");
 
-		if (autoRestock)
+		if (autoRestock || greyed)
 		{
 			imgui->Indent(imgui->GetFrameHeight());
 
-			bool restockHidden = g_restockHidden.load();
+			bool restockHidden = !greyed && g_restockHidden.load();
 			if (imgui->Checkbox("Keep it out of my inventory", &restockHidden))
 			{
 				g_restockHidden.store(restockHidden);
@@ -2632,8 +2607,8 @@ namespace BetterCheats::Panels::Weapons
 			const float frameH = imgui->GetFrameHeight();
 
 			imgui->SetNextItemWidth(textW + (frameH * 2.0f) + (frameH * 0.9f));
-			float restockMags = g_restockMags.load();
-			if (imgui->InputFloat("Clips to keep in reserve", &restockMags, 1.0f, 5.0f, "%.0f"))
+			float restockMags = greyed ? 0.0f : g_restockMags.load();
+			if (imgui->InputFloat("Clips to keep in reserve", &restockMags, 1.0f, 5.0f, greyed ? "-" : "%.0f"))
 			{
 				if (restockMags < 1.0f)   restockMags = 1.0f;
 				if (restockMags > 100.0f) restockMags = 100.0f;
@@ -2645,7 +2620,7 @@ namespace BetterCheats::Panels::Weapons
 		}
 
 		const float dbgMagMax = g_dbgMagMax.load();
-		if (dbgMagMax >= 0.0f)
+		if (!greyed && dbgMagMax >= 0.0f)
 		{
 			char line[220];
 			snprintf(line, sizeof(line), "  clip %.0f / %.0f      reserve %.0f / %.0f%s",
@@ -2671,7 +2646,27 @@ namespace BetterCheats::Panels::Weapons
 		const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, kAttrCount,
 			[](int a) { return kAttrs[a].label; });
 
+		std::vector<Profile> blank;
+		if (greyed)
+		{
+			blank.resize(2);
+			for (Profile& stand : blank)
+			{
+				stand.display = "Weapon";
+				stand.key     = "none";
+				stand.raw     = "-";
+				for (int a = 0; a < kAttrCount; ++a)
+					stand.values[a] = kAttrs[a].defaultValue;
+				for (int g = 0; g < kGrenadeRowCount; ++g)
+					stand.grenadeValues[g] = kGrenadeRows[g].defaultValue;
+			}
+			blank[1].display   = "Grenade";
+			blank[1].key       = "none_grenade";
+			blank[1].isGrenade = true;
+		}
+
 		bool profilesEmpty = false;
+		if (!greyed)
 		{
 			std::lock_guard<std::mutex> lock(g_profilesMutex);
 			profilesEmpty = g_profiles.empty();
@@ -2686,9 +2681,10 @@ namespace BetterCheats::Panels::Weapons
 			return;
 
 		static int s_lastFocused = -1;
-		const int activeProfile = g_activeProfile.load();
-		const bool focusChanged = (activeProfile != s_lastFocused);
-		s_lastFocused = activeProfile;
+		const int activeProfile = greyed ? -1 : g_activeProfile.load();
+		const bool focusChanged = !greyed && (activeProfile != s_lastFocused);
+		if (!greyed)
+			s_lastFocused = activeProfile;
 
 		// Tabs are discovered in equip order, which is arbitrary. Present them in the
 		// order the game itself progresses through them, with tools trailing.
@@ -2699,10 +2695,12 @@ namespace BetterCheats::Panels::Weapons
 		// below because every Profile& taken from it stays live throughout.
 		{
 		std::lock_guard<std::mutex> profilesLock(g_profilesMutex);
+		std::vector<Profile>& profiles = greyed ? blank : g_profiles;
 
-		std::vector<int> order(g_profiles.size());
+		std::vector<int> order(profiles.size());
 		for (size_t i = 0; i < order.size(); ++i) order[i] = static_cast<int>(i);
-		std::sort(order.begin(), order.end(), [&](int a, int b)
+		if (!greyed)
+			std::sort(order.begin(), order.end(), [&](int a, int b)
 		{
 			auto rank = [](const std::string& raw) {
 				const std::string lowered = ToLower(raw);
@@ -2719,7 +2717,7 @@ namespace BetterCheats::Panels::Weapons
 		for (int oi = 0; oi < static_cast<int>(order.size()); ++oi)
 		{
 			const int p = order[oi];
-			Profile& profile = g_profiles[p];
+			Profile& profile = profiles[p];
 			const bool isEquipped = (p == activeProfile);
 
 			// "###key" keeps the ImGui ID stable while the visible label changes.
@@ -2784,6 +2782,11 @@ namespace BetterCheats::Panels::Weapons
 				// Saved presets sit directly under the built-ins and above every
 				// control, same position in every group.
 				imgui->Spacing();
+				if (greyed)
+				{
+					BetterCheats::UI::UnavailablePresetRow(imgui, "grenade_saved_presets", "Weapon");
+				}
+				else
 				{
 					constexpr int kGrenadePresetFieldCount = kGrenadeRowCount + 1; // + infiniteCharges
 					PluginPresets::Field presetFields[kGrenadePresetFieldCount];
@@ -2921,6 +2924,7 @@ namespace BetterCheats::Panels::Weapons
 						spec.unmodified    = g_dbgGrenadeUnmod[g].load();
 						spec.changeDesc    = changeDesc;
 						spec.labelReserve  = grenadeLabelReserve;
+						spec.greyed        = greyed;
 
 						if (BetterCheats::UI::BuildRow(imgui, spec).changed)
 							SessionConfig::Set(ConfigKey(profile, def.key, "value"), value);
@@ -2965,10 +2969,10 @@ namespace BetterCheats::Panels::Weapons
 					for (int g = 0; g < kGrenadeGlobalCount; ++g)
 					{
 						const GrenadeGlobalDef& def = kGrenadeGlobals[g];
-						const bool resolved = g_grenadeGlobalHandle[g].ok;
+						const bool resolved = greyed || g_grenadeGlobalHandle[g].ok;
 
-						float value = g_grenadeGlobalValue[g].load();
-						const bool active = resolved && BetterCheats::DiffersFromDefault(value, def.defaultValue);
+						float value = greyed ? def.defaultValue : g_grenadeGlobalValue[g].load();
+						const bool active = !greyed && resolved && BetterCheats::DiffersFromDefault(value, def.defaultValue);
 
 						imgui->PushIDInt(1000 + g);   // offset clear of the kGrenadeRowCount PushIDInt(g) block above
 						imgui->TableNextRow(0, 0.0f);
@@ -2999,6 +3003,7 @@ namespace BetterCheats::Panels::Weapons
 						spec.unmodified    = active ? g_composedGrenadeGlobal[g].GetGame() : g_dbgGrenadeGlobalGame[g].load();
 						spec.changeDesc    = changeDesc;
 						spec.labelReserve  = globalLabelReserve;
+						spec.greyed        = greyed;
 
 						if (BetterCheats::UI::BuildRow(imgui, spec).changed)
 						{
@@ -3024,7 +3029,11 @@ namespace BetterCheats::Panels::Weapons
 			// actually a per-shot interval in seconds despite its name (see
 			// RealBaseForAttr), so showing it raw here used to mislabel a
 			// number like 0.13 as "rounds/min".
-			if (profile.baseResolved)
+			if (greyed)
+			{
+				imgui->TextDisabled("  weapon base: -");
+			}
+			else if (profile.baseResolved)
 			{
 				char dmg[32], rpm[32], mag[32], range[32];
 				BetterCheats::UI::FormatLiveValue(dmg, sizeof(dmg), profile.baseDamage);
@@ -3093,6 +3102,11 @@ namespace BetterCheats::Panels::Weapons
 			// Saved presets sit directly under the built-ins and above every
 			// control, same position in every group.
 			imgui->Spacing();
+			if (greyed)
+			{
+				BetterCheats::UI::UnavailablePresetRow(imgui, "weapon_saved_presets", "Weapon");
+			}
+			else
 			{
 				constexpr int kWeaponPresetFieldCount = kAttrCount + 2; // + oneHitKill + infiniteMagazine
 				PluginPresets::Field presetFields[kWeaponPresetFieldCount];
@@ -3336,6 +3350,7 @@ namespace BetterCheats::Panels::Weapons
 					spec.tagWord       = "mods";
 					spec.baseLabel     = "Base (no attachments)";
 					spec.labelReserve  = labelReserve;
+					spec.greyed        = greyed;
 
 					if (BetterCheats::UI::BuildRow(imgui, spec).changed)
 						SessionConfig::Set(ConfigKey(profile, def.key, "value"), value);
@@ -3351,7 +3366,7 @@ namespace BetterCheats::Panels::Weapons
 			// point (a note that used to sit ABOVE the rows, conditionally,
 			// was exactly what made tabs jump when switching between an
 			// equipped and unequipped weapon).
-			imgui->TextDisabled(isEquipped ? "" : "Estimated. Live values show once this weapon is equipped.");
+			imgui->TextDisabled((isEquipped || greyed) ? "" : "Estimated. Live values show once this weapon is equipped.");
 
 			imgui->Spacing();
 			if (imgui->SmallButton("Reset this weapon to stock"))
