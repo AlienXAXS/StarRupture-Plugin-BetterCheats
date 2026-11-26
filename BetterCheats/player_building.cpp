@@ -3,6 +3,7 @@
 #include "aob_resolver.h"
 #include "session_config.h"
 #include "defer.h"
+#include "game_thread.h"
 #include "ui_widgets.h"
 
 #include "AuActorPlacement_classes.hpp"
@@ -485,15 +486,17 @@ namespace BetterCheats::Panels::Building
 			return;
 		}
 
-		// A feature that is off installs nothing: its addresses are cleared here.
+		// A feature this game build can't run installs nothing: its addresses are
+		// cleared here. One that is only held back gets its hooks, whose detours
+		// pass through until it is usable.
 		AOB::ResolvedAddresses aob = AOB::Resolved();
-		if (!Features::Usable(Features::BuildFree))
+		if (!Features::Built(Features::BuildFree))
 			aob.GetPlacementResourceConditionResult = aob.CheckStability_Custom = aob.CheckStability_DynamicPillar = 0;
-		if (!Features::Usable(Features::BuildUnlock))
+		if (!Features::Built(Features::BuildUnlock))
 			aob.CheckAvailableBuildings = aob.IsRecipeUnlocked = 0;
-		if (!Features::Usable(Features::BuildAnywhere))
+		if (!Features::Built(Features::BuildAnywhere))
 			aob.CheckMainMeshCollision_Custom = aob.GetBoxCollisionResult = aob.GetSnappedSocket = aob.IsSocketFree = 0;
-		if (!Features::Usable(Features::DeconstructWindows))
+		if (!Features::Built(Features::DeconstructWindows))
 			aob.FindDeconstructibleTarget = aob.FindDeconstructibleTarget_HeatGate = 0;
 
 		uintptr_t addr = aob.GetPlacementResourceConditionResult;
@@ -744,12 +747,9 @@ namespace BetterCheats::Panels::Building
 		g_buildWindowsAnywhere = false;
 		g_buildBenchesAnywhere = false;
 
-		if (g_unlockAllBuildings)
-		{
-			g_unlockAllBuildings     = false;
-			g_prevUnlockAllBuildings = false;
-			ClearKeeperUnlock();
-		}
+		if (BetterCheats::IsGameThread())
+			ReleaseValues();
+		g_unlockAllBuildings      = false;
 		g_prevUnlockAllBuildings  = false;
 		g_checkAvailableBuildings = nullptr;
 	}
