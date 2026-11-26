@@ -114,6 +114,7 @@ namespace BetterCheats::Panels::Enemies
 			float distance         = 0.0f;
 			float coneHalfAngle    = 0.0f;
 			float buildingDistance = 0.0f;
+			bool  brainSeen        = false;
 			bool  brainTicked      = false;
 		};
 		std::unordered_map<SDK::AMassEnemyCharacterBase*, AttackRangeCache> g_attackRangeCache;
@@ -282,13 +283,20 @@ namespace BetterCheats::Panels::Enemies
 			AttackRangeCache& cache = g_attackRangeCache[actor];
 			if (cache.actor.Get() != actor)
 			{
-				cache.brainTicked = brain && brain->IsComponentTickEnabled();
+				cache.brainSeen = false;
 				cache.actor.Set(actor);
 				cache.distance         = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor);
 				cache.coneHalfAngle    = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor);
 				cache.buildingDistance = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor);
 			}
 			cache.agent.Set(agent);
+
+			// A brain can arrive after the enemy: capture on first sight of it.
+			if (brain && !cache.brainSeen)
+			{
+				cache.brainSeen   = true;
+				cache.brainTicked = brain->IsComponentTickEnabled();
+			}
 
 			if (brain)
 				brain->SetComponentTickEnabled(false);

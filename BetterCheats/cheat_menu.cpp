@@ -118,6 +118,8 @@ namespace BetterCheats
 		desc.renderFn    = &CheatMenu::OnRender;
 
 		s_panelHandle = s_self->hooks->UI->RegisterPanel(&desc);
+		if (!s_panelHandle)
+			return;
 
 		// Server builds have no game menu (hooks->GameMenu is null), and a
 		// client whose menu patterns did not resolve is not worth a row nobody
