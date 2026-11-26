@@ -16,6 +16,10 @@ namespace BetterCheats::Panels::Power
 	// OnExperienceLoadComplete.
 	void ApplySavedConfig();
 
+	// Runs a building scan that was skipped between worlds, which also puts the
+	// saved overrides back. Game thread only.
+	void ResumeSkippedScan();
+
 	// Puts the game's own electricity values back where this plugin wrote an
 	// override. The saved overrides stay. Game thread only.
 	void ReleaseValues();

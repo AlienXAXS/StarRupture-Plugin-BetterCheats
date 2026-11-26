@@ -1,5 +1,6 @@
 #include "machine_power.h"
 #include "aob_resolver.h"
+#include "game_context.h"
 #include "plugin_helpers.h"
 #include "session_config.h"
 #include "ui_widgets.h"
@@ -62,6 +63,7 @@ namespace BetterCheats::Panels::Power
 		std::vector<PowerEntry> g_pendingEntries;
 		bool                    g_pendingReady = false;
 		std::atomic<bool>       g_refreshInFlight{ false };
+		bool                    g_scanSkipped = false;   // game thread only
 
 		const char* AgentTypeName(SDK::ECrMassElectricityAgentType type)
 		{
@@ -390,6 +392,13 @@ namespace BetterCheats::Panels::Power
 			// Power section off after this was posted must not get them written.
 			if (!BetterCheats::Features::Power.On())
 			{
+				g_refreshInFlight.store(false, std::memory_order_release);
+				return;
+			}
+
+			if (BetterCheats::GameContext::IsBetweenWorlds())
+			{
+				g_scanSkipped = true;
 				g_refreshInFlight.store(false, std::memory_order_release);
 				return;
 			}
@@ -906,7 +915,8 @@ namespace BetterCheats::Panels::Power
 		void ApplyOnGameThread(void* context)
 		{
 			std::unique_ptr<std::vector<ApplyItem>> items(static_cast<std::vector<ApplyItem>*>(context));
-			if (!BetterCheats::Features::Power.On())
+			// An edit still queued between worlds belongs to the world that ended.
+			if (!BetterCheats::Features::Power.On() || BetterCheats::GameContext::IsBetweenWorlds())
 				return;
 			for (const ApplyItem& item : *items)
 				ApplyItemOnGameThread(item);
@@ -954,6 +964,15 @@ namespace BetterCheats::Panels::Power
 		// overrides as it discovers each electricity-using building, so a
 		// rescan is sufficient to restore this session's settings.
 		LOG_INFO("Power: applying saved config for session '%s' via rescan.", SessionConfig::GetSessionName().c_str());
+		RequestRescan();
+	}
+
+	void ResumeSkippedScan()
+	{
+		if (!g_scanSkipped)
+			return;
+
+		g_scanSkipped = false;
 		RequestRescan();
 	}
 

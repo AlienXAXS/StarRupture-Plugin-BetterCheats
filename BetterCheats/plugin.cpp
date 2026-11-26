@@ -290,12 +290,13 @@ static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 		ForgetWorldSettings();
 }
 
-// ChimeraMain only. The stack list asks again here for a refresh it skipped:
-// experience-load-complete may never fire in a joined world.
+// ChimeraMain only. The stack list and the building scan ask again here for
+// what they skipped: experience-load-complete may never fire in a joined world.
 static void OnWorldBeginPlay(SDK::UWorld* /*world*/)
 {
 	BetterCheats::GameContext::SetBetweenWorlds(false);
 	BetterCheats::Panels::Inventory::ResumeStackListRefresh();
+	BetterCheats::Panels::Power::ResumeSkippedScan();
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
