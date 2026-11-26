@@ -971,6 +971,35 @@ namespace BetterCheats::Panels::Power
 		g_applied.clear();
 	}
 
+	void ForgetWorld()
+	{
+		// The config assets outlive the world, so only the asset is written back:
+		// the templates and shared fragments built from it belong to the world.
+		for (const auto& [assetName, packageName] : g_applied)
+		{
+			// Looked up without loading: a package that is gone holds no override.
+			SDK::UPackage* package = g_findPackage(nullptr, ToWide(packageName).c_str());
+			auto defaultIt = g_defaults.find(assetName);
+			if (!package || defaultIt == g_defaults.end())
+				continue;
+
+			try
+			{
+				auto* configAsset = static_cast<SDK::UMassEntityConfigAsset*>(g_staticFindObjectByName(
+					SDK::UMassEntityConfigAsset::StaticClass(), package, ToWide(assetName).c_str(), false));
+				float* electricity = BetterCheats::Fields::CrElectricityParameters_ElectricityValue.In(
+					TraitParameters(FindElectricityTrait(configAsset)));
+				if (electricity)
+					*electricity = defaultIt->second;
+			}
+			catch (...)
+			{
+				LOG_DEBUG("Power: exception while restoring '%s' at world end.", assetName.c_str());
+			}
+		}
+		g_applied.clear();
+	}
+
 	void RenderImGui(IModLoaderImGui* imgui)
 	{
 		AdoptPendingIfReady();

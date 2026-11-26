@@ -245,9 +245,9 @@ static void OnExperienceLoadComplete()
 }
 
 // Drops every choice and queued edit of the world that ended, so none of them
-// writes into the next one. Its objects are gone, so what lived on them is
-// forgotten rather than handed back. Flags are not checked: a section switched
-// off now can still hold choices from while it was on.
+// writes into the next one. What lived on its objects is forgotten; what was
+// written to assets, which outlive it, is put back. Flags are not checked: a
+// section switched off now can still hold choices from while it was on.
 static void ForgetWorldSettings()
 {
 	using namespace BetterCheats;
@@ -275,6 +275,8 @@ static void ForgetWorldSettings()
 		Panels::Wave::ApplySavedConfig();
 	if (g_initRan.Enemies)
 		Panels::Enemies::ApplySavedConfig();
+	if (g_initRan.PowerSection)
+		Panels::Power::ForgetWorld();
 }
 
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)

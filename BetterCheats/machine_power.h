@@ -19,4 +19,8 @@ namespace BetterCheats::Panels::Power
 	// Puts the game's own electricity values back where this plugin wrote an
 	// override. The saved overrides stay. Game thread only.
 	void ReleaseValues();
+
+	// Puts them back on the assets once the world they were written in has ended.
+	// Game thread only.
+	void ForgetWorld();
 }
