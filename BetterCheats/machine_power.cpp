@@ -1025,6 +1025,8 @@ namespace BetterCheats::Panels::Power
 		// none: only the controls above it, and no scan.
 		if (greyed)
 		{
+			BetterCheats::UI::UnavailablePresetRow(imgui, "power_saved_presets", "Power");
+			imgui->Spacing();
 			imgui->SeparatorText("Power Output / Consumption");
 			imgui->Button("Rescan");
 			imgui->SameLine(0.0f, 8.0f);

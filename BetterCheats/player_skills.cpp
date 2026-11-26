@@ -246,8 +246,12 @@ namespace BetterCheats::Panels::Skills
 		// The skill list is the player's, so a greyed section has none.
 		if (greyed)
 		{
+			BetterCheats::UI::UnavailablePresetRow(imgui, "skills_saved_presets", "Skills");
+			imgui->Spacing();
 			imgui->SeparatorText("Skill Progression");
 			imgui->Button("Max All Skills");
+			imgui->Spacing();
+			imgui->SeparatorText("Per-Skill Overrides");
 			return;
 		}
 

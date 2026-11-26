@@ -475,6 +475,15 @@ namespace BetterCheats::Panels::Items
 		// The item list comes from a scan of the game, so none is asked for.
 		if (greyed)
 		{
+			// The item list is the game's, so only the fixed controls are drawn.
+			char noSearch[1] = {};
+			imgui->SetNextItemWidth(-1.0f);
+			imgui->InputTextWithHint("##item_search", "Search items...", noSearch, sizeof(noSearch));
+			imgui->Spacing();
+			int noStacks = 0;
+			imgui->SetNextItemWidth(80.0f);
+			imgui->InputInt("Stacks##stacks_input", &noStacks, 1, 10);
+			imgui->SameLine(0.0f, 8.0f);
 			imgui->Button("Give Item");
 			return;
 		}
