@@ -1441,6 +1441,7 @@ namespace BetterCheats::Panels::Movement
 		}
 
 		ReleaseValues(false);
+		ForgetNoClipWish();
 	}
 
 	void ForgetWorld()
@@ -1513,13 +1514,21 @@ namespace BetterCheats::Panels::Movement
 			// MaxEnergy was handed back with the composed overrides above.
 			if (restoreRaw && character)
 				for (int r = 0; r < kRawCount; ++r)
-					if (r != kRawMaxEnergy && IsRawActive(r))
+				{
+					// A row just reset to 1x may still owe its restore.
+					const bool pending = g_rawRestoreWanted[r].exchange(false);
+					if (r != kRawMaxEnergy && (IsRawActive(r) || pending))
 						RestoreRawField(character, r);
+				}
 		}
 		catch (...) {}
 
 		g_active    = false;
 		g_appliedTo = nullptr;
+	}
+
+	void ForgetNoClipWish()
+	{
 		g_noClipWanted.store(false);
 	}
 

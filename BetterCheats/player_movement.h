@@ -21,6 +21,7 @@ namespace BetterCheats::Panels::Movement
 	// For a world that has ended: drops the no-clip choice and every record of
 	// what was written to its character. Game thread only.
 	void ForgetWorld();
+	void ForgetNoClipWish();
 
 	// Drives no-clip: applies/reverts it, re-asserts flying mode, and feeds the
 	// vertical (Space / Left Ctrl) input — call once per engine tick.

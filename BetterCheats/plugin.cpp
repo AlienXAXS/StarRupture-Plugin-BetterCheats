@@ -48,6 +48,14 @@ static struct
 // complete has reloaded it, cleared when a world ends. Until then it still holds
 // the previous world's data, which a re-apply must not read.
 static std::atomic<bool> g_sessionCurrent{ false };
+// A gameplay world has begun. Experience-load-complete may never fire in a
+// joined world, so a re-apply cannot wait for it alone.
+static std::atomic<bool> g_worldBegun{ false };
+
+static bool SessionReady()
+{
+	return g_sessionCurrent.load() || (g_worldBegun.load() && BetterCheats::SessionConfig::IsLoaded());
+}
 
 // The cheats gate, as load complete and the tick last found it. Game thread only.
 // Open: sections may have written values. Released: the gate shut after that and
@@ -117,7 +125,7 @@ static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(
 		}
 	}
 
-	if (edge.pending && g_sessionCurrent.load())
+	if (edge.pending && SessionReady())
 	{
 		edge.pending = false;
 		if (rearm)
@@ -150,6 +158,8 @@ static void ReleaseForShutGate()
 	FollowFlag(g_initRan.StackSize, false, g_wasOn.StackSize, &Panels::Inventory::ReleaseStackSizes, nullptr);
 	FollowFlag(g_initRan.Movement, false, g_wasOn.Movement,
 		[] { Panels::Movement::ReleaseValues(true); }, nullptr);
+	// A denied section keeps the no-clip choice; a shut gate does not.
+	Panels::Movement::ForgetNoClipWish();
 	FollowFlag(g_initRan.Mining, false, g_wasOn.Mining, nullptr, nullptr);
 	if (g_initRan.Mining)
 		Panels::Tools::ForgetSettings();
@@ -297,6 +307,7 @@ static void ForgetWorldSettings()
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 {
 	g_sessionCurrent = false;
+	g_worldBegun     = false;
 	g_loadWaiting    = false;
 
 	if (name && std::strcmp(name, "ChimeraMain") == 0)
@@ -312,6 +323,11 @@ static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 static void OnWorldBeginPlay(SDK::UWorld* /*world*/)
 {
 	BetterCheats::GameContext::SetBetweenWorlds(false);
+	// With no session loaded yet, a choice made here would not be held, so a
+	// later re-apply would lose it. A save that loads afterwards replaces this.
+	if (!BetterCheats::SessionConfig::IsLoaded())
+		BetterCheats::SessionConfig::StartUnsaved();
+	g_worldBegun = true;
 	BetterCheats::Panels::Inventory::ResumeStackListRefresh();
 	BetterCheats::Panels::Power::ResumeSkippedScan();
 }
@@ -396,7 +412,7 @@ static void OnEngineTick(float deltaSeconds)
 	g_gateOpen = true;
 	if (g_loadWaiting)
 		OnExperienceLoadComplete();
-	else if (g_gateReleased && g_sessionCurrent.load())
+	else if (g_gateReleased && SessionReady())
 		BetterCheats::Panels::Building::ApplySavedConfig();
 	g_gateReleased = false;
 
