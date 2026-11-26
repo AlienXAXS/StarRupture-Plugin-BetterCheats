@@ -125,6 +125,15 @@ static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(
 	return now;
 }
 
+// A click still waiting for a tick that won't come now is dropped, so it can't
+// apply later, possibly in another world.
+static void DropQueuedClicks()
+{
+	BetterCheats::Panels::Skills::DropPendingEdits();
+	BetterCheats::Panels::Corporations::DropPendingEdit();
+	BetterCheats::Panels::Wave::DropPendingAction();
+}
+
 // Takes back what the sections wrote once the cheats gate shuts. Each section
 // reads as switched off, so FollowFlag applies its saved settings again when the
 // gate opens. Game thread only.
@@ -253,6 +262,7 @@ static void ForgetWorldSettings()
 {
 	using namespace BetterCheats;
 	SessionConfig::StartUnsaved();
+	DropQueuedClicks();
 	Panels::Building::ForgetWorld();
 	if (g_initRan.Stats)
 	{
@@ -357,7 +367,10 @@ static void OnEngineTick(float deltaSeconds)
 		BetterCheats::Panels::Wind::Tick(deltaSeconds);
 
 	if (!BetterCheats::GameContext::IsInChimeraMain())
+	{
+		DropQueuedClicks();
 		return;
+	}
 
 	BetterCheats::GameContext::RefreshJoinedClient();
 
@@ -372,6 +385,7 @@ static void OnEngineTick(float deltaSeconds)
 			g_gateReleased = true;
 			ReleaseForShutGate();
 		}
+		DropQueuedClicks();
 		return;
 	}
 

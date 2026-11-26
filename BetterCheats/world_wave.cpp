@@ -389,10 +389,14 @@ namespace BetterCheats::Panels::Wave
 		g_scanAttempts   = 0;
 	}
 
+	void DropPendingAction()
+	{
+		g_pendingAction.store(static_cast<int>(PendingAction::None));
+	}
+
 	void ReleaseValues()
 	{
-		// A click not yet carried out is dropped, so it can't fire later.
-		g_pendingAction.store(static_cast<int>(PendingAction::None));
+		DropPendingAction();
 
 		// The Pause Waves Entirely choice stays; only the write into the timer is
 		// undone, and Tick writes it again if the section comes back on.

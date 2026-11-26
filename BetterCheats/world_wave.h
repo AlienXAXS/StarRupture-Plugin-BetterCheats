@@ -12,6 +12,8 @@ namespace BetterCheats::Panels::Wave
 	// is switched off while the game runs; Tick writes the pause again if it comes
 	// back on. Game thread only.
 	void ReleaseValues();
+	// Forgets a click Tick has not carried out yet.
+	void DropPendingAction();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 	void ApplySavedConfig();
