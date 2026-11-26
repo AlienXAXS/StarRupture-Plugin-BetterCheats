@@ -1408,7 +1408,9 @@ namespace BetterCheats::Panels::Inventory
 		// input change (search text, filter toggle, a size, an override),
 		// never every frame -- "hundreds of items" is fine to filter on demand,
         // not fine to re-filter every single frame for no reason.
-		void RenderItemStackSizes(IModLoaderImGui* imgui)
+		// A greyed section draws the fixed controls only, empty: the category and
+		// item rows come from a scan of the game, so none is asked for.
+		void RenderItemStackSizes(IModLoaderImGui* imgui, bool greyed)
 		{
 			imgui->Spacing();
 			imgui->Separator();
@@ -1421,11 +1423,14 @@ namespace BetterCheats::Panels::Inventory
 			                    "or x10 of the default.");
 			imgui->Spacing();
 
-			AdoptPendingStackItemsIfReady();
-			if (!g_stackItemsLoaded)
-				RequestRefreshStackList();
+			if (!greyed)
+			{
+				AdoptPendingStackItemsIfReady();
+				if (!g_stackItemsLoaded)
+					RequestRefreshStackList();
+			}
 
-			if (!g_stackItemsLoaded)
+			if (!greyed && !g_stackItemsLoaded)
 			{
 				imgui->TextDisabled("Loading item list from the asset registry...");
 				return;
@@ -1442,6 +1447,11 @@ namespace BetterCheats::Panels::Inventory
 			// currently-overridden ones, with -1 meaning "no override" -- a sparse
 			// field set would leave an override in place on load just because that
 			// item happened not to be part of the saved preset.
+			if (greyed)
+			{
+				BetterCheats::UI::UnavailablePresetRow(imgui, "inventory_saved_presets", "Inventory");
+			}
+			else
 			{
 				static PluginPresets::RowState s_presetRow;
 				static const char*             s_presetError = nullptr;
@@ -1587,7 +1597,7 @@ namespace BetterCheats::Panels::Inventory
 			// present in the scan (EUIItemType -- the game's own item-type
 			// field, see the StackEntry::category comment). A category follows
 			// the global size until it gets one of its own.
-			int globalSize = g_stackSize.load();
+			int globalSize = greyed ? kStackSizeOff : g_stackSize.load();
 			if (imgui->BeginTable("##stack_tier_table", 5, kTableFlags))
 			{
 				imgui->TableSetupColumn("Attribute", kColumnFixed, 0.0f);
@@ -1627,7 +1637,7 @@ namespace BetterCheats::Panels::Inventory
 				char tierText[64];
 				FormatStackTier(tierText, sizeof(tierText), globalSize);
 				imgui->AlignTextToFramePadding();
-				imgui->TextDisabled(tierText);
+				imgui->TextDisabled(greyed ? "-" : tierText);
 				imgui->TableSetColumnIndex(4);
 				if (StackResetButton(imgui, "Turn off: each item keeps its own size."))
 				{
@@ -1650,7 +1660,8 @@ namespace BetterCheats::Panels::Inventory
 					categorySnapshot = g_categoryOverrides;
 				}
 
-				for (SDK::EUIItemType cat : g_stackCategories)
+				static const std::vector<SDK::EUIItemType> noCategories;
+				for (SDK::EUIItemType cat : greyed ? noCategories : g_stackCategories)
 				{
 					const auto catIt       = categorySnapshot.find(static_cast<int>(cat));
 					const bool hasOverride = catIt != categorySnapshot.end();
@@ -1718,18 +1729,24 @@ namespace BetterCheats::Panels::Inventory
 			imgui->Spacing();
 
 			// ---- search + filter ----------------------------------------------
-			char searchHint[64];
-			snprintf(searchHint, sizeof(searchHint), "Search %d items...", static_cast<int>(g_stackItems.size()));
+			char searchHint[64] = "Search items...";
+			if (!greyed)
+				snprintf(searchHint, sizeof(searchHint), "Search %d items...", static_cast<int>(g_stackItems.size()));
+			char noSearch[1] = {};
 			imgui->SetNextItemWidth(-1.0f);
-			if (imgui->InputTextWithHint("##stack_search", searchHint, g_stackSearchBuf, sizeof(g_stackSearchBuf)))
+			if (imgui->InputTextWithHint("##stack_search", searchHint,
+				greyed ? noSearch : g_stackSearchBuf, greyed ? sizeof(noSearch) : sizeof(g_stackSearchBuf)))
 				RefreshFilteredStackItems();
 
-			bool onlyChanged = g_onlyShowChangedStacks;
+			bool onlyChanged = !greyed && g_onlyShowChangedStacks;
 			if (imgui->Checkbox("Only show changed", &onlyChanged))
 			{
 				g_onlyShowChangedStacks = onlyChanged;
 				RefreshFilteredStackItems();
 			}
+
+			if (greyed)
+				return;
 
 			imgui->Spacing();
 
@@ -2610,16 +2627,7 @@ namespace BetterCheats::Panels::Inventory
 
 		Features::Section(imgui, Features::StackSize, [&](bool greyed)
 		{
-			if (!greyed)
-			{
-				RenderItemStackSizes(imgui);
-				return;
-			}
-
-			// The item list comes from a scan of the game, so none is asked for.
-			imgui->SeparatorText("Item Stack Sizes");
-			bool onlyChanged = false;
-			imgui->Checkbox("Only show changed", &onlyChanged);
+			RenderItemStackSizes(imgui, greyed);
 		});
 	}
 }
