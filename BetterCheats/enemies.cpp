@@ -527,15 +527,9 @@ namespace BetterCheats::Panels::Enemies
 
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
-		int count;
-		{
-			std::lock_guard<std::mutex> lock(g_snapshotMutex);
-			count = g_snapshot.count;
-		}
-
 		imgui->SeparatorText("Behaviour");
 
-		bool disableAI = g_disableAI.load();
+		bool disableAI = !greyed && g_disableAI.load();
 		if (imgui->Checkbox("Disable AI", &disableAI))
 		{
 			g_disableAI = disableAI;
@@ -546,7 +540,7 @@ namespace BetterCheats::Panels::Enemies
 		imgui->Spacing();
 		imgui->SeparatorText("Combat");
 
-		bool oneHitKill = g_oneHitKill.load();
+		bool oneHitKill = !greyed && g_oneHitKill.load();
 		if (imgui->Checkbox("One-Hit Kill", &oneHitKill))
 		{
 			g_oneHitKill = oneHitKill;
@@ -557,6 +551,12 @@ namespace BetterCheats::Panels::Enemies
 		// Nothing is tracked while the section is greyed, so there is no count.
 		if (greyed)
 			return;
+
+		int count;
+		{
+			std::lock_guard<std::mutex> lock(g_snapshotMutex);
+			count = g_snapshot.count;
+		}
 
 		imgui->Spacing();
 		if (disableAI || oneHitKill)
