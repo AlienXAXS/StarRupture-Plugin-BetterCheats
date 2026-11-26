@@ -824,13 +824,23 @@ namespace BetterCheats::Panels::Building
 
 	namespace
 	{
-		// True when the feature behind a row is on; otherwise says so in the row's checkbox column.
-		bool RowOn(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
+		// True when the row's checkbox is live. Otherwise fills the checkbox column:
+		// greyed out while a server holds the feature back, "Off" when it is off.
+		bool RowOn(IModLoaderImGui* imgui, const PluginMap::Feature& feature, const char* id)
 		{
-			if (feature.On())
+			switch (Features::StateOf(feature))
+			{
+			case Features::Why::Live:
 				return true;
-			imgui->TextDisabled("Off");
-			return false;
+			case Features::Why::Off:
+				imgui->TextDisabled("Off");
+				return false;
+			default:
+				imgui->BeginDisabled(true);
+				BetterCheats::UI::UnavailableCheckbox(imgui, id);
+				imgui->EndDisabled();
+				return false;
+			}
 		}
 
 		// Says why a row is greyed out, under its description.
@@ -847,6 +857,14 @@ namespace BetterCheats::Panels::Building
 			imgui->PushTextWrapPos(0.0f);
 			imgui->TextDisabled(text);
 			imgui->PopTextWrapPos();
+		}
+
+		// Says why a server holds a row back, under its description.
+		void HeldBack(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
+		{
+			const Features::Why why = Features::StateOf(feature);
+			if (why == Features::Why::HostRules || why == Features::Why::ServerOnly)
+				Description(imgui, Features::ReasonText(why));
 		}
 	}
 
@@ -871,9 +889,10 @@ namespace BetterCheats::Panels::Building
 			const bool noBuildCostDeferred = Defer::DeferredTo("no-build-cost");
 			if (noBuildCostDeferred)
 				ControlledBy(imgui, "no-build-cost");
+			HeldBack(imgui, Features::BuildFree);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noBuildCostDeferred);
-			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_build_cost", &g_noBuildCost))
+			if (RowOn(imgui, Features::BuildFree, "##no_build_cost") && imgui->Checkbox("##no_build_cost", &g_noBuildCost))
 				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
 			imgui->EndDisabled();
 
@@ -885,9 +904,10 @@ namespace BetterCheats::Panels::Building
 			const bool noStabilityDeferred = Defer::DeferredTo("no-stability-check");
 			if (noStabilityDeferred)
 				ControlledBy(imgui, "no-stability-check");
+			HeldBack(imgui, Features::BuildFree);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noStabilityDeferred);
-			if (RowOn(imgui, Features::BuildFree) && imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
+			if (RowOn(imgui, Features::BuildFree, "##no_stability_check") && imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
 				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
 			imgui->EndDisabled();
 
@@ -899,10 +919,11 @@ namespace BetterCheats::Panels::Building
 			const bool deconstructDeferred = Defer::DeferredTo("deconstruct-windows");
 			if (deconstructDeferred)
 				ControlledBy(imgui, "deconstruct-windows");
+			HeldBack(imgui, Features::DeconstructWindows);
 			imgui->TableSetColumnIndex(1);
 			bool deconstructWindows = g_deconstructWindowsDuringWaves.load();
 			imgui->BeginDisabled(deconstructDeferred);
-			if (RowOn(imgui, Features::DeconstructWindows) && imgui->Checkbox("##deconstruct_windows_waves", &deconstructWindows))
+			if (RowOn(imgui, Features::DeconstructWindows, "##deconstruct_windows_waves") && imgui->Checkbox("##deconstruct_windows_waves", &deconstructWindows))
 			{
 				g_deconstructWindowsDuringWaves = deconstructWindows;
 				SessionConfig::Set("playerBuilding.deconstructWindowsDuringWaves", deconstructWindows);
@@ -918,10 +939,11 @@ namespace BetterCheats::Panels::Building
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
+			HeldBack(imgui, Features::BuildAnywhere);
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
-			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere, "##build_windows_anywhere") && imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
 			{
 				g_buildWindowsAnywhere = buildWindowsAnywhere;
 				SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
@@ -937,10 +959,11 @@ namespace BetterCheats::Panels::Building
 				"Applies to your own placements, also as a client. Other pieces keep the normal rules.");
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
+			HeldBack(imgui, Features::BuildAnywhere);
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
-			if (RowOn(imgui, Features::BuildAnywhere) && imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere, "##build_benches_anywhere") && imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
 			{
 				g_buildBenchesAnywhere = buildBenchesAnywhere;
 				SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
@@ -969,9 +992,10 @@ namespace BetterCheats::Panels::Building
 			const bool unlockBuildingsDeferred = Defer::DeferredTo("unlock-all-buildings");
 			if (unlockBuildingsDeferred)
 				ControlledBy(imgui, "unlock-all-buildings");
+			HeldBack(imgui, Features::BuildUnlock);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(unlockBuildingsDeferred);
-			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
+			if (RowOn(imgui, Features::BuildUnlock, "##unlock_buildings") && imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
 				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
 			imgui->EndDisabled();
 
@@ -983,9 +1007,10 @@ namespace BetterCheats::Panels::Building
 			const bool unlockRecipesDeferred = Defer::DeferredTo("unlock-all-recipes");
 			if (unlockRecipesDeferred)
 				ControlledBy(imgui, "unlock-all-recipes");
+			HeldBack(imgui, Features::BuildUnlock);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(unlockRecipesDeferred);
-			if (RowOn(imgui, Features::BuildUnlock) && imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
+			if (RowOn(imgui, Features::BuildUnlock, "##unlock_recipes") && imgui->Checkbox("##unlock_recipes", &g_unlockAllRecipes))
 				SessionConfig::Set("playerBuilding.unlockAllRecipes", g_unlockAllRecipes);
 			imgui->EndDisabled();
 
