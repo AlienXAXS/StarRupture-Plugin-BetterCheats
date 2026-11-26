@@ -300,6 +300,15 @@ namespace BetterCheats::Panels::Inventory
 			return !sizing.On() && BetterCheats::Features::Built(sizing);
 		}
 
+		// Game thread. Whether no slot may be sized, by either route. On a server that
+		// waits for the widget's rows and the tick after: until then the loader has no
+		// flag to switch off, so nothing shows whether the server allows it.
+		bool SlotSizingHeld()
+		{
+			return SlotSizingDenied() || (BetterCheats::GameContext::IsJoinedClient()
+				&& !(g_slotSizeSettled && BetterCheats::Features::Usable(BetterCheats::Features::InventorySlotSize)));
+		}
+
 		float g_appliedSlotScale = 1.0f; // game thread only
 
 		// Game thread. Puts back every box that still holds what we wrote.
@@ -328,7 +337,7 @@ namespace BetterCheats::Panels::Inventory
 		// apply it to.
 		float ApplySlotScale(SDK::UCrUW_InventoryContainer* container, float scale)
 		{
-			if (!container || SlotSizingDenied()) return 0.0f;
+			if (!container || SlotSizingHeld()) return 0.0f;
 
 			SDK::UGridPanel* grid = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrUW_InventoryContainer_ItemGridPanel, container);
 			if (!grid) return 0.0f;
@@ -2391,12 +2400,12 @@ namespace BetterCheats::Panels::Inventory
 		g_slotSizeSettled = BetterCheats::Features::SlotSizeRowsResolved();
 		BetterCheats::Features::ResolveSlotSizeLate();
 
-		static bool s_sizingDenied = false;
-		if (const bool denied = SlotSizingDenied(); denied != s_sizingDenied)
+		static bool s_sizingHeld = false;
+		if (const bool held = SlotSizingHeld(); held != s_sizingHeld)
 		{
-			s_sizingDenied = denied;
-			if (denied) RestoreSlotSizes();
-			else        g_rescaleBuilt.store(true);
+			s_sizingHeld = held;
+			if (held) RestoreSlotSizes();
+			else      g_rescaleBuilt.store(true);
 		}
 
 		ApplyPendingResize();
@@ -2668,13 +2677,17 @@ namespace BetterCheats::Panels::Inventory
 		imgui->Spacing();
 
 		// A greyed section has already said why.
-		const bool sizingDenied = !greyed && SlotSizingDenied();
-		if (sizingDenied)
-			imgui->TextWrapped(BetterCheats::Features::ReasonText(
-				BetterCheats::Features::StateOf(BetterCheats::Features::InventorySlotSize)));
+		const PluginMap::Feature& sizing = BetterCheats::Features::InventorySlotSize;
+		const bool sizingBuilt = BetterCheats::Features::Built(sizing);
+		const bool sizingOff = !greyed && !sizing.On() && (sizingBuilt || BetterCheats::GameContext::IsJoinedClient());
+		if (sizingOff)
+			imgui->TextWrapped(sizingBuilt
+				? BetterCheats::Features::ReasonText(BetterCheats::Features::StateOf(sizing))
+				: "Not ready on this server. It needs the inventory screen to have been opened once. "
+				  "If it stays off, see the loader's hook report.");
 
-		bool fit = !greyed && !sizingDenied && g_wantFitToPanel.load();
-		imgui->BeginDisabled(sizingDenied);
+		bool fit = !greyed && !sizingOff && g_wantFitToPanel.load();
+		imgui->BeginDisabled(sizingOff);
 		if (imgui->Checkbox("Shrink slots to fit the inventory frame", &fit))
 		{
 			g_wantFitToPanel.store(fit);
