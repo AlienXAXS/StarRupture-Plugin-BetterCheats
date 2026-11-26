@@ -1628,8 +1628,37 @@ namespace BetterCheats::Panels::Movement
 			SessionConfig::GetSessionName().c_str(), haveBaseline ? "restored" : "not yet captured");
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Fly / No-Clip Movement");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Fly Mode");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Pass Through Walls (Clipping)");
+
+			imgui->Spacing();
+			imgui->SeparatorText("Movement Attributes");
+			if (imgui->BeginTable("##movement_unavailable", 2, kTableFlags))
+			{
+				for (const AttrDef& def : kAttrs)
+					BetterCheats::UI::UnavailableRow(imgui, def.label);
+				imgui->EndTable();
+			}
+
+			imgui->Spacing();
+			imgui->SmallButton("Reset all movement attributes");
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		if (!g_loggedRender.exchange(true))
 			LOG_INFO("Movement: live values readout rendering.");
 

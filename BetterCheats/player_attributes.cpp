@@ -11,6 +11,7 @@
 #include "UMG_classes.hpp"
 
 #include <cfloat>
+#include <initializer_list>
 #include <mutex>
 #include "plugin_map.h"
 #include "map_fields.h"
@@ -540,8 +541,54 @@ namespace BetterCheats::Panels::Attributes
 		}
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		void RenderUnavailableTable(IModLoaderImGui* imgui, const char* id,
+			std::initializer_list<const char*> labels, const char* button)
+		{
+			if (!imgui->BeginTable(id, 3, kAttributeTableFlags))
+				return;
+			SetupAttributeTableColumns(imgui);
+
+			for (const char* label : labels)
+			{
+				imgui->PushIDStr(label);
+				BetterCheats::UI::UnavailableRow(imgui, label);
+				imgui->SameLine(0.0f, -1.0f);
+				imgui->SmallButton(button);
+				imgui->TableSetColumnIndex(2);
+				BetterCheats::UI::UnavailableCheckbox(imgui, "##locked");
+				imgui->PopID();
+			}
+
+			imgui->EndTable();
+		}
+
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Health");
+			RenderUnavailableTable(imgui, "##health_table", { "Health" }, "Full Heal");
+
+			imgui->Spacing();
+			imgui->SeparatorText("Survival Resources");
+			RenderUnavailableTable(imgui, "##survival_table",
+				{ "Energy", "Shield", "Hydration", "Calories", "Oxygen" }, "Fill");
+
+			imgui->SeparatorText("Afflictions");
+			RenderUnavailableTable(imgui, "##afflictions_table",
+				{ "Toxicity", "Radiation", "Heat", "Drain", "Corrosion", "Infection", "Temperature" }, "Clear");
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		// RenderImGui() runs on the ImGui render thread, not the game thread —
 		// it must only ever read the snapshot Tick() refreshed, never touch
 		// SDK/UObjects directly (see GetLocalCharacter()'s comment for why).

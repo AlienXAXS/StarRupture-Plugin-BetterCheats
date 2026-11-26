@@ -7,7 +7,7 @@ namespace BetterCheats::Panels::Attributes
 	// Resolves and caches AOB-pattern function pointers — call once during plugin init.
 	void Initialize();
 
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// Applies continuous effects (e.g. God Mode) — call once per engine tick, in ChimeraMain.
 	void Tick(float deltaSeconds);

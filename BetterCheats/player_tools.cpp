@@ -918,8 +918,51 @@ namespace BetterCheats::Panels::Tools
 		LOG_INFO("Tools: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Mining");
+			if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))
+			{
+				imgui->TableSetupColumn("Option", 0, 0.85f);
+				imgui->TableSetupColumn("Enabled", 0, 0.15f);
+
+				for (const char* label : { "One Hit Kill Laser", "No Handheld Drill Overheat" })
+				{
+					imgui->TableNextRow(0, 0.0f);
+					imgui->TableSetColumnIndex(0);
+					imgui->Text(label);
+					imgui->TableSetColumnIndex(1);
+					imgui->PushIDStr(label);
+					BetterCheats::UI::UnavailableCheckbox(imgui, "##off");
+					imgui->PopID();
+				}
+
+				imgui->EndTable();
+			}
+
+			imgui->Spacing();
+			imgui->SeparatorText("Mining Power");
+			if (imgui->BeginTable("##mining_power_table", 2, kToolsTableFlags))
+			{
+				for (const StatDef& stat : kStats)
+					BetterCheats::UI::UnavailableRow(imgui, stat.label);
+				BetterCheats::UI::UnavailableRow(imgui, kBoostLabel);
+				imgui->EndTable();
+			}
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		imgui->SeparatorText("Mining");
 
 		if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))

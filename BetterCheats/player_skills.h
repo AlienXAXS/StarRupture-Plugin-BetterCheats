@@ -4,7 +4,7 @@
 
 namespace BetterCheats::Panels::Skills
 {
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// Refreshes the skill snapshot RenderImGui() displays and applies edits it
 	// queued — call once per engine tick.

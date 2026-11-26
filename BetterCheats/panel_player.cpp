@@ -14,44 +14,29 @@ namespace BetterCheats::Panels
 {
 	void RenderPlayer_Self(IModLoaderImGui* imgui)
 	{
-		if (Features::Stats.On())
-			Attributes::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Stats);
+		Features::Section(imgui, Features::Stats, [&](bool greyed) { Attributes::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderPlayer_ItemSpawner(IModLoaderImGui* imgui)
 	{
-		if (Features::Items.On())
-			Items::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Items);
+		Features::Section(imgui, Features::Items, [&](bool greyed) { Items::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderPlayer_Inventory(IModLoaderImGui* imgui)
 	{
-		if (Features::Inventory.On())
-			Inventory::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Inventory);
+		Features::Section(imgui, Features::Inventory, [&](bool greyed) { Inventory::RenderImGui(imgui, greyed); });
 
 		Inventory::RenderStackSizes(imgui);
 	}
 
 	void RenderPlayer_Weapon(IModLoaderImGui* imgui)
 	{
-		if (Features::Weapons.On())
-			Weapons::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Weapons);
+		Features::Section(imgui, Features::Weapons, [&](bool greyed) { Weapons::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderPlayer_Movement(IModLoaderImGui* imgui)
 	{
-		if (Features::Movement.On())
-			Movement::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Movement);
+		Features::Section(imgui, Features::Movement, [&](bool greyed) { Movement::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderPlayer_Teleport(IModLoaderImGui* imgui)
@@ -67,17 +52,11 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_Skills(IModLoaderImGui* imgui)
 	{
-		if (Features::Skills.On())
-			Skills::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Skills);
+		Features::Section(imgui, Features::Skills, [&](bool greyed) { Skills::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderPlayer_Tools(IModLoaderImGui* imgui)
 	{
-		if (Features::Mining.On())
-			Tools::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Mining);
+		Features::Section(imgui, Features::Mining, [&](bool greyed) { Tools::RenderImGui(imgui, greyed); });
 	}
 }

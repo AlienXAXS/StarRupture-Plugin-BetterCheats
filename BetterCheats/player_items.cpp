@@ -468,9 +468,16 @@ namespace BetterCheats::Panels::Items
 #endif
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
 		imgui->SeparatorText("Item Spawner");
+
+		// The item list comes from a scan of the game, so none is asked for.
+		if (greyed)
+		{
+			imgui->Button("Give Item");
+			return;
+		}
 
 		if (!ResolveAddNewItem())
 		{

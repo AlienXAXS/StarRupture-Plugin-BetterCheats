@@ -2156,8 +2156,41 @@ namespace BetterCheats::Panels::Inventory
 		RequestRefreshStackList();
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Inventory Grid");
+			if (imgui->BeginTable("##inventory_grid_table", 2, kTableFlags))
+			{
+				imgui->TableSetupColumn("Property", kColumnFixed, 150.0f);
+				imgui->TableSetupColumn("Value",    0,            0.0f);
+				for (const char* label : { "Current grid", "Slot size", "Columns", "Rows" })
+					BetterCheats::UI::UnavailableRow(imgui, label);
+				imgui->EndTable();
+			}
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Shrink slots to fit the inventory frame");
+
+			imgui->Spacing();
+			imgui->Separator();
+			imgui->SeparatorText("Plant Pickup");
+			if (imgui->BeginTable("##gather_mult_table", 2, kTableFlags))
+			{
+				BetterCheats::UI::UnavailableRow(imgui, "Plant Pickup");
+				imgui->EndTable();
+			}
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		InventorySnapshot snap;
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);

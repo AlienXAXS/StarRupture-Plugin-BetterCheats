@@ -33,7 +33,7 @@ namespace BetterCheats::Panels::Inventory
 	// engine tick.
 	void Tick(float deltaSeconds);
 
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// The stack-size section of the page, or the off notice when the flag is off.
 	void RenderStackSizes(IModLoaderImGui* imgui);

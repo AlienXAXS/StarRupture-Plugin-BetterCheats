@@ -233,8 +233,16 @@ namespace BetterCheats::Panels::Skills
 		ApplyPendingEdits(pc);
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
+		// The skill list is the player's, so a greyed section has none.
+		if (greyed)
+		{
+			imgui->SeparatorText("Skill Progression");
+			imgui->Button("Max All Skills");
+			return;
+		}
+
 		// RenderImGui() runs on the ImGui render thread, not the game thread —
 		// it must only ever read the snapshot Tick() refreshed, never touch
 		// SDK/UObjects directly (see GetLocalController()'s comment for why).

@@ -4,7 +4,7 @@
 
 namespace BetterCheats::Panels::Weapons
 {
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// Registers the world-end callback that hands the grenade Damage row's
 	// BaseDamage back to the game -- call once during plugin init.

@@ -26,7 +26,7 @@ namespace BetterCheats::Panels::Movement
 	// vertical (Space / Left Ctrl) input — call once per engine tick.
 	void Tick(float deltaSeconds);
 
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// Re-applies the fly speed persisted in the active session's JSON config
 	// (see session_config.h). No-clip itself is deliberately not restored — it

@@ -2539,8 +2539,36 @@ namespace BetterCheats::Panels::Weapons
 			SessionConfig::GetSessionName().c_str(), profileCount);
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Ammo");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Infinite clip - ALL weapons");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Keep ammo stocked");
+
+			imgui->Spacing();
+			imgui->SeparatorText("Per-Weapon");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "One Hit Kill");
+			BetterCheats::UI::UnavailableCheckbox(imgui, "Infinite magazine");
+			if (imgui->BeginTable("##weapon_attr_table", 2, kWeaponsTableFlags))
+			{
+				for (const AttrDef& def : kAttrs)
+					BetterCheats::UI::UnavailableRow(imgui, def.label);
+				imgui->EndTable();
+			}
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		if (!g_loggedRender.exchange(true))
 			LOG_INFO("Weapons: live values readout rendering (%d rows).", kAttrCount);
 

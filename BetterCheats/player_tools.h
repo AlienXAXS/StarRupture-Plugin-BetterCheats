@@ -17,7 +17,7 @@ namespace BetterCheats::Panels::Tools
 	// alone. ApplySavedConfig reads it back. Game thread only.
 	void ForgetSettings();
 	void Tick(float deltaSeconds);
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
 	// Re-applies the toggles persisted in the active session's JSON config
 	// (see session_config.h). Call on the game thread after

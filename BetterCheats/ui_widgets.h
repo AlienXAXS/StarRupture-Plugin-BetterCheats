@@ -18,6 +18,25 @@
 // feed back into the color that was just drawn.
 namespace BetterCheats::UI
 {
+	// A row of a greyed-out table: the name, and a dash where the value would be,
+	// so nothing in it comes from the game. The value cell stays current for a
+	// button.
+	inline void UnavailableRow(IModLoaderImGui* imgui, const char* label)
+	{
+		imgui->TableNextRow(0, 0.0f);
+		imgui->TableSetColumnIndex(0);
+		imgui->Text(label);
+		imgui->TableSetColumnIndex(1);
+		imgui->Text("-");
+	}
+
+	// A greyed-out checkbox: unticked, because nothing is being applied.
+	inline void UnavailableCheckbox(IModLoaderImGui* imgui, const char* label)
+	{
+		bool off = false;
+		imgui->Checkbox(label, &off);
+	}
+
 	// A "replay" arrow button (the Material Icons replay shape), muted grey at
 	// rest and white on hover/active. Returns true on click. `size` is the
 	// square side in pixels; pass ImGui's frame height for a control that lines

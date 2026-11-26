@@ -5,6 +5,6 @@
 namespace BetterCheats::Panels::Items
 {
 	void Initialize();
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 	void Shutdown();
 }
