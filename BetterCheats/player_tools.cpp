@@ -671,12 +671,12 @@ namespace BetterCheats::Panels::Tools
 				fields, kFieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
 		}
 
-		void RenderStatRow(IModLoaderImGui* imgui, int s, bool equipped, float labelReserve)
+		void RenderStatRow(IModLoaderImGui* imgui, int s, bool equipped, float labelReserve, bool greyed)
 		{
 			const StatDef& def = kStats[s];
-			float value = g_statValue[s].load();
-			const bool overridden = (s == kStatMiningDamage && g_overload.load());
-			const bool active     = StatActive(value) && !overridden;
+			float value = greyed ? 1.0f : g_statValue[s].load();
+			const bool overridden = !greyed && (s == kStatMiningDamage && g_overload.load());
+			const bool active     = !greyed && StatActive(value) && !overridden;
 
 			imgui->PushIDInt(s);
 			imgui->TableNextRow(0, 0.0f);
@@ -706,7 +706,12 @@ namespace BetterCheats::Panels::Tools
 
 			// Nothing to show until Tick has found the CDO and read the field.
 			const float original = g_statOriginal[s].load();
-			if (g_statResolved[s].load() && original > 0.0f)
+			if (greyed)
+			{
+				spec.greyed   = true;
+				spec.showLive = true;
+			}
+			else if (g_statResolved[s].load() && original > 0.0f)
 			{
 				// Multiplier space, relative to the field before our change --
 				// Hit Rate's field is an interval, so its ratio is inverted.
@@ -748,10 +753,10 @@ namespace BetterCheats::Panels::Tools
 
 		constexpr const char* kBoostLabel = "Mining Boost";
 
-		void RenderBoostRow(IModLoaderImGui* imgui, float labelReserve)
+		void RenderBoostRow(IModLoaderImGui* imgui, float labelReserve, bool greyed)
 		{
-			float value = g_miningBoostValue.load();
-			const bool active = BetterCheats::DiffersFromDefault(value, 1.0f);
+			float value = greyed ? 1.0f : g_miningBoostValue.load();
+			const bool active = !greyed && BetterCheats::DiffersFromDefault(value, 1.0f);
 
 			imgui->PushIDInt(kStatCount);
 			imgui->TableNextRow(0, 0.0f);
@@ -775,7 +780,12 @@ namespace BetterCheats::Panels::Tools
 			spec.labelReserve = labelReserve;
 
 			const float game = g_boostGame.load();
-			if (game >= 0.0f)
+			if (greyed)
+			{
+				spec.greyed   = true;
+				spec.showLive = true;
+			}
+			else if (game >= 0.0f)
 			{
 				const float unmodified = g_boostUnmodified.load();
 				spec.showLive   = true;
@@ -918,51 +928,10 @@ namespace BetterCheats::Panels::Tools
 		LOG_INFO("Tools: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
-	namespace
-	{
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Mining");
-			if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))
-			{
-				imgui->TableSetupColumn("Option", 0, 0.85f);
-				imgui->TableSetupColumn("Enabled", 0, 0.15f);
-
-				for (const char* label : { "One Hit Kill Laser", "No Handheld Drill Overheat" })
-				{
-					imgui->TableNextRow(0, 0.0f);
-					imgui->TableSetColumnIndex(0);
-					imgui->Text(label);
-					imgui->TableSetColumnIndex(1);
-					imgui->PushIDStr(label);
-					BetterCheats::UI::UnavailableCheckbox(imgui, "##off");
-					imgui->PopID();
-				}
-
-				imgui->EndTable();
-			}
-
-			imgui->Spacing();
-			imgui->SeparatorText("Mining Power");
-			if (imgui->BeginTable("##mining_power_table", 2, kToolsTableFlags))
-			{
-				for (const StatDef& stat : kStats)
-					BetterCheats::UI::UnavailableRow(imgui, stat.label);
-				BetterCheats::UI::UnavailableRow(imgui, kBoostLabel);
-				imgui->EndTable();
-			}
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
-		if (greyed)
-		{
-			RenderUnavailable(imgui);
-			return;
-		}
-
+		// A greyed page draws every control, with no values from the game and
+		// none of the saved settings.
 		imgui->SeparatorText("Mining");
 
 		if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))
@@ -977,7 +946,7 @@ namespace BetterCheats::Panels::Tools
 				imgui->SetTooltip("Replaces mining damage with a flat 10000 - everything breaks in one hit.\n"
 				                  "Overrides the Mining Damage row below while enabled.");
 			imgui->TableSetColumnIndex(1);
-			bool overload = g_overload.load();
+			bool overload = !greyed && g_overload.load();
 			if (imgui->Checkbox("##overload_mining", &overload))
 			{
 				g_overload.store(overload);
@@ -988,7 +957,7 @@ namespace BetterCheats::Panels::Tools
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Handheld Drill Overheat");
 			imgui->TableSetColumnIndex(1);
-			bool noDrillOverheat = g_noDrillOverheat.load();
+			bool noDrillOverheat = !greyed && g_noDrillOverheat.load();
 			if (imgui->Checkbox("##no_drill_overheat", &noDrillOverheat))
 			{
 				g_noDrillOverheat.store(noDrillOverheat);
@@ -1005,14 +974,17 @@ namespace BetterCheats::Panels::Tools
 		// order every other group uses.
 		RenderPresetButtons(imgui);
 		imgui->Spacing();
-		RenderSavedPresets(imgui);
+		if (greyed)
+			BetterCheats::UI::UnavailablePresetRow(imgui, "tools_saved_presets", "Tools");
+		else
+			RenderSavedPresets(imgui);
 		imgui->Spacing();
 
 		imgui->TextDisabled("Multipliers apply to the tool's base stats. Reset a row to turn it off.");
 
 		const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, kStatCount + 1,
 			[](int i) { return (i < kStatCount) ? kStats[i].label : kBoostLabel; });
-		const bool equipped = g_toolEquipped.load();
+		const bool equipped = !greyed && g_toolEquipped.load();
 
 		if (imgui->BeginTable("##mining_power_table", 3, kToolsTableFlags))
 		{
@@ -1022,15 +994,15 @@ namespace BetterCheats::Panels::Tools
 			imgui->TableSetupColumn("",          0, 0.10f);
 
 			for (int s = 0; s < kStatCount; ++s)
-				RenderStatRow(imgui, s, equipped, labelReserve);
-			RenderBoostRow(imgui, labelReserve);
+				RenderStatRow(imgui, s, equipped, labelReserve, greyed);
+			RenderBoostRow(imgui, labelReserve, greyed);
 
 			imgui->EndTable();
 		}
 
 		// Always reserved, so equipping or holstering the tool never shifts
 		// anything below this line.
-		imgui->TextDisabled(equipped ? "" : "Estimated. Live values show once the mining tool is equipped.");
+		imgui->TextDisabled((equipped || greyed) ? "" : "Estimated. Live values show once the mining tool is equipped.");
 
 		imgui->Spacing();
 		imgui->Separator();
