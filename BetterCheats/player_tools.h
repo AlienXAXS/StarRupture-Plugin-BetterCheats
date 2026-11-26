@@ -15,6 +15,9 @@ namespace BetterCheats::Panels::Tools
 	// For a shut cheats gate: ReleaseValues, then drops the One Hit Kill Laser
 	// toggle, since the mining damage detour acts on it and the feature flag
 	// alone. ApplySavedConfig reads it back. Game thread only.
+	// Finishes a hand-back that found no local character. Call on ticks while
+	// the section is off.
+	void RetryRelease();
 	void ForgetSettings();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed);

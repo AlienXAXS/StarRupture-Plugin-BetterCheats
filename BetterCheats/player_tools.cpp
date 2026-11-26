@@ -165,6 +165,72 @@ namespace BetterCheats::Panels::Tools
 		std::atomic<float> g_boostUnmodified{ -1.0f };   // what the game held before we took over
 		bool               g_boostWasActive = false;     // game-thread only
 
+		// One float of the mining boost: what the game held before our write.
+		struct HeldFloat
+		{
+			float game    = 0.0f;
+			float written = 0.0f;
+			bool  held    = false;
+
+			void Write(float& field, float value)
+			{
+				if (!held || field != written)
+					game = field;
+				field   = value;
+				written = value;
+				held    = true;
+			}
+
+			// Leaves a value the game has since changed.
+			void Restore(float& field)
+			{
+				if (held && field == written)
+					field = game;
+				held = false;
+			}
+		};
+
+		// Game-thread only. g_boostOwner is only compared, never read through.
+		HeldFloat   g_boostCurrentBase, g_boostCurrentValue, g_boostMaxBase, g_boostMaxValue;
+		const void* g_boostOwner = nullptr;
+
+		void ForgetBoost()
+		{
+			g_boostCurrentBase.held = g_boostCurrentValue.held = false;
+			g_boostMaxBase.held     = g_boostMaxValue.held     = false;
+			g_boostOwner            = nullptr;
+		}
+
+		// Hands the mining boost back. With no local character it keeps what it
+		// captured, for RetryRelease. Game thread only.
+		void RestoreBoost()
+		{
+			if (!g_boostOwner)
+				return;
+
+			SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
+			if (!character)
+				return;
+
+			SDK::UCrMiningBoostAttributeSet* boost = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_MiningBoostAttributes, character);
+			if (boost && boost == g_boostOwner)
+			{
+				SDK::FGameplayAttributeData* current = BetterCheats::Fields::CrMiningBoostAttributeSet_CurrentBoostMultiplierValue.In(boost);
+				SDK::FGameplayAttributeData* maximum = BetterCheats::Fields::CrMiningBoostAttributeSet_MaxBoostMultiplierValue.In(boost);
+				if (current)
+				{
+					g_boostCurrentBase.Restore(current->BaseValue);
+					g_boostCurrentValue.Restore(current->CurrentValue);
+				}
+				if (maximum)
+				{
+					g_boostMaxBase.Restore(maximum->BaseValue);
+					g_boostMaxValue.Restore(maximum->CurrentValue);
+				}
+			}
+			ForgetBoost();
+		}
+
 		bool StatActive(float amount) { return BetterCheats::DiffersFromDefault(amount, 1.0f); }
 
 		std::string ValueKey(int s)   { return std::string("playerTools.") + kStats[s].key + ".value"; }
@@ -335,6 +401,17 @@ namespace BetterCheats::Panels::Tools
 		{
 			const bool onGameThread = BetterCheats::IsGameThread();
 
+			if (onGameThread)
+			{
+				try { RestoreBoost(); }
+				catch (...) {}
+			}
+			else
+			{
+				ForgetBoost();
+			}
+			g_boostWasActive = false;
+
 			SDK::UCrWeaponItemDataBase* cdo = onGameThread ? g_toolCdo.Get() : nullptr;
 			for (int s = 0; s < kStatCount; ++s)
 			{
@@ -474,8 +551,8 @@ namespace BetterCheats::Panels::Tools
 
 			ReleaseHeatTag();
 			ReleaseAllStats();
+			ForgetBoost();
 			g_boostGame.store(-1.0f);
-			g_boostWasActive = false;
 		}
 
 		float __fastcall Detour_GetMiningDamage(void* self, bool isHittingWeakSpot)
@@ -834,6 +911,12 @@ namespace BetterCheats::Panels::Tools
 		catch (...) {}
 	}
 
+	void RetryRelease()
+	{
+		try { RestoreBoost(); }
+		catch (...) {}
+	}
+
 	void ForgetSettings()
 	{
 		ReleaseValues();
@@ -898,15 +981,24 @@ namespace BetterCheats::Panels::Tools
 				if (!boostActive || !g_boostWasActive)
 					g_boostUnmodified.store(before);
 
+				// A new character has its own set; what was captured went with the old one.
+				if (g_boostOwner && g_boostOwner != boost)
+					ForgetBoost();
+
 				if (boostActive)
 				{
+					g_boostOwner = boost;
 					if (boostMax->CurrentValue < boostValue)
 					{
-						boostMax->BaseValue    = boostValue;
-						boostMax->CurrentValue = boostValue;
+						g_boostMaxBase.Write(boostMax->BaseValue, boostValue);
+						g_boostMaxValue.Write(boostMax->CurrentValue, boostValue);
 					}
-					boostCurrent->BaseValue    = boostValue;
-					boostCurrent->CurrentValue = boostValue;
+					g_boostCurrentBase.Write(boostCurrent->BaseValue, boostValue);
+					g_boostCurrentValue.Write(boostCurrent->CurrentValue, boostValue);
+				}
+				else
+				{
+					RestoreBoost();
 				}
 				g_boostWasActive = boostActive;
 			}

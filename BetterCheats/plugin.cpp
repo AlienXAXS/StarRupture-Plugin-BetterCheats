@@ -452,6 +452,8 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.Mining, Features::Usable(Features::Mining), g_wasOn.Mining,
 				&Panels::Tools::ReleaseValues, &Panels::Tools::ApplySavedConfig))
 			Panels::Tools::Tick(deltaSeconds);
+		else if (g_initRan.Mining)
+			Panels::Tools::RetryRelease();
 		if (FollowFlag(g_initRan.Weapons, Features::Usable(Features::Weapons), g_wasOn.Weapons,
 				&Panels::Weapons::ReleaseValues, &Panels::Weapons::ApplySavedConfig))
 			Panels::Weapons::Tick(deltaSeconds);
