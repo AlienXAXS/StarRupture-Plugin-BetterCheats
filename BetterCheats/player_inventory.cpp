@@ -298,6 +298,8 @@ namespace BetterCheats::Panels::Inventory
 			return BetterCheats::Features::StateOf(BetterCheats::Features::InventorySlotSize) == BetterCheats::Features::Why::HostRules;
 		}
 
+		float g_appliedSlotScale = 1.0f; // game thread only
+
 		// Game thread. Puts back every box that still holds what we wrote.
 		void RestoreSlotSizes()
 		{
@@ -414,8 +416,6 @@ namespace BetterCheats::Panels::Inventory
 		// ---------------------------------------------------------------------
 		// Applied state — game thread only.
 		// ---------------------------------------------------------------------
-		float g_appliedSlotScale = 1.0f;
-
 		float WantedSlotScale(const SDK::UCrInventoryComponent* inv)
 		{
 			// Scaled against the grid the game actually built, not the one that
