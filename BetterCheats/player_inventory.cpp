@@ -2053,22 +2053,30 @@ namespace BetterCheats::Panels::Inventory
 			g_gatherTypeCount.store(static_cast<int>(g_gather.size()));
 		}
 
-		// Game thread only. Hands every live CDO its original back and drops
-		// the persisted compose state.
+		// Game thread only. Hands back each count the multiplier changed and
+		// drops its persisted compose state. A CDO we never wrote, or one
+		// something else has written since, is left alone.
 		void RestoreGatherables()
 		{
 			for (auto& kv : g_gather)
 			{
 				GatherEntry& e = kv.second;
-				e.composed.Forget();
-
 				SDK::ACrGatherableBaseActor* cdo = e.cdo.Get();
-				if (!cdo)
-					continue;
 
-				if (int32_t* count = BetterCheats::Fields::CrGatherableBaseActor_ResourceCount.In(cdo); count && *count != e.original)
-					*count = e.original;
-				BetterCheats::ClearComposeState(e.key);
+				if (cdo && e.composed.IsActive())
+				{
+					if (int32_t* count = BetterCheats::Fields::CrGatherableBaseActor_ResourceCount.In(cdo))
+					{
+						float value = static_cast<float>(*count);
+						e.composed.Release(cdo, value);
+
+						const int restored = static_cast<int>(value + 0.5f);
+						if (*count != restored)
+							*count = restored;
+						BetterCheats::ClearComposeState(e.key);
+					}
+				}
+				e.composed.Forget();
 			}
 		}
 
