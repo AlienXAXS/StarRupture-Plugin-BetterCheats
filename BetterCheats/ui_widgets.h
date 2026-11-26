@@ -18,18 +18,6 @@
 // feed back into the color that was just drawn.
 namespace BetterCheats::UI
 {
-	// A row of a greyed-out table: the name, and a dash where the value would be,
-	// so nothing in it comes from the game. The value cell stays current for a
-	// button.
-	inline void UnavailableRow(IModLoaderImGui* imgui, const char* label)
-	{
-		imgui->TableNextRow(0, 0.0f);
-		imgui->TableSetColumnIndex(0);
-		imgui->Text(label);
-		imgui->TableSetColumnIndex(1);
-		imgui->Text("-");
-	}
-
 	// A greyed-out Saved Presets row: the real row over a store that never holds
 	// a preset, so it names none of the player's and has nothing to read.
 	inline void UnavailablePresetRow(IModLoaderImGui* imgui, const char* idScope, const char* group)
