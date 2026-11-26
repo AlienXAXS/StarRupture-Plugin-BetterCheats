@@ -2283,14 +2283,24 @@ namespace BetterCheats::Panels::Inventory
 
 	void RenderStackSizes(IModLoaderImGui* imgui)
 	{
-		if (!Features::StackSize.On())
+		if (!Features::Usable(Features::StackSize))
 		{
 			imgui->Spacing();
 			imgui->Separator();
-			Features::RenderOff(imgui, Features::StackSize);
-			return;
 		}
 
-		RenderItemStackSizes(imgui);
+		Features::Section(imgui, Features::StackSize, [&](bool greyed)
+		{
+			if (!greyed)
+			{
+				RenderItemStackSizes(imgui);
+				return;
+			}
+
+			// The item list comes from a scan of the game, so none is asked for.
+			imgui->SeparatorText("Item Stack Sizes");
+			bool onlyChanged = false;
+			imgui->Checkbox("Only show changed", &onlyChanged);
+		});
 	}
 }
