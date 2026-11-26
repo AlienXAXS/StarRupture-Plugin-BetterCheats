@@ -18,6 +18,10 @@ namespace BetterCheats::Panels::Movement
 	// and actor fields. Game thread only.
 	void ReleaseValues(bool restoreRaw);
 
+	// For a world that has ended: drops the no-clip choice and every record of
+	// what was written to its character. Game thread only.
+	void ForgetWorld();
+
 	// Drives no-clip: applies/reverts it, re-asserts flying mode, and feeds the
 	// vertical (Space / Left Ctrl) input — call once per engine tick.
 	void Tick(float deltaSeconds);

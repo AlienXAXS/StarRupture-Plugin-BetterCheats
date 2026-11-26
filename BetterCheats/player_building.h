@@ -18,6 +18,9 @@ namespace BetterCheats::Panels::Building
 	// detours act on a toggle and its feature flag alone. ApplySavedConfig reads
 	// them back. Game thread only.
 	void ForgetSettings();
+
+	// For a world that has ended: ForgetSettings without writing to it.
+	void ForgetWorld();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
 

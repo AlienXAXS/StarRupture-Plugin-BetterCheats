@@ -13,13 +13,18 @@ namespace BetterCheats::SessionConfig
 	void Initialize(IPluginSelf* self);
 	void Shutdown();
 
+	// Switches to an empty config that is never written to disk: every key reads
+	// as its default, and Set() holds values in memory only. Force-commits the
+	// outgoing session first.
+	void StartUnsaved();
+
 	// Resolves the active save's session name from UCrSaveSubsystem and loads
 	// its JSON config from <Plugins>\<pluginName>\<SessionName>.json. Must run
 	// on the game thread (e.g. from OnExperienceLoadComplete). Force-commits
 	// whatever the PREVIOUS session left dirty before switching, so a session
 	// change never silently drops an edit that hadn't been written yet.
-	// Returns false if no session is currently active.
-	bool Reload();
+	// With no session name, it runs unsaved (see StartUnsaved).
+	void Reload();
 
 	// True once Reload() has resolved a session and loaded (or created) its config.
 	bool IsLoaded();

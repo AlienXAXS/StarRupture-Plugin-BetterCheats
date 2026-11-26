@@ -20,4 +20,8 @@ namespace BetterCheats::Panels::Attributes
 	// Hands the Max Health raise back and drops queued edits, for a section
 	// switched off at runtime. Game thread only.
 	void ReleaseValues();
+
+	// For a world that has ended: drops queued edits and the Max Health record.
+	// Game thread only.
+	void ForgetWorld();
 }

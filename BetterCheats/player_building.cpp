@@ -685,6 +685,13 @@ namespace BetterCheats::Panels::Building
 		g_buildBenchesAnywhere          = false;
 	}
 
+	void ForgetWorld()
+	{
+		// The keeper that took the write went with the world.
+		g_prevUnlockAllBuildings = false;
+		ForgetSettings();
+	}
+
 	void Shutdown()
 	{
 		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;

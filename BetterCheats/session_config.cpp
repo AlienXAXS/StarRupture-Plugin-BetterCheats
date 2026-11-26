@@ -176,7 +176,19 @@ namespace BetterCheats::SessionConfig
 		g_dirty   = false;
 	}
 
-	bool Reload()
+	void StartUnsaved()
+	{
+		Commit(true);
+
+		std::lock_guard<std::mutex> lock(g_mutex);
+		g_sessionName.clear();
+		g_data   = nlohmann::json::object();
+		g_dirty  = false;
+		g_loaded = true;
+		++g_generation;
+	}
+
+	void Reload()
 	{
 		// Flush whatever the OUTGOING session left dirty before switching --
 		// otherwise the g_data reset below silently drops an edit that was
@@ -186,10 +198,16 @@ namespace BetterCheats::SessionConfig
 		std::string sessionName = ResolveSessionName();
 		if (sessionName.empty())
 		{
-			LOG_DEBUG("SessionConfig: no active session — config not loaded.");
-			std::lock_guard<std::mutex> lock(g_mutex);
-			g_loaded = false;
-			return false;
+			LOG_INFO("SessionConfig: no session name — settings are not saved until a named session loads.");
+			// An unsaved config that is already running keeps what was staged in it.
+			bool unsaved = false;
+			{
+				std::lock_guard<std::mutex> lock(g_mutex);
+				unsaved = g_loaded && g_sessionName.empty();
+			}
+			if (!unsaved)
+				StartUnsaved();
+			return;
 		}
 
 		std::lock_guard<std::mutex> lock(g_mutex);
@@ -232,7 +250,6 @@ namespace BetterCheats::SessionConfig
 		g_loaded = true;
 		++g_generation;
 		LOG_INFO("SessionConfig: loaded session '%s' (%s).", g_sessionName.c_str(), configPath.c_str());
-		return true;
 	}
 
 	bool IsLoaded()
@@ -317,7 +334,7 @@ namespace BetterCheats::SessionConfig
 	void Commit(bool force)
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
-		if (!g_loaded || !g_dirty)
+		if (!g_loaded || !g_dirty || g_sessionName.empty())
 			return;
 
 		if (!force)

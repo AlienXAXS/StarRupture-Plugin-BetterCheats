@@ -1441,6 +1441,16 @@ namespace BetterCheats::Panels::Movement
 		ReleaseValues(false);
 	}
 
+	void ForgetWorld()
+	{
+		for (int a = 0; a < kAttrCount; ++a)
+			g_composedAttrs[a].Forget();
+		g_composedMaxEnergy.Forget();
+		g_active    = false;
+		g_appliedTo = nullptr;
+		g_noClipWanted.store(false);
+	}
+
 	void ReleaseValues(bool restoreRaw)
 	{
 		// Leaving a character permanently non-colliding would outlive the plugin,

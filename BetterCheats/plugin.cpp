@@ -218,11 +218,7 @@ static void OnExperienceLoadComplete()
 
 	g_gateOpen = true;
 
-	if (!BetterCheats::SessionConfig::Reload())
-	{
-		g_sessionCurrent = false;
-		return;
-	}
+	BetterCheats::SessionConfig::Reload();
 
 	if (g_initRan.Stats && BetterCheats::Features::Stats.On())
 		BetterCheats::Panels::Attributes::ApplySavedConfig();
@@ -248,12 +244,46 @@ static void OnExperienceLoadComplete()
 	g_sessionCurrent = true;
 }
 
-// A world is gone: SessionConfig still holds its data until load complete reloads
-// it for the next one.
-static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
+// Drops every choice and queued edit of the world that ended, so none of them
+// writes into the next one. Its objects are gone, so what lived on them is
+// forgotten rather than handed back. Flags are not checked: a section switched
+// off now can still hold choices from while it was on.
+static void ForgetWorldSettings()
+{
+	using namespace BetterCheats;
+	SessionConfig::StartUnsaved();
+	Panels::Building::ForgetWorld();
+	if (g_initRan.Stats)
+	{
+		Panels::Attributes::ForgetWorld();
+		Panels::Attributes::ApplySavedConfig();
+	}
+	if (g_initRan.Inventory)
+		Panels::Inventory::ApplySavedConfig();
+	if (g_initRan.StackSize)
+		Panels::Inventory::ApplySavedStackConfig();
+	if (g_initRan.Movement)
+	{
+		Panels::Movement::ForgetWorld();
+		Panels::Movement::ApplySavedConfig();
+	}
+	if (g_initRan.Mining)
+		Panels::Tools::ApplySavedConfig();
+	if (g_initRan.Weapons)
+		Panels::Weapons::ApplySavedConfig();
+	if (g_initRan.Wave)
+		Panels::Wave::ApplySavedConfig();
+	if (g_initRan.Enemies)
+		Panels::Enemies::ApplySavedConfig();
+}
+
+static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 {
 	g_sessionCurrent = false;
 	g_loadWaiting    = false;
+
+	if (name && std::strcmp(name, "ChimeraMain") == 0)
+		ForgetWorldSettings();
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
@@ -555,12 +585,10 @@ extern "C" {
 		// registered, so if a session is already in progress, run the same setup now.
 		//
 		// It has to go through the game thread. SessionConfig::Reload() resolves the
-		// save name via UCrSaveSubsystem, which only works there -- called inline from
-		// PluginInit it returns false, OnExperienceLoadComplete() bails, and every
-		// panel's ApplySavedConfig is skipped. The failure is silent, and because
-		// SessionConfig::Set() no-ops while unloaded, NOTHING persists for the rest of
-		// the session. Same PostToGameThread pattern used by machine_power.cpp,
-		// player_attributes.cpp and player_items.cpp.
+		// save name from game objects, which only works there -- called inline from
+		// PluginInit it gets no name, so the session runs unsaved: the saved settings
+		// are skipped and nothing persists. Same PostToGameThread pattern used by
+		// machine_power.cpp, player_attributes.cpp and player_items.cpp.
 		if (BetterCheats::GameContext::IsInChimeraMain())
 		{
 			LOG_INFO("BetterCheats: hot-reloaded into an active session — posting experience-load setup to the game thread.");

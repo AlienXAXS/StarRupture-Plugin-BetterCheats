@@ -473,14 +473,24 @@ namespace BetterCheats::Panels::Attributes
 		LOG_INFO("Attributes: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
+	static void DropQueuedEdits()
+	{
+		std::lock_guard<std::mutex> lock(g_pendingMutex);
+		for (PendingEdit& edit : g_pendingValue)
+			edit.pending = false;
+		g_pendingMaxHealth.pending = false;
+	}
+
+	void ForgetWorld()
+	{
+		DropQueuedEdits();
+		g_maxHealthBase.Forget();
+		g_maxHealthCurrent.Forget();
+	}
+
 	void ReleaseValues()
 	{
-		{
-			std::lock_guard<std::mutex> lock(g_pendingMutex);
-			for (PendingEdit& edit : g_pendingValue)
-				edit.pending = false;
-			g_pendingMaxHealth.pending = false;
-		}
+		DropQueuedEdits();
 
 		try
 		{
