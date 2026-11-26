@@ -3,6 +3,7 @@
 #include "aob_resolver.h"
 #include "session_config.h"
 #include "defer.h"
+#include "ui_widgets.h"
 
 #include "AuActorPlacement_classes.hpp"
 #include "Chimera_classes.hpp"
