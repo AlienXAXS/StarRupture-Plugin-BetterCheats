@@ -633,7 +633,7 @@ namespace BetterCheats::Panels::Inventory
 		// button does not shuffle sideways as the number gains a digit.
 		// ---------------------------------------------------------------------
 		bool RenderStepper(IModLoaderImGui* imgui, const char* id, const char* label,
-		                   int* value, int minValue, int maxValue)
+		                   int* value, int minValue, int maxValue, bool greyed)
 		{
 			constexpr float kMinusX = 90.0f;
 			constexpr float kValueX = 126.0f;
@@ -655,7 +655,10 @@ namespace BetterCheats::Panels::Inventory
 			}
 
 			char text[16];
-			snprintf(text, sizeof(text), "%d", *value);
+			if (greyed)
+				snprintf(text, sizeof(text), "-");
+			else
+				snprintf(text, sizeof(text), "%d", *value);
 
 			float textWidth = 0.0f, textHeight = 0.0f;
 			imgui->CalcTextSize(text, &textWidth, &textHeight, false, 0.0f);
@@ -2116,9 +2119,10 @@ namespace BetterCheats::Panels::Inventory
 
 		// Render thread. Single global multiplier row, same BuildRow shape as
 		// the stack-size rows.
-		void RenderPlantPickup(IModLoaderImGui* imgui)
+		void RenderPlantPickup(IModLoaderImGui* imgui, bool greyed)
 		{
-			g_gatherPanelOpen.store(true);
+			if (!greyed)
+				g_gatherPanelOpen.store(true);
 
 			imgui->Spacing();
 			imgui->Separator();
@@ -2127,7 +2131,7 @@ namespace BetterCheats::Panels::Inventory
 			                    "picked up. Crops (regrowing bushes) are not covered by this.");
 			imgui->Spacing();
 
-			float multiplier = g_gatherMultiplier.load();
+			float multiplier = greyed ? kGatherMultDefault : g_gatherMultiplier.load();
 			if (imgui->BeginTable("##gather_mult_table", 3, kTableFlags))
 			{
 				const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
@@ -2157,8 +2161,9 @@ namespace BetterCheats::Panels::Inventory
 				spec.format       = "%.0fx";
 				spec.wholeNumbers = true;
 				spec.resetValue   = kGatherMultDefault;
-				spec.active       = BetterCheats::DiffersFromDefault(multiplier, kGatherMultDefault);
+				spec.active       = !greyed && BetterCheats::DiffersFromDefault(multiplier, kGatherMultDefault);
 				spec.labelReserve = labelReserve;
+				spec.greyed       = greyed;
 
 				// BuildRow rounds and clamps both the slider and the typed box.
 				if (BetterCheats::UI::BuildRow(imgui, spec).changed)
@@ -2459,42 +2464,16 @@ namespace BetterCheats::Panels::Inventory
 		RequestRefreshStackList();
 	}
 
-	namespace
-	{
-		// The controls with no values: nothing here comes from the game.
-		void RenderUnavailable(IModLoaderImGui* imgui)
-		{
-			imgui->SeparatorText("Inventory Grid");
-			if (imgui->BeginTable("##inventory_grid_table", 2, kTableFlags))
-			{
-				imgui->TableSetupColumn("Property", kColumnFixed, 150.0f);
-				imgui->TableSetupColumn("Value",    0,            0.0f);
-				for (const char* label : { "Current grid", "Slot size", "Columns", "Rows" })
-					BetterCheats::UI::UnavailableRow(imgui, label);
-				imgui->EndTable();
-			}
-			BetterCheats::UI::UnavailableCheckbox(imgui, "Shrink slots to fit the inventory frame");
-
-			imgui->Spacing();
-			imgui->Separator();
-			imgui->SeparatorText("Plant Pickup");
-			if (imgui->BeginTable("##gather_mult_table", 2, kTableFlags))
-			{
-				BetterCheats::UI::UnavailableRow(imgui, "Plant Pickup");
-				imgui->EndTable();
-			}
-		}
-	}
-
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
+		// A greyed page draws every control, with no values from the game and
+		// none of the saved settings.
+		InventorySnapshot snap;
 		if (greyed)
 		{
-			RenderUnavailable(imgui);
-			return;
+			snap.inventoryFound = true;
 		}
-
-		InventorySnapshot snap;
+		else
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snap = g_snapshot;
@@ -2518,7 +2497,10 @@ namespace BetterCheats::Panels::Inventory
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Current grid");
 			imgui->TableSetColumnIndex(1);
-			snprintf(buffer, sizeof(buffer), "%d x %d  (%d slots)", snap.columns, snap.rows, snap.slots);
+			if (greyed)
+				snprintf(buffer, sizeof(buffer), "-");
+			else
+				snprintf(buffer, sizeof(buffer), "%d x %d  (%d slots)", snap.columns, snap.rows, snap.slots);
 			imgui->Text(buffer);
 
 			imgui->TableNextRow(0, 0.0f);
@@ -2530,7 +2512,11 @@ namespace BetterCheats::Panels::Inventory
 			imgui->TableNextRow(0, 0.0f);
 			imgui->TableSetColumnIndex(0); imgui->Text("Slot size");
 			imgui->TableSetColumnIndex(1);
-			if (snap.widgetFound)
+			if (greyed)
+			{
+				imgui->Text("-");
+			}
+			else if (snap.widgetFound)
 			{
 				snprintf(buffer, sizeof(buffer), "%.0f%%", snap.slotScale * 100.0f);
 				imgui->Text(buffer);
@@ -2552,19 +2538,19 @@ namespace BetterCheats::Panels::Inventory
 		static int seenColumns = -1;
 		static int seenRows    = -1;
 
-		const int loadedColumns = g_wantColumns.load();
-		const int loadedRows    = g_wantRows.load();
+		const int loadedColumns = greyed ? 0 : g_wantColumns.load();
+		const int loadedRows    = greyed ? 0 : g_wantRows.load();
 
 		const int wantColumns = loadedColumns > 0 ? loadedColumns : snap.columns;
 		const int wantRows    = loadedRows    > 0 ? loadedRows    : snap.rows;
 
-		if (wantColumns != seenColumns) { columns = wantColumns; seenColumns = wantColumns; }
-		if (wantRows    != seenRows)    { rows    = wantRows;    seenRows    = wantRows; }
+		if (!greyed && wantColumns != seenColumns) { columns = wantColumns; seenColumns = wantColumns; }
+		if (!greyed && wantRows    != seenRows)    { rows    = wantRows;    seenRows    = wantRows; }
 
 		const bool columnsChanged =
-			RenderStepper(imgui, "grid_columns", "Columns", &columns, kMinGridColumns, kMaxGridColumns);
+			RenderStepper(imgui, "grid_columns", "Columns", &columns, kMinGridColumns, kMaxGridColumns, greyed);
 		const bool rowsChanged =
-			RenderStepper(imgui, "grid_rows", "Rows", &rows, kMinGridRows, kMaxGridRows);
+			RenderStepper(imgui, "grid_rows", "Rows", &rows, kMinGridRows, kMaxGridRows, greyed);
 
 		if (columnsChanged || rowsChanged)
 		{
@@ -2583,7 +2569,7 @@ namespace BetterCheats::Panels::Inventory
 
 		imgui->Spacing();
 
-		bool fit = g_wantFitToPanel.load();
+		bool fit = !greyed && g_wantFitToPanel.load();
 		if (imgui->Checkbox("Shrink slots to fit the inventory frame", &fit))
 		{
 			g_wantFitToPanel.store(fit);
@@ -2595,8 +2581,11 @@ namespace BetterCheats::Panels::Inventory
 
 		const float preview = fit ? SolveSlotScale(columns, rows) : 1.0f;
 
-		snprintf(buffer, sizeof(buffer), "%d x %d = %d slots, drawn at %.0f%% slot size.  Minimum %d x %d.",
-			columns, rows, columns * rows, preview * 100.0f, kMinGridColumns, kMinGridRows);
+		if (greyed)
+			snprintf(buffer, sizeof(buffer), "- slots.  Minimum %d x %d.", kMinGridColumns, kMinGridRows);
+		else
+			snprintf(buffer, sizeof(buffer), "%d x %d = %d slots, drawn at %.0f%% slot size.  Minimum %d x %d.",
+				columns, rows, columns * rows, preview * 100.0f, kMinGridColumns, kMinGridRows);
 		imgui->TextDisabled(buffer);
 
 		imgui->Spacing();
@@ -2614,7 +2603,7 @@ namespace BetterCheats::Panels::Inventory
 		imgui->Spacing();
 		imgui->TextDisabled("Console: bc_invsize <columns> <rows>");
 
-		RenderPlantPickup(imgui);
+		RenderPlantPickup(imgui, greyed);
 	}
 
 	void RenderStackSizes(IModLoaderImGui* imgui)
