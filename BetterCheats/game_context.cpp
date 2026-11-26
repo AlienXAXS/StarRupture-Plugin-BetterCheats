@@ -89,14 +89,19 @@ namespace BetterCheats
 		return ServerSetsRules() || IsSinglePlayer();
 	}
 
-	bool GameContext::ServerSetsRules()
+	int GameContext::HostRulesState()
 	{
 		if (!s_self || !s_self->hooks->Network)
-			return false;
+			return -1;
 
 		// Null below interface 81. Read live: rules arrive after the join.
 		const auto state = PluginOptHostRulesState(s_self->hooks->Network);
-		return state && state() == 1;
+		return state ? state() : -1;
+	}
+
+	bool GameContext::ServerSetsRules()
+	{
+		return HostRulesState() == 1;
 	}
 
 	bool GameContext::IsRefusalDecided()

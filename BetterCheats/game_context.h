@@ -29,8 +29,9 @@ namespace BetterCheats
 		// returns the game thread's last answer, since the query reads UObjects.
 		static bool IsSinglePlayer();
 
-		// Any thread. The world is one joined on a server, as the game thread last found it.
-		static bool IsJoinedClient() { return s_joinedClient; }
+		// Any thread. The world is one joined on a server, as the game thread last
+		// found it, or as the loader reports it while the net mode is still unknown.
+		static bool IsJoinedClient() { return s_joinedClient || HostRulesState() >= 0; }
 
 		// Game thread. Asks the loader for the net mode; an unknown one keeps the last answer.
 		static void RefreshJoinedClient();
@@ -45,6 +46,10 @@ namespace BetterCheats
 		// Any thread. The joined server sent a rule set. The loader has then
 		// switched off the features it denies. False on a loader below interface 81.
 		static bool ServerSetsRules();
+
+		// Any thread. IPluginNetworkChannel::GetHostRulesState: 0 or 1 only on a
+		// client connected to a server, -1 otherwise and below interface 81.
+		static int HostRulesState();
 
 		// Game thread. Cheats are refused and the net mode is known. An unknown
 		// net mode decides nothing.
