@@ -11,6 +11,7 @@
 #include "game_context.h"
 
 #include <algorithm>
+#include <atomic>
 #include <iterator>
 #include <vector>
 #include "Engine_classes.hpp"
@@ -750,16 +751,23 @@ namespace BetterCheats::Features
 	// The features this game build has everything for.
 	inline std::vector<const PluginMap::Feature*> g_built;
 
+	// InventorySlotSize resolves after RecordBuilt, so it is counted here. A separate
+	// flag: other threads read g_built while the game thread would be adding to it.
+	inline std::atomic<bool> g_slotSizeBuiltLate{ false };
+
 	// Call last in OnPluginLoadHooks. The loader applies a server's rules after it
 	// returns, so a feature on here and off later was switched off, not missed.
 	inline void RecordBuilt()
 	{
 		g_built.clear();
+		g_slotSizeBuiltLate = false;
 		WithAll([](auto&... features) { ((features.On() ? g_built.push_back(&features) : void()), ...); });
 	}
 
 	inline bool Built(const PluginMap::Feature& feature)
 	{
+		if (&feature == &InventorySlotSize && g_slotSizeBuiltLate)
+			return true;
 		return std::find(g_built.begin(), g_built.end(), &feature) != g_built.end();
 	}
 
@@ -793,7 +801,11 @@ namespace BetterCheats::Features
 			return;
 		if (PluginMap::ResolveLateFields(g_slotSizeScanner, g_slotSizeSelf,
 				Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize))
+		{
+			// Built from here on, so the loader switching it off reads as the server's rules.
+			g_slotSizeBuiltLate = true;
 			InventorySlotSize.on = true;
+		}
 	}
 
 	// What only the server can change: a joined client gets these greyed out.
