@@ -391,6 +391,9 @@ namespace BetterCheats::Panels::Wave
 
 	void ReleaseValues()
 	{
+		// A click not yet carried out is dropped, so it can't fire later.
+		g_pendingAction.store(static_cast<int>(PendingAction::None));
+
 		// The Pause Waves Entirely choice stays; only the write into the timer is
 		// undone, and Tick writes it again if the section comes back on.
 		if (!g_timerSubsys.Get())
@@ -422,8 +425,62 @@ namespace BetterCheats::Panels::Wave
 		g_pauseWavesEnabled = SessionConfig::Get("wave.pauseWavesEnabled", false);
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		void RenderUnavailableRow(IModLoaderImGui* imgui, const char* label, const char* value, const char* button)
+		{
+			imgui->TableNextRow(0, 0.0f);
+			imgui->TableSetColumnIndex(0); imgui->Text(label);
+			imgui->TableSetColumnIndex(1); imgui->Text(value);
+			imgui->TableSetColumnIndex(2);
+			if (button)
+				imgui->SmallButton(button);
+		}
+
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Wave Status");
+			if (imgui->BeginTable("##wave_status", 3, kTableFlags))
+			{
+				SetupWaveTableColumns(imgui);
+				RenderUnavailableRow(imgui, "Type", "-", nullptr);
+				RenderUnavailableRow(imgui, "Stage", "-", "Skip##stage");
+				RenderUnavailableRow(imgui, "Progress", "-", nullptr);
+				imgui->EndTable();
+			}
+
+			imgui->Spacing();
+			imgui->SeparatorText("Wave Controls");
+			if (imgui->BeginTable("##wave_ctrl", 3, kTableFlags))
+			{
+				SetupWaveTableColumns(imgui);
+				RenderUnavailableRow(imgui, "Start Wave", "-", "Heat");
+				RenderUnavailableRow(imgui, "Pause", "-", "Pause");
+				RenderUnavailableRow(imgui, "Cancel Wave", "-", "Cancel");
+				RenderUnavailableRow(imgui, "Pause Waves", "-", "Pause##wave_timer");
+				imgui->EndTable();
+			}
+
+			imgui->Spacing();
+			imgui->SeparatorText("Wave Spawning Timer");
+			if (imgui->BeginTable("##wave_timer", 3, kTableFlags))
+			{
+				SetupWaveTableColumns(imgui);
+				RenderUnavailableRow(imgui, "Next Wave", "-", nullptr);
+				imgui->EndTable();
+			}
+		}
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		WaveSnapshot snap;
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);

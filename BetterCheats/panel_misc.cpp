@@ -6,13 +6,11 @@ namespace BetterCheats::Panels
 {
 	void RenderMisc(IModLoaderImGui* imgui)
 	{
-		if (!Features::WindMute.On())
+		// The wind option is our own setting, so it draws the same either way.
+		Features::Section(imgui, Features::WindMute, [&](bool /*greyed*/)
 		{
-			Features::RenderOff(imgui, Features::WindMute);
-			return;
-		}
-
-		imgui->SeparatorText("Audio");
-		Wind::RenderImGui(imgui);
+			imgui->SeparatorText("Audio");
+			Wind::RenderImGui(imgui);
+		});
 	}
 }

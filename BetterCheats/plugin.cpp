@@ -421,6 +421,8 @@ static void OnEngineTick(float deltaSeconds)
 			Panels::Wave::Tick(deltaSeconds);
 		if (g_initRan.Corp && Features::Usable(Features::Corporations))
 			Panels::Corporations::Tick(deltaSeconds);
+		else
+			Panels::Corporations::DropPendingEdit();
 		if (FollowFlag(g_initRan.Enemies, Features::Usable(Features::Enemies), g_wasOn.Enemies,
 				&Panels::Enemies::ReleaseValues, &Panels::Enemies::ApplySavedConfig))
 			Panels::Enemies::Tick(deltaSeconds);

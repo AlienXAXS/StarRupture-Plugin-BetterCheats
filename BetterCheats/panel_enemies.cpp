@@ -7,9 +7,6 @@ namespace BetterCheats::Panels
 {
 	void RenderEnemies(IModLoaderImGui* imgui)
 	{
-		if (Features::Enemies.On())
-			Enemies::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Enemies);
+		Features::Section(imgui, Features::Enemies, [&](bool greyed) { Enemies::RenderImGui(imgui, greyed); });
 	}
 }

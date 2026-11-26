@@ -13,6 +13,6 @@ namespace BetterCheats::Panels::Wave
 	// back on. Game thread only.
 	void ReleaseValues();
 	void Tick(float deltaSeconds);
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 	void ApplySavedConfig();
 }

@@ -107,8 +107,40 @@ namespace BetterCheats::Panels::Corporations
 		RefreshSnapshot();
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	namespace
 	{
+		// The controls with no values: nothing here comes from the game.
+		void RenderUnavailable(IModLoaderImGui* imgui)
+		{
+			imgui->SeparatorText("Data Points");
+			if (imgui->BeginTable("##corporations_table", 3, kTableFlags))
+			{
+				SetupCorporationsTableColumns(imgui);
+
+				imgui->TableNextRow(0, 0.0f);
+				imgui->TableSetColumnIndex(0); imgui->Text("Data Points");
+				imgui->TableSetColumnIndex(1); imgui->Text("-");
+				imgui->TableSetColumnIndex(2);
+				imgui->SmallButton("Apply");
+
+				imgui->EndTable();
+			}
+		}
+	}
+
+	void DropPendingEdit()
+	{
+		g_pending.store(false);
+	}
+
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	{
+		if (greyed)
+		{
+			RenderUnavailable(imgui);
+			return;
+		}
+
 		CorporationsSnapshot snap;
 		{
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);

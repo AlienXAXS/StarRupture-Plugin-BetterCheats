@@ -525,7 +525,7 @@ namespace BetterCheats::Panels::Enemies
 		LOG_INFO("Enemies: applied saved config for session '%s'.", SessionConfig::GetSessionName().c_str());
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui)
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
 		int count;
 		{
@@ -553,6 +553,10 @@ namespace BetterCheats::Panels::Enemies
 			SessionConfig::Set("enemies.oneHitKill", oneHitKill);
 		}
 		imgui->SetItemTooltip("Pins every tracked enemy's health to 1 — any hit, even chip damage, finishes them.");
+
+		// Nothing is tracked while the section is greyed, so there is no count.
+		if (greyed)
+			return;
 
 		imgui->Spacing();
 		if (disableAI || oneHitKill)

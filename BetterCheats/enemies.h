@@ -15,7 +15,7 @@ namespace BetterCheats::Panels::Enemies
 	// Game thread only.
 	void ReleaseValues();
 	void Tick(float deltaSeconds);
-	void RenderImGui(IModLoaderImGui* imgui);
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 	void ApplySavedConfig();
 
 	// Read-only health sampling for the grenade hit probe. PrepareHealthReads

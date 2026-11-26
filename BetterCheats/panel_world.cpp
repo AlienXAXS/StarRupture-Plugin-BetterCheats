@@ -8,17 +8,11 @@ namespace BetterCheats::Panels
 {
 	void RenderWorld_Environment(IModLoaderImGui* imgui)
 	{
-		if (Features::Wave.On())
-			Wave::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Wave);
+		Features::Section(imgui, Features::Wave, [&](bool greyed) { Wave::RenderImGui(imgui, greyed); });
 	}
 
 	void RenderWorld_Corporations(IModLoaderImGui* imgui)
 	{
-		if (Features::Corporations.On())
-			Corporations::RenderImGui(imgui);
-		else
-			Features::RenderOff(imgui, Features::Corporations);
+		Features::Section(imgui, Features::Corporations, [&](bool greyed) { Corporations::RenderImGui(imgui, greyed); });
 	}
 }
