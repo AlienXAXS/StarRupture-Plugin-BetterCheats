@@ -9,4 +9,7 @@ namespace BetterCheats::Panels::Skills
 	// Refreshes the skill snapshot RenderImGui() displays and applies edits it
 	// queued — call once per engine tick.
 	void Tick(float deltaSeconds);
+
+	// Any thread. Forgets edits that have not been applied yet.
+	void DropPendingEdits();
 }

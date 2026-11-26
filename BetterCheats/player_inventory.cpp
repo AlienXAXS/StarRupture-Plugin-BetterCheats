@@ -1027,7 +1027,7 @@ namespace BetterCheats::Panels::Inventory
 		// want to display it (icon-less items still stack).
 		void RefreshStackListOnGameThread(void* /*context*/)
 		{
-			if (BetterCheats::GameContext::IsBetweenWorlds())
+			if (BetterCheats::GameContext::IsBetweenWorlds() || !Features::Usable(Features::StackSize))
 			{
 				g_stackRefreshSkipped = true;
 				g_stackRefreshInFlight.store(false, std::memory_order_release);

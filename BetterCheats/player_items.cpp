@@ -169,7 +169,7 @@ namespace BetterCheats::Panels::Items
 			IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
 
 			// The list stays unloaded, so the next draw asks again.
-			if (BetterCheats::GameContext::IsBetweenWorlds())
+			if (BetterCheats::GameContext::IsBetweenWorlds() || !Features::Usable(Features::Items))
 			{
 				g_refreshInFlight.store(false, std::memory_order_release);
 				if (splash)

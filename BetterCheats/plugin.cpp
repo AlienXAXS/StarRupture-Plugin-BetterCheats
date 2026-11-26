@@ -410,6 +410,8 @@ static void OnEngineTick(float deltaSeconds)
 			Panels::Movement::Tick(deltaSeconds);
 		if (Features::Usable(Features::Skills))
 			Panels::Skills::Tick(deltaSeconds);
+		else
+			Panels::Skills::DropPendingEdits();
 		if (FollowFlag(g_initRan.Mining, Features::Usable(Features::Mining), g_wasOn.Mining,
 				&Panels::Tools::ReleaseValues, &Panels::Tools::ApplySavedConfig))
 			Panels::Tools::Tick(deltaSeconds);

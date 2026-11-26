@@ -223,6 +223,14 @@ namespace BetterCheats::Panels::Skills
 		}
 	}
 
+	void DropPendingEdits()
+	{
+		std::lock_guard<std::mutex> lock(g_pendingMutex);
+		for (PendingEdit& edit : g_pendingLevel)
+			edit.pending = false;
+		g_pendingMaxAll = false;
+	}
+
 	void Tick(float /*deltaSeconds*/)
 	{
 		SDK::ACrPlayerControllerBase* pc = GetLocalController();
