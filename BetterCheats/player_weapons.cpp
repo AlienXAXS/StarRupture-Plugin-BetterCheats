@@ -1419,9 +1419,9 @@ namespace BetterCheats::Panels::Weapons
 
 		// Forgets the attribute-set slots the moment the set instance changes
 		// (respawn, world change) -- before anything below tries to Apply/Release
-		// against what may already be gone. Magazine and charge cost live on
-		// per-weapon-TYPE data assets that outlive the set, so they are handed
-		// back instead (ObjectRef skips an owner that is gone).
+		// against what may already be gone. Magazine size, charge cost and grenade
+		// damage live on per-weapon-TYPE data assets that outlive the set, so they
+		// are handed back instead (ObjectRef skips an owner that is gone).
 		void ForgetComposedIfOwnerChanged(SDK::UCrWeaponAttributeSet* current)
 		{
 			if (current == g_composedOwner) return;
@@ -1431,9 +1431,7 @@ namespace BetterCheats::Panels::Weapons
 
 			ReleaseMagazineIfOwnerChanged(nullptr);
 			ReleaseGrenadeCostIfOwnerChanged(nullptr);
-
-			g_composedGrenadeBaseDamage.Forget();
-			g_grenadeBaseDamageOwner.Reset();
+			ReleaseGrenadeBaseDamageIfOwnerChanged(nullptr);
 		}
 
 		// Hands the stock BaseDamage back. The grenade data asset is shared by every
