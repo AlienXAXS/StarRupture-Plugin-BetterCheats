@@ -223,6 +223,17 @@ namespace BetterCheats::Panels::Skills
 		}
 	}
 
+	namespace
+	{
+		void RenderSaveWarning(IModLoaderImGui* imgui)
+		{
+			imgui->Spacing();
+			imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
+				"Note: Setting skills here will persist in the player save file, "
+				"even if BetterCheats is later removed.");
+		}
+	}
+
 	void DropPendingEdits()
 	{
 		std::lock_guard<std::mutex> lock(g_pendingMutex);
@@ -252,6 +263,7 @@ namespace BetterCheats::Panels::Skills
 			imgui->Button("Max All Skills");
 			imgui->Spacing();
 			imgui->SeparatorText("Per-Skill Overrides");
+			RenderSaveWarning(imgui);
 			return;
 		}
 
@@ -343,9 +355,6 @@ namespace BetterCheats::Panels::Skills
 			imgui->EndTable();
 		}
 
-		imgui->Spacing();
-		imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
-			"Note: Setting skills here will persist in the player save file, "
-			"even if BetterCheats is later removed.");
+		RenderSaveWarning(imgui);
 	}
 }
