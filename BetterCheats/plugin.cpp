@@ -19,7 +19,6 @@
 #include "world_corporations.h"
 #include "machine_power.h"
 #include "enemies.h"
-#include "game_thread.h"
 #include "dev_menus.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -678,7 +677,7 @@ extern "C" {
 #endif
 		// The assets outlive a RELOAD, so the next instance would take an override
 		// for the stock value. Skipped off the game thread (older loaders' RELOAD).
-		if (g_initRan.PowerSection && BetterCheats::IsGameThread())
+		if (g_initRan.PowerSection && g_self && g_self->hooks->Engine->IsGameThread())
 			BetterCheats::Panels::Power::ForgetWorld();
 		BetterCheats::SessionConfig::Shutdown();
 
