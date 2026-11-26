@@ -855,7 +855,7 @@ namespace BetterCheats::Features
 			return;
 		}
 
-		imgui->TextWrapped("%s", ReasonText(why));
+		imgui->TextWrapped(ReasonText(why));
 		imgui->BeginDisabled(true);
 		draw(true);
 		imgui->EndDisabled();
