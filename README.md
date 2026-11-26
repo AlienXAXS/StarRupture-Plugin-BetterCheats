@@ -24,6 +24,7 @@ Power, Self, Inventory (Item Stack Sizes only), Movement, Skills, Tools and each
 - Pick **(none)** at the top of the list to clear the selection. Applying a built-in preset clears it too, so the next Save makes a new preset.
 - On load, the saved preset that matches the current settings shows as selected, so Save can overwrite it right away.
 - Up to 16 are listed per page.
+- If the presets file can't be read, or has lines that can't be read, the Item Stack Sizes section says so and presets can't be loaded or saved. A stack preset in a format this version can't read, or with a value that isn't a number, changes nothing. Presets saved by earlier versions still load.
 - Stored in `Plugins\config\BetterCheats-Presets.ini`, shared by every save.
 
 ---
@@ -78,11 +79,12 @@ A whole-number multiplier, 1x to 5x (default 1x), on what a wild plant, mushroom
 
 #### Item Stack Sizes <sup>[✦](#msantoro12)</sup>
 
-Raises stack caps from 1 to 9999 as one global value, per category (Combat, Resource, Consumable, Story Item, Alien Item, Valuable, Gem, Uncategorized, Empty Item, Blueprint Item, Other) or per item, with a search box and **Only show changed**.
+Raises stack caps, up to 9999, for all items at once, per category (Combat, Resource, Consumable, Story Item, Alien Item, Valuable, Gem, Uncategorized, Empty Item, Blueprint Item, Other) or per item, with a search box and **Only show changed**. Each item row shows the item's default stack size. There is no slider: type a size and press Enter, or pick **x2**, **x5** or **x10**. The all-items and category rows take a size or a multiple too, and show which one is set (**Number: N**, or **xN of each item's default**). The arrow button resets a row.
 
-- Item beats category beats global; a global of 1 is off.
+- A multiple is worked out from each item's own default. Item beats category beats all items. Empty or 1 is off.
 - New stacks only: existing stacks keep their cap until picked up, split or merged.
 - Raise-only: an item that already stacks higher keeps its size.
+- A Saved Presets row at the top of the section stores the all-items, category and item settings, multiples included.
 - Non-stacking items are shown but locked.
 - Ammo and each blueprint have their own row. A size you set for one of them before this version has to be set again.
 - Stack sizes are a section of their own, apart from the grid size and Plant Pickup. If the version object map switches them off, the page says so and every item goes back to its own cap; when they come back on, your saved sizes apply again. Otherwise they work as before.
