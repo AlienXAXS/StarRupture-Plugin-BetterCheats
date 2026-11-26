@@ -1019,6 +1019,18 @@ namespace BetterCheats::Panels::Power
 		g_applied.clear();
 	}
 
+	namespace
+	{
+		void RenderApplyHelp(IModLoaderImGui* imgui)
+		{
+			imgui->TextWrapped(
+				"Enter a value and click Apply to commit it. Applied edits update the "
+				"building's template for newly-placed buildings, and also patch "
+				"buildings already placed in the world. The reset arrow restores that "
+				"building's default value.");
+		}
+	}
+
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
 	{
 		// The machine list is found by scanning the game, so a greyed section has
@@ -1031,6 +1043,7 @@ namespace BetterCheats::Panels::Power
 			imgui->Button("Rescan");
 			imgui->SameLine(0.0f, 8.0f);
 			imgui->Button("Reset All");
+			RenderApplyHelp(imgui);
 			return;
 		}
 
@@ -1096,11 +1109,7 @@ namespace BetterCheats::Panels::Power
 			RequestApply(std::move(items));
 		}
 
-		imgui->TextWrapped(
-			"Enter a value and click Apply to commit it. Applied edits update the "
-			"building's template for newly-placed buildings, and also patch "
-			"buildings already placed in the world. The reset arrow restores that "
-			"building's default value.");
+		RenderApplyHelp(imgui);
 
 		if (g_entries.empty())
 		{
