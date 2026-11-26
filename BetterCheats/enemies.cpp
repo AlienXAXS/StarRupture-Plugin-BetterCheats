@@ -114,14 +114,25 @@ namespace BetterCheats::Panels::Enemies
 			float distance         = 0.0f;
 			float coneHalfAngle    = 0.0f;
 			float buildingDistance = 0.0f;
+			bool  brainTicked      = false;
 		};
 		std::unordered_map<SDK::AMassEnemyCharacterBase*, AttackRangeCache> g_attackRangeCache;
+
+		// What One-Hit Kill lowered. The actor pools between enemies, so the
+		// entity handle says whether it is still the same one.
+		struct LoweredHealth
+		{
+			ObjectRef<SDK::AMassEnemyCharacterBase> actor;
+			SDK::FMassEntityHandle                  entity{};
+			float                                   hp = 0.0f;
+		};
+		std::unordered_map<SDK::AMassEnemyCharacterBase*, LoweredHealth> g_loweredHealth;
 
 		struct EnemiesSnapshot { int count = 0; };
 		std::mutex        g_snapshotMutex;
 		EnemiesSnapshot   g_snapshot;
 
-		void* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor);
+		void* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor, SDK::FMassEntityHandle* entity = nullptr);
 
 		// Re-finds the per-world UMassEntitySubsystem/UMassActorSubsystem
 		// singletons. Only ever called from Tick().
@@ -237,7 +248,7 @@ namespace BetterCheats::Panels::Enemies
 		// UMassActorSubsystem::GetEntityHandleFromActor — the authority-side
 		// lookup, which works for every Mass actor regardless of replication
 		// state or whether it has a UMassAgentComponent attached.
-		void* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor)
+		void* ResolveHealthFragment(SDK::AMassEnemyCharacterBase* actor, SDK::FMassEntityHandle* entity)
 		{
 			if (!actor || !g_buildActorKey || !g_getEntityHandle || !g_getFragmentDataPtr || !g_healthFragmentStruct)
 				return nullptr;
@@ -256,27 +267,31 @@ namespace BetterCheats::Panels::Enemies
 			g_getEntityHandle(actorSubsystem, &handle, actorKey);
 			if (handle.Index == 0)
 				return nullptr;
+			if (entity)
+				*entity = handle;
 
 			return g_getFragmentDataPtr(entityManager, handle, g_healthFragmentStruct);
 		}
 
 		void EnforceDisableAI(SDK::AMassEnemyCharacterBase* actor, SDK::UMassAgentComponent* agent)
 		{
-			if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
-			{
-				if (aiController->BrainComponent)
-					aiController->BrainComponent->SetComponentTickEnabled(false);
-			}
+			auto* aiController = static_cast<SDK::AAIController*>(actor->Controller);
+			auto* brain = aiController ? aiController->BrainComponent : nullptr;
 
+			// The agent has no readable on/off state; the brain's tick has.
 			AttackRangeCache& cache = g_attackRangeCache[actor];
 			if (cache.actor.Get() != actor)
 			{
+				cache.brainTicked = brain && brain->IsComponentTickEnabled();
 				cache.actor.Set(actor);
 				cache.distance         = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor);
 				cache.coneHalfAngle    = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor);
 				cache.buildingDistance = BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_AllowedBuildingAttackDistance, actor);
 			}
 			cache.agent.Set(agent);
+
+			if (brain)
+				brain->SetComponentTickEnabled(false);
 
 			BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackDistance, actor, 0.0f);
 			BetterCheats::Fields::Store(BetterCheats::Fields::MassEnemyCharacterBase_AllowedAttackConeHalfAngle, actor, 0.0f);
@@ -306,7 +321,7 @@ namespace BetterCheats::Panels::Enemies
 
 						if (auto* aiController = static_cast<SDK::AAIController*>(actor->Controller))
 						{
-							if (aiController->BrainComponent)
+							if (cache.brainTicked && aiController->BrainComponent)
 								aiController->BrainComponent->SetComponentTickEnabled(true);
 						}
 					}
@@ -322,6 +337,41 @@ namespace BetterCheats::Panels::Enemies
 			}
 
 			g_attackRangeCache.clear();
+		}
+
+		// Gives back the health of every lowered enemy that is still alive, still
+		// at what we wrote and still the same one.
+		void RestoreLoweredHealth()
+		{
+			for (const auto& entry : g_loweredHealth)
+			{
+				const LoweredHealth& lowered = entry.second;
+
+				SDK::AMassEnemyCharacterBase* actor = lowered.actor.Get();
+				if (!actor)
+					continue;
+
+				try
+				{
+					if (BetterCheats::Fields::ValueOr(BetterCheats::Fields::MassEnemyCharacterBase_bIsInPool, actor))
+						continue;
+
+					SDK::FMassEntityHandle entity{};
+					void* fragment = ResolveHealthFragment(actor, &entity);
+					if (!fragment || entity.Index != lowered.entity.Index || entity.SerialNumber != lowered.entity.SerialNumber)
+						continue;
+
+					float* hp = BetterCheats::Fields::MassEnemyHealthFragment_HP.In(fragment);
+					if (hp && *hp == 1.0f)
+						*hp = lowered.hp;
+				}
+				catch (...)
+				{
+					LOG_WARN("Enemies: exception restoring an enemy's health.");
+				}
+			}
+
+			g_loweredHealth.clear();
 		}
 
 		// Pins HP to 1 (only ever lowering it, never healing) on the enemy's real
@@ -343,7 +393,8 @@ namespace BetterCheats::Panels::Enemies
 		void EnforceOneHitKill(SDK::AMassEnemyCharacterBase* actor, SDK::UMassAgentComponent* agent)
 		{
 			void* healthFragment = nullptr;
-			try { healthFragment = ResolveHealthFragment(actor); }
+			SDK::FMassEntityHandle entity{};
+			try { healthFragment = ResolveHealthFragment(actor, &entity); }
 			catch (...) { healthFragment = nullptr; }
 
 			if (healthFragment)
@@ -352,7 +403,17 @@ namespace BetterCheats::Panels::Enemies
 				{
 					float* hp = BetterCheats::Fields::MassEnemyHealthFragment_HP.In(healthFragment);
 					if (hp && *hp > 1.0f)
+					{
+						LoweredHealth& lowered = g_loweredHealth[actor];
+						if (lowered.actor.Get() != actor || lowered.entity.Index != entity.Index
+							|| lowered.entity.SerialNumber != entity.SerialNumber)
+						{
+							lowered.actor.Set(actor);
+							lowered.entity = entity;
+							lowered.hp = *hp;
+						}
 						*hp = 1.0f;
+					}
 				}
 				catch (...)
 				{
@@ -406,6 +467,7 @@ namespace BetterCheats::Panels::Enemies
 		g_enemies.clear();
 		g_killedEnemies.clear();
 		g_attackRangeCache.clear();
+		g_loweredHealth.clear();
 		g_entitySubsystem.Reset();
 		g_actorSubsystem.Reset();
 		g_lastDisableAI = false;
@@ -452,10 +514,9 @@ namespace BetterCheats::Panels::Enemies
 
 	void ReleaseValues()
 	{
-		// Only the AI switch is undone. A hit-kill HP write is not put back: the
-		// enemy it hit is already dead.
 		if (g_lastDisableAI)
 			SwitchDisableAI(false);
+		RestoreLoweredHealth();
 	}
 
 	void Tick(float deltaSeconds)
@@ -486,6 +547,8 @@ namespace BetterCheats::Panels::Enemies
 
 		if (disableAI != g_lastDisableAI)
 			SwitchDisableAI(disableAI);
+		if (!oneHitKill && !g_loweredHealth.empty())
+			RestoreLoweredHealth();
 
 		if (disableAI || oneHitKill)
 		{
