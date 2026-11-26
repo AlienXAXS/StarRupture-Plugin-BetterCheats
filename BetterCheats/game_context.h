@@ -17,6 +17,13 @@ namespace BetterCheats
 		// Any thread: the menu reads it on the render thread.
 		static bool IsInChimeraMain() { return s_inChimeraMain; }
 
+		// Any thread. True from a world's end until the next gameplay world begins
+		// play. The loader can run a queued task in between, mid-travel, so a task
+		// that force-loads assets does nothing then. Not tied to a loaded save: a
+		// joined world may never report one.
+		static bool IsBetweenWorlds() { return s_betweenWorlds; }
+		static void SetBetweenWorlds(bool between) { s_betweenWorlds = between; }
+
 		// Any thread. On the game thread it asks the loader for the net mode
 		// now; elsewhere (the menu on the render thread, keybind callbacks) it
 		// returns the game thread's last answer, since the query reads UObjects.
@@ -43,5 +50,6 @@ namespace BetterCheats
 		static IPluginSelf*      s_self;
 		static std::atomic<bool> s_inChimeraMain;
 		static std::atomic<bool> s_singlePlayer;
+		static std::atomic<bool> s_betweenWorlds;
 	};
 }

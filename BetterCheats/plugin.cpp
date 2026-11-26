@@ -282,11 +282,20 @@ static void ForgetWorldSettings()
 
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 {
+	BetterCheats::GameContext::SetBetweenWorlds(true);
 	g_sessionCurrent = false;
 	g_loadWaiting    = false;
 
 	if (name && std::strcmp(name, "ChimeraMain") == 0)
 		ForgetWorldSettings();
+}
+
+// ChimeraMain only. The stack list asks again here for a refresh it skipped:
+// experience-load-complete may never fire in a joined world.
+static void OnWorldBeginPlay(SDK::UWorld* /*world*/)
+{
+	BetterCheats::GameContext::SetBetweenWorlds(false);
+	BetterCheats::Panels::Inventory::ResumeStackListRefresh();
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
@@ -583,6 +592,7 @@ extern "C" {
 		self->hooks->Engine->RegisterOnTick(&OnEngineTick);
 		self->hooks->World->RegisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 		self->hooks->World->RegisterOnAfterWorldEndPlay(&OnAfterWorldEndPlay);
+		self->hooks->World->RegisterOnWorldBeginPlay(&OnWorldBeginPlay);
 
 		// Hot-reload: experience-load-complete may have already fired before we
 		// registered, so if a session is already in progress, run the same setup now.
@@ -623,6 +633,7 @@ extern "C" {
 			g_self->hooks->Engine->UnregisterOnTick(&OnEngineTick);
 			g_self->hooks->World->UnregisterOnExperienceLoadComplete(&OnExperienceLoadComplete);
 			g_self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnAfterWorldEndPlay);
+			g_self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 		}
 
 		// Detours come out FIRST, before anything that touches game objects.

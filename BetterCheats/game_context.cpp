@@ -10,6 +10,7 @@ namespace BetterCheats
 {
 	IPluginSelf*      GameContext::s_self          = nullptr;
 	std::atomic<bool> GameContext::s_inChimeraMain{ false };
+	std::atomic<bool> GameContext::s_betweenWorlds{ false };
 	std::atomic<bool> GameContext::s_singlePlayer{ false };
 
 	void GameContext::Initialize(IPluginSelf* self)
@@ -33,6 +34,7 @@ namespace BetterCheats
 		s_self = nullptr;
 		s_inChimeraMain = false;
 		s_singlePlayer = false;
+		s_betweenWorlds = false;
 	}
 
 	void GameContext::OnUIStateChanged(uint64_t /*oldState*/, uint64_t newState, void* /*userData*/)

@@ -48,4 +48,8 @@ namespace BetterCheats::Panels::Inventory
 	// Call on the game thread after SessionConfig::Reload(), and when the flag
 	// comes back on.
 	void ApplySavedStackConfig();
+
+	// Asks again for a stack list refresh that was skipped between worlds.
+	// Game thread only, once the next world has begun play.
+	void ResumeStackListRefresh();
 }

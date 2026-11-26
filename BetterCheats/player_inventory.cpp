@@ -718,6 +718,7 @@ namespace BetterCheats::Panels::Inventory
 		std::vector<StackEntry>  g_pendingStackItems;
 		bool                     g_pendingStackReady = false;
 		std::atomic<bool>        g_stackRefreshInFlight{ false };
+		bool                     g_stackRefreshSkipped = false;   // game thread only
 
 		std::vector<StackEntry>  g_stackItems;          // render-thread owned (UI)
 		bool                     g_stackItemsLoaded  = false;
@@ -1025,6 +1026,13 @@ namespace BetterCheats::Panels::Inventory
 		// want to display it (icon-less items still stack).
 		void RefreshStackListOnGameThread(void* /*context*/)
 		{
+			if (BetterCheats::GameContext::IsBetweenWorlds())
+			{
+				g_stackRefreshSkipped = true;
+				g_stackRefreshInFlight.store(false, std::memory_order_release);
+				return;
+			}
+
 			std::vector<StackEntry> items;
 
 			LOG_INFO("Inventory: refreshing item list for stack sizes from the asset registry...");
@@ -2068,6 +2076,15 @@ namespace BetterCheats::Panels::Inventory
 				kv.second.composed.Forget();
 		}
 		g_gatherScanNow.store(true);
+	}
+
+	void ResumeStackListRefresh()
+	{
+		if (!g_stackRefreshSkipped)
+			return;
+
+		g_stackRefreshSkipped = false;
+		RequestRefreshStackList();
 	}
 
 	void ApplySavedStackConfig()
