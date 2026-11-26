@@ -21,6 +21,10 @@ namespace BetterCheats::Panels::Attributes
 	// switched off at runtime. Game thread only.
 	void ReleaseValues();
 
+	// Game thread. Finishes a release that found no character; for the ticks
+	// the section is off.
+	void RetryRelease();
+
 	// For a world that has ended: drops queued edits and the Max Health record.
 	// Game thread only.
 	void ForgetWorld();

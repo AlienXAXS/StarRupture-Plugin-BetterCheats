@@ -287,6 +287,11 @@ namespace BetterCheats::Panels::Attributes
 		ComposedAttribute g_maxHealthBase;
 		ComposedAttribute g_maxHealthCurrent;
 
+		// Which attributes were written, and whether a release still waits for
+		// a character to hand them back on. Game thread only.
+		bool g_written[kAttrCount] = {};
+		bool g_releasePending = false;
+
 		void QueueAttributeEdit(AttrId id, float value)
 		{
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
@@ -357,6 +362,7 @@ namespace BetterCheats::Panels::Attributes
 					if (SDK::FGameplayAttributeData* attribute = GetCurrentAttribute(character, static_cast<AttrId>(i)))
 					{
 						SetAttributeValue(*attribute, edit.value);
+						g_written[i] = true;
 						refreshHud = true;
 					}
 					edit.pending = false;
@@ -373,6 +379,7 @@ namespace BetterCheats::Panels::Attributes
 						g_maxHealthCurrent.Apply(character, maxHealth->CurrentValue, nullptr, g_pendingMaxHealth.value,
 							ComposedAttribute::Mode::Absolute, -FLT_MAX, FLT_MAX);
 						SetAttributeValue(*currentHealth, g_pendingMaxHealth.value);
+						g_written[static_cast<int>(AttrId::Health)] = true;
 						refreshHud = true;
 					}
 					g_pendingMaxHealth.pending = false;
@@ -493,19 +500,30 @@ namespace BetterCheats::Panels::Attributes
 		DropQueuedEdits();
 		g_maxHealthBase.Forget();
 		g_maxHealthCurrent.Forget();
+		std::fill(std::begin(g_written), std::end(g_written), false);
+		g_releasePending = false;
 	}
 
 	void ReleaseValues()
 	{
 		DropQueuedEdits();
+		g_releasePending = true;
+		RetryRelease();
+	}
+
+	void RetryRelease()
+	{
+		if (!g_releasePending)
+			return;
 
 		try
 		{
 			// Only the character that got the raise takes the old values back.
 			SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
-			SDK::FGameplayAttributeData* maxHealth = character
-				? AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character)
-				: nullptr;
+			if (!character)
+				return; // dead or travelling: tried again next tick
+
+			SDK::FGameplayAttributeData* maxHealth = AttrOf(Fields::CrCharacterPlayerBase_HealthAttributes, Fields::CrHealthAttributeSet_MaxHealth, character);
 			if (maxHealth && g_maxHealthCurrent.IsActive())
 			{
 				g_maxHealthBase.Release(character, maxHealth->BaseValue);
@@ -517,15 +535,32 @@ namespace BetterCheats::Panels::Attributes
 
 				RefreshHealthHudOnGameThread(nullptr);
 			}
+
+			// These are live values, so an old one is never written back; one
+			// pinned past its maximum comes down to it.
+			for (int i = 0; i < kAttrCount; ++i)
+			{
+				if (!g_written[i])
+					continue;
+
+				const AttrId id = static_cast<AttrId>(i);
+				SDK::FGameplayAttributeData* current = GetCurrentAttribute(character, id);
+				SDK::FGameplayAttributeData* max = GetMaxAttribute(character, id);
+				if (current && max && max->CurrentValue > 0.0f && current->CurrentValue > max->CurrentValue)
+					SetAttributeValue(*current, max->CurrentValue);
+			}
 		}
 		catch (...) {}
 
 		g_maxHealthBase.Forget();
 		g_maxHealthCurrent.Forget();
+		std::fill(std::begin(g_written), std::end(g_written), false);
+		g_releasePending = false;
 	}
 
 	void Tick(float /*deltaSeconds*/)
 	{
+		g_releasePending = false;
 		SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
 
 		// Keep RenderImGui()'s snapshot fresh and apply any edits it queued —
@@ -543,7 +578,10 @@ namespace BetterCheats::Panels::Attributes
 				continue;
 
 			if (SDK::FGameplayAttributeData* attribute = GetCurrentAttribute(character, static_cast<AttrId>(i)))
+			{
 				SetAttributeValue(*attribute, lock.value);
+				g_written[i] = true;
+			}
 		}
 	}
 

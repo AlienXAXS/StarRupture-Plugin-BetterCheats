@@ -424,6 +424,8 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.Stats, Features::Usable(Features::Stats), g_wasOn.Stats,
 				&Panels::Attributes::ReleaseValues, &Panels::Attributes::ApplySavedConfig))
 			Panels::Attributes::Tick(deltaSeconds);
+		else if (g_initRan.Stats)
+			Panels::Attributes::RetryRelease();
 
 		// Three flags share the Building panel: its saved settings are read per flag,
 		// so any of them coming back on re-reads them all. Only Unlock All Buildings
