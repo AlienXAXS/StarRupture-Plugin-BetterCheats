@@ -141,8 +141,6 @@ The two "anywhere" options relax only the collision check for the piece you plac
 - a window not snapped to a habitat or the Hub, or into a slot already holding a window, airlock or bridge;
 - anything checked separately: stability (unless **No Stability Check** is on), sockets, base-core areas, terrain, resources.
 
-While Best Builder is running, all seven Building options (No Build Cost, No Stability Check, Deconstruct Windows During Waves, Build Windows Anywhere, Build Benches Anywhere, Unlock All Buildings and Unlock All Recipes) are controlled there, and BetterCheats greys them out. Your own setting is not changed and comes back when Best Builder is gone. A row is handed over only while that Best Builder feature is available in this game build; otherwise BetterCheats keeps it.
-
 Creatures, characters and plants in the volume are let through only when a building is also there.
 
 ### Skills
@@ -231,7 +229,7 @@ Both keys can be rebound at runtime via the modloader's keybind settings, and th
 
 3. Launch the game, then press **F10** (default) in-game to open the menu.
 
-> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library. Handing the Building options to Best Builder needs ModLoader 1.28.0; an older loader just leaves them with BetterCheats.
+> **Requires ModLoader 1.24.0 or newer** ([StarRupture-ModLoader](https://github.com/AlienXAXS/StarRupture-ModLoader)) to be installed first. Build Windows Anywhere and Build Benches Anywhere find their game functions in the loader's version object map, which only 1.23.0 or newer carries for these options; an older loader leaves both options off. Machine power takes the size of one game structure from the same map, which only 1.24.0 or newer serves; an older loader leaves it off. Inventory slot sizing takes the parameters of one game widget function from it the same way; an older loader leaves just that part off. The item spawner's icons come from the loader's image library.
 
 ---
 
