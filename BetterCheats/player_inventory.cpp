@@ -223,9 +223,10 @@ namespace BetterCheats::Panels::Inventory
 		// its class when the widget Blueprint unloads (back to the main menu, for
 		// one), and a reload makes a new one. So the cached function is an
 		// ObjectRef, looked up again once it's gone.
-		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height)
+		void CallSetSlotSize(SDK::UWBP_InventorySlot_C* slot, float width, float height, bool restoring = false)
 		{
-			if (!g_slotSizeSettled || !BetterCheats::Features::Usable(BetterCheats::Features::InventorySlotSize)) return;
+			// A restore also runs on the tick that switches slot sizing off.
+			if (!g_slotSizeSettled || (!restoring && !BetterCheats::Features::Usable(BetterCheats::Features::InventorySlotSize))) return;
 
 			static ObjectRef<SDK::UFunction> s_function;
 
@@ -264,11 +265,66 @@ namespace BetterCheats::Panels::Inventory
 			PluginMap::Call(slot, function, block);
 		}
 
+		// What each written box held before the first write, and what we wrote.
+		// Game thread only. ObjectRef, because a widget is freed with its screen.
+		struct SlotCapture
+		{
+			ObjectRef<SDK::USizeBox>             box;
+			ObjectRef<SDK::UWBP_InventorySlot_C> slot;
+			bool  hadWidth, hadHeight;
+			float width, height;
+			float wroteWidth, wroteHeight;
+		};
+		std::vector<SlotCapture> g_slotCaptures;
+
+		SlotCapture& CaptureFor(SDK::UWBP_InventorySlot_C* slot, SDK::USizeBox* box)
+		{
+			g_slotCaptures.erase(std::remove_if(g_slotCaptures.begin(), g_slotCaptures.end(),
+				[](const SlotCapture& c) { return c.box.Get() == nullptr; }), g_slotCaptures.end());
+
+			for (SlotCapture& c : g_slotCaptures)
+				if (c.box.Get() == box) return c;
+
+			g_slotCaptures.push_back({ ObjectRef<SDK::USizeBox>(box), ObjectRef<SDK::UWBP_InventorySlot_C>(slot),
+				box->bOverride_WidthOverride != 0, box->bOverride_HeightOverride != 0,
+				box->WidthOverride, box->HeightOverride, 0.0f, 0.0f });
+			return g_slotCaptures.back();
+		}
+
+		// The server's rules, as against a build that merely lacks the widget's rows:
+		// that one is still sized by the direct writes.
+		bool SlotSizingDenied()
+		{
+			return BetterCheats::Features::StateOf(BetterCheats::Features::InventorySlotSize) == BetterCheats::Features::Why::HostRules;
+		}
+
+		// Game thread. Puts back every box that still holds what we wrote.
+		void RestoreSlotSizes()
+		{
+			for (const SlotCapture& c : g_slotCaptures)
+			{
+				SDK::USizeBox* box = c.box.Get();
+				if (!box || box->WidthOverride != c.wroteWidth || box->HeightOverride != c.wroteHeight)
+					continue;
+
+				if (SDK::UWBP_InventorySlot_C* slot = c.slot.Get())
+					CallSetSlotSize(slot, c.hadWidth ? c.width : g_baseSlotWidth,
+						c.hadHeight ? c.height : g_baseSlotHeight, true);
+
+				if (c.hadWidth) box->SetWidthOverride(c.width);
+				else            box->ClearWidthOverride();
+				if (c.hadHeight) box->SetHeightOverride(c.height);
+				else             box->ClearHeightOverride();
+			}
+			g_slotCaptures.clear();
+			g_appliedSlotScale = 1.0f;
+		}
+
 		// Returns the scale actually in force, or 0 when there was nothing to
 		// apply it to.
 		float ApplySlotScale(SDK::UCrUW_InventoryContainer* container, float scale)
 		{
-			if (!container) return 0.0f;
+			if (!container || SlotSizingDenied()) return 0.0f;
 
 			SDK::UGridPanel* grid = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrUW_InventoryContainer_ItemGridPanel, container);
 			if (!grid) return 0.0f;
@@ -325,10 +381,14 @@ namespace BetterCheats::Panels::Inventory
 					continue;
 				}
 
+				SlotCapture& capture = CaptureFor(slot, box);
+
 				CallSetSlotSize(slot, width, height);
 
 				box->SetWidthOverride(width);
 				box->SetHeightOverride(height);
+				capture.wroteWidth  = width;
+				capture.wroteHeight = height;
 				++touched;
 			}
 
@@ -373,7 +433,10 @@ namespace BetterCheats::Panels::Inventory
 			if (!inv || !IsBoundTo(container, inv))
 				return;
 
+			// Tracked while the section is off too, so its return reaches this screen.
 			TrackContainer(container);
+			if (!Features::Usable(Features::Inventory))
+				return;
 
 			// Freshly built slots are already at their designer size.
 			const float scale = WantedSlotScale(inv);
@@ -417,7 +480,7 @@ namespace BetterCheats::Panels::Inventory
 		{
 			g_originalInitInventorySlots(self);
 
-			if (!Features::Usable(Features::Inventory) || !BetterCheats::GameContext::AreCheatsAllowed())
+			if (!BetterCheats::GameContext::AreCheatsAllowed())
 				return;
 
 			try { OnSlotsBuilt(self); }
@@ -490,6 +553,7 @@ namespace BetterCheats::Panels::Inventory
 			g_baseSlotWidth    = 0.0f;
 			g_baseSlotHeight   = 0.0f;
 			g_containers.clear();
+			g_slotCaptures.clear();
 		}
 
 		// ---------------------------------------------------------------------
@@ -2291,6 +2355,8 @@ namespace BetterCheats::Panels::Inventory
 	{
 		try { RestoreGatherables(); }
 		catch (...) {}
+		try { RestoreSlotSizes(); }
+		catch (...) {}
 	}
 
 	void ShutdownStackSizes()
@@ -2322,6 +2388,14 @@ namespace BetterCheats::Panels::Inventory
 		// which it does before the next tick, so the call waits for that tick.
 		g_slotSizeSettled = BetterCheats::Features::SlotSizeRowsResolved();
 		BetterCheats::Features::ResolveSlotSizeLate();
+
+		static bool s_sizingDenied = false;
+		if (const bool denied = SlotSizingDenied(); denied != s_sizingDenied)
+		{
+			s_sizingDenied = denied;
+			if (denied) RestoreSlotSizes();
+			else        g_rescaleBuilt.store(true);
+		}
 
 		ApplyPendingResize();
 		RescaleBuiltContainers();
@@ -2363,11 +2437,14 @@ namespace BetterCheats::Panels::Inventory
 			g_pendingResize.store(false);
 		}
 
-		// A new session means new widgets, so the size captured from the old ones
-		// is no longer something we know to be unscaled.
-		g_baseSlotWidth  = 0.0f;
-		g_baseSlotHeight = 0.0f;
-		g_containers.clear();
+		// With every old widget gone, the size captured from them is read again.
+		// Live ones (the section coming back on) are kept and sized again.
+		if (!AnyContainerLive())
+		{
+			g_baseSlotWidth  = 0.0f;
+			g_baseSlotHeight = 0.0f;
+		}
+		g_rescaleBuilt.store(true);
 
 		// Plant Pickup. Hand every CDO its original back first, so the next
 		// tick captures the true base and persists it into this session's
