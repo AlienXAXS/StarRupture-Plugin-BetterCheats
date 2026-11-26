@@ -109,6 +109,14 @@ namespace BetterCheats::Panels::Corporations
 
 	namespace
 	{
+		void RenderSaveWarning(IModLoaderImGui* imgui)
+		{
+			imgui->Spacing();
+			imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
+				"Note: Setting Data Points here will persist in the player save file, "
+				"even if BetterCheats is later removed.");
+		}
+
 		// The controls with no values: nothing here comes from the game.
 		void RenderUnavailable(IModLoaderImGui* imgui)
 		{
@@ -119,12 +127,17 @@ namespace BetterCheats::Panels::Corporations
 
 				imgui->TableNextRow(0, 0.0f);
 				imgui->TableSetColumnIndex(0); imgui->Text("Data Points");
-				imgui->TableSetColumnIndex(1); imgui->Text("-");
+				imgui->TableSetColumnIndex(1);
+				imgui->SetNextItemWidth(-1.0f);
+				int noValue = 0;
+				imgui->InputInt("##data_points", &noValue, 1, 100);
 				imgui->TableSetColumnIndex(2);
 				imgui->SmallButton("Apply");
 
 				imgui->EndTable();
 			}
+
+			RenderSaveWarning(imgui);
 		}
 	}
 
@@ -190,9 +203,6 @@ namespace BetterCheats::Panels::Corporations
 			imgui->EndTable();
 		}
 
-		imgui->Spacing();
-		imgui->TextColored(1.0f, 0.3f, 0.3f, 1.0f,
-			"Note: Setting Data Points here will persist in the player save file, "
-			"even if BetterCheats is later removed.");
+		RenderSaveWarning(imgui);
 	}
 }
