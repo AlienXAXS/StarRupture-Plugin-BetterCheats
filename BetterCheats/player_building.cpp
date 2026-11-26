@@ -92,6 +92,7 @@ namespace BetterCheats::Panels::Building
 
 		bool g_unlockAllBuildings     = false;
 		bool g_prevUnlockAllBuildings = false;
+		bool g_keeperUnlockWritten    = false;	// we set the keeper's flag, so it is ours to take back
 
 		using CheckAvailableBuildingsFn = void(__fastcall*)(void* self, void* corporation, int64_t reputation);
 		CheckAvailableBuildingsFn g_checkAvailableBuildings = nullptr;
@@ -670,10 +671,11 @@ namespace BetterCheats::Panels::Building
 	{
 		// The user's choice stays (g_unlockAllBuildings); only the write into the
 		// keeper is undone, and Tick writes it again if the section comes back on.
-		if (!g_prevUnlockAllBuildings)
+		g_prevUnlockAllBuildings = false;
+		if (!g_keeperUnlockWritten)
 			return;
 
-		g_prevUnlockAllBuildings = false;
+		g_keeperUnlockWritten = false;
 		ClearKeeperUnlock();
 	}
 
@@ -693,6 +695,7 @@ namespace BetterCheats::Panels::Building
 	{
 		// The keeper that took the write went with the world.
 		g_prevUnlockAllBuildings = false;
+		g_keeperUnlockWritten    = false;
 		ForgetSettings();
 	}
 
@@ -751,6 +754,7 @@ namespace BetterCheats::Panels::Building
 			ReleaseValues();
 		g_unlockAllBuildings      = false;
 		g_prevUnlockAllBuildings  = false;
+		g_keeperUnlockWritten     = false;
 		g_checkAvailableBuildings = nullptr;
 	}
 
@@ -772,6 +776,12 @@ namespace BetterCheats::Panels::Building
 		{
 			g_prevUnlockAllBuildings = g_unlockAllBuildings;
 			LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
+			// Switching off only undoes our own write.
+			if (!g_unlockAllBuildings)
+			{
+				ReleaseValues();
+				return;
+			}
 			try
 			{
 				SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper();
@@ -779,7 +789,10 @@ namespace BetterCheats::Panels::Building
 				if (keeper)
 				{
 					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
-						*unlockAll = g_unlockAllBuildings;
+					{
+						*unlockAll = true;
+						g_keeperUnlockWritten = true;
+					}
 					if (g_checkAvailableBuildings)
 					{
 						LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx, bUnlockAll=%d)",
