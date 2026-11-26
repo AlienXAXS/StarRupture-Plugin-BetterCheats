@@ -282,12 +282,15 @@ static void ForgetWorldSettings()
 
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 {
-	BetterCheats::GameContext::SetBetweenWorlds(true);
 	g_sessionCurrent = false;
 	g_loadWaiting    = false;
 
 	if (name && std::strcmp(name, "ChimeraMain") == 0)
+	{
+		// Only a gameplay world's BeginPlay clears this, so only its end sets it.
+		BetterCheats::GameContext::SetBetweenWorlds(true);
 		ForgetWorldSettings();
+	}
 }
 
 // ChimeraMain only. The stack list and the building scan ask again here for

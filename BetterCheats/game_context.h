@@ -17,7 +17,7 @@ namespace BetterCheats
 		// Any thread: the menu reads it on the render thread.
 		static bool IsInChimeraMain() { return s_inChimeraMain; }
 
-		// Any thread. True from a world's end until the next gameplay world begins
+		// Any thread. True from a gameplay world's end until the next one begins
 		// play. The loader can run a queued task in between, mid-travel, so a task
 		// that force-loads assets does nothing then. Not tied to a loaded save: a
 		// joined world may never report one.
