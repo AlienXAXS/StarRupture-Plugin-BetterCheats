@@ -54,6 +54,9 @@ namespace BetterCheats
 			return s_singlePlayer;
 
 		const EPluginNetMode mode = s_self->hooks->NetMode->GetNetMode();
+		if (mode == EPluginNetMode::Unknown)
+			return s_singlePlayer;
+
 		const bool singlePlayer = mode == EPluginNetMode::Standalone;
 		if (s_singlePlayer.exchange(singlePlayer) != singlePlayer)
 			LOG_INFO("GameContext: net mode %d, cheats %s.", static_cast<int>(mode),
@@ -66,6 +69,24 @@ namespace BetterCheats
 		if (BetterCheatsConfig::Config::IsCheatsInMultiplayerEnabled())
 			return true;
 
-		return IsSinglePlayer();
+		return ServerSetsRules() || IsSinglePlayer();
+	}
+
+	bool GameContext::ServerSetsRules()
+	{
+		if (!s_self || !s_self->hooks->Network)
+			return false;
+
+		// Null below interface 81. Read live: rules arrive after the join.
+		const auto state = PluginOptHostRulesState(s_self->hooks->Network);
+		return state && state() == 1;
+	}
+
+	bool GameContext::IsRefusalDecided()
+	{
+		if (!s_self || !s_self->hooks->NetMode || !s_self->hooks->Engine->IsGameThread())
+			return false;
+
+		return s_self->hooks->NetMode->GetNetMode() != EPluginNetMode::Unknown && !AreCheatsAllowed();
 	}
 }

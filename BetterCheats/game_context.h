@@ -29,6 +29,14 @@ namespace BetterCheats
 		// multiplayer.
 		static bool AreCheatsAllowed();
 
+		// Any thread. The joined server sent a rule set. The loader has then
+		// switched off the features it denies. False on a loader below interface 81.
+		static bool ServerSetsRules();
+
+		// Game thread. Cheats are refused and the net mode is known. An unknown
+		// net mode decides nothing.
+		static bool IsRefusalDecided();
+
 	private:
 		static void OnUIStateChanged(uint64_t oldState, uint64_t newState, void* userData);
 
