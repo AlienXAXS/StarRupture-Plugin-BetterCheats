@@ -2636,6 +2636,6 @@ namespace BetterCheats::Panels::Inventory
 		Features::Section(imgui, Features::StackSize, [&](bool greyed)
 		{
 			RenderItemStackSizes(imgui, greyed);
-		});
+		}, Features::StateOf(Features::Inventory));
 	}
 }

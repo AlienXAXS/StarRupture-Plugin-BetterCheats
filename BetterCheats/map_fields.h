@@ -838,9 +838,10 @@ namespace BetterCheats::Features
 	// Draws a feature's menu section. One the server holds back is drawn greyed out
 	// under the reason. One that is off shows only that, in place of its controls.
 	// `draw` is told whether it is greyed: it then reads no game data, shows none and
-	// asks for none.
+	// asks for none. A reason already shown above on the page (`saidAbove`) is not
+	// repeated.
 	template <class Draw>
-	inline void Section(IModLoaderImGui* imgui, const PluginMap::Feature& feature, Draw draw)
+	inline void Section(IModLoaderImGui* imgui, const PluginMap::Feature& feature, Draw draw, Why saidAbove = Why::Live)
 	{
 		const Why why = StateOf(feature);
 		if (why == Why::Live)
@@ -855,7 +856,8 @@ namespace BetterCheats::Features
 			return;
 		}
 
-		imgui->TextWrapped(ReasonText(why));
+		if (why != saidAbove)
+			imgui->TextWrapped(ReasonText(why));
 		imgui->BeginDisabled(true);
 		draw(true);
 		imgui->EndDisabled();

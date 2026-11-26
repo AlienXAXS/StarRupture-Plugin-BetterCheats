@@ -860,11 +860,27 @@ namespace BetterCheats::Panels::Building
 			imgui->PopTextWrapPos();
 		}
 
+		bool ServerHolds(Features::Why why)
+		{
+			return why == Features::Why::HostRules || why == Features::Why::ServerOnly;
+		}
+
+		// The reason a server holds every row on the page back, when they all have
+		// the same one. Live when they don't: each held row then says its own.
+		Features::Why SharedHold()
+		{
+			const Features::Why why = Features::StateOf(Features::BuildFree);
+			for (const PluginMap::Feature* other : { &Features::DeconstructWindows, &Features::BuildAnywhere, &Features::BuildUnlock })
+				if (Features::StateOf(*other) != why)
+					return Features::Why::Live;
+			return ServerHolds(why) ? why : Features::Why::Live;
+		}
+
 		// Says why a server holds a row back, under its description.
 		void HeldBack(IModLoaderImGui* imgui, const PluginMap::Feature& feature)
 		{
 			const Features::Why why = Features::StateOf(feature);
-			if (why == Features::Why::HostRules || why == Features::Why::ServerOnly)
+			if (ServerHolds(why) && why != SharedHold())
 				Description(imgui, Features::ReasonText(why));
 		}
 	}
@@ -873,6 +889,9 @@ namespace BetterCheats::Panels::Building
 	{
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags    = (1 << 6) | (1 << 9) | (3 << 13);
+
+		if (const Features::Why shared = SharedHold(); shared != Features::Why::Live)
+			imgui->TextWrapped(Features::ReasonText(shared));
 
 		imgui->SeparatorText("Placement");
 		const bool anywhereDeferred = Defer::DeferredTo("build-anywhere");
