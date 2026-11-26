@@ -446,7 +446,7 @@ namespace BetterCheats::Panels::Wave
 			imgui->TableSetColumnIndex(0); imgui->Text("Stage");
 			imgui->TableSetColumnIndex(1); imgui->Text(WaveStageName(snap.waveStage));
 			imgui->TableSetColumnIndex(2);
-			if (snap.inProgress && snap.timerFound)
+			if (snap.inProgress)
 			{
 				if (imgui->SmallButton("Skip##stage"))
 					g_pendingAction.store(static_cast<int>(PendingAction::SkipSegment));
@@ -476,12 +476,6 @@ namespace BetterCheats::Panels::Wave
 		if (!snap.subsysFound)
 		{
 			imgui->TextDisabled("Wave subsystem not found.");
-		}
-		// The game creates the timer only where it runs the waves. Without it these
-		// would change a local copy at most.
-		else if (!snap.timerFound)
-		{
-			imgui->TextDisabled("Timer subsystem not found.");
 		}
 		else if (imgui->BeginTable("##wave_ctrl", 3, kTableFlags))
 		{
