@@ -4,6 +4,7 @@
 #include "aob_patterns.h"
 #include "map_fields.h"
 #include "object_ref.h"
+#include "game_thread.h"
 
 #include "Chimera_classes.hpp"
 
@@ -381,6 +382,9 @@ namespace BetterCheats::Panels::Wave
 			self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 			self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnWorldEndPlay);
 		}
+		// A pause this plugin wrote would outlive a reload.
+		if (BetterCheats::IsGameThread())
+			ReleaseValues();
 		g_waveSubsys.Reset();
 		g_timerSubsys.Reset();
 		g_pauseWritten   = false;
