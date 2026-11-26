@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 
 namespace BetterCheats::Panels::Wave
 {
@@ -221,14 +222,61 @@ namespace BetterCheats::Panels::Wave
 		// -------------------------------------------------------------------------
 		std::atomic<bool> g_pauseWavesEnabled{ false };
 		static bool       g_pauseWritten = false;
+		// What the two pause flags read before the first write of ours.
+		static bool       g_earlierPause = false;
+		static bool       g_earlierActorPause = false;
+		// The session config remembers that our pause is in, because the game
+		// saves it: a true read while this is set is ours, not an earlier value.
+		constexpr const char* kPauseMark = "wave.pauseWritten";
 
+		// The one-shot Pause button paused the current wave.
+		static bool g_wavePaused = false;
+		// Whether waves were running before the first Waves On/Off press, and what
+		// the last press set.
+		static std::optional<bool> g_wavesBefore;
+		static bool g_wavesSet = false;
+
+		SDK::ACrWaveTimerActor* TimerActor()
+		{
+			return BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_TimerActor, g_timerSubsys.Get());
+		}
+
+		void MarkPauseWritten(bool written)
+		{
+			g_pauseWritten = written;
+			SessionConfig::Set(kPauseMark, written);
+		}
+
+		void CaptureWavePause()
+		{
+			const bool ours = SessionConfig::Get(kPauseMark, false);
+			const bool* actorPause = BetterCheats::Fields::CrWaveTimerActor_bPause.In(TimerActor());
+			g_earlierPause      = !ours && TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, false);
+			g_earlierActorPause = !ours && actorPause && *actorPause;
+		}
+
+		// Hands each flag its earlier value, and only where it still reads as paused.
 		void ClearWavePause()
 		{
 			if (!g_pauseWritten)
 				return;
 
-			WriteTimerPause(false);
-			g_pauseWritten = false;
+			if (TimerRead(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, false))
+				TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, g_earlierPause);
+			SDK::ACrWaveTimerActor* timerActor = TimerActor();
+			const bool* actorPause = BetterCheats::Fields::CrWaveTimerActor_bPause.In(timerActor);
+			if (actorPause && *actorPause)
+				BetterCheats::Fields::Store(BetterCheats::Fields::CrWaveTimerActor_bPause, timerActor, g_earlierActorPause);
+			MarkPauseWritten(false);
+		}
+
+		void SetWavesActive(SDK::UCrEnviroWaveTimerSubsystem* timer, bool active)
+		{
+			const bool* stopped = BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bStopWaves.In(timer);
+			if (!g_wavesBefore && stopped)
+				g_wavesBefore = !*stopped;
+			g_wavesSet = active;
+			timer->WavesActive(active);
 		}
 
 		void EnforceWavePause()
@@ -240,8 +288,12 @@ namespace BetterCheats::Panels::Wave
 			{
 				if (g_pauseWavesEnabled.load())
 				{
+					const bool first = !g_pauseWritten;
+					if (first)
+						CaptureWavePause();
 					WriteTimerPause(true);
-					g_pauseWritten = true;
+					if (first)
+						MarkPauseWritten(true);
 				}
 				else
 				{
@@ -268,9 +320,12 @@ namespace BetterCheats::Panels::Wave
 				TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_NextWaveTimer, g_calmLength);
 			// Sets bWaitingForNextWave, clears bStopWaves and re-arms the HUD's NextTime.
 			timer->WavesActive(true);
+			// A restarted timer stays restarted: there is nothing earlier to go back to.
+			g_wavesBefore.reset();
+			g_earlierPause = g_earlierActorPause = false;
 			const bool paused = g_pauseWavesEnabled.load();
 			WriteTimerPause(paused);
-			g_pauseWritten = paused;
+			MarkPauseWritten(paused);
 		}
 
 		void ApplyPendingAction()
@@ -287,20 +342,39 @@ namespace BetterCheats::Panels::Wave
 			{
 				switch (action)
 				{
-					case PendingAction::Pause:        if (wave)  wave->PauseCurrentWave();               break;
-					case PendingAction::Resume:       if (wave)  wave->ResumeCurrentWave();              break;
+					case PendingAction::Pause:
+						if (wave && !wave->IsWavePaused())
+						{
+							wave->PauseCurrentWave();
+							g_wavePaused = true;
+						}
+						break;
+					case PendingAction::Resume:
+						if (wave)
+						{
+							wave->ResumeCurrentWave();
+							g_wavePaused = false;
+						}
+						break;
 					case PendingAction::Cancel:
 						if (wave)
 						{
 							wave->CancelCurrentWave();
+							g_wavePaused = false;
 							RearmTimer();
 						}
 						break;
 					case PendingAction::RestartTimer: RearmTimer();                                      break;
 					case PendingAction::SkipSegment:  if (wave)  wave->ForceWaveStageProgress(1.0f);     break;
-					case PendingAction::WavesOn:      if (timer) timer->WavesActive(true);               break;
-					case PendingAction::WavesOff:     if (timer) timer->WavesActive(false);              break;
-					case PendingAction::StartHeat:    if (wave)  wave->StartWave(SDK::EEnviroWave::Heat); break;
+					case PendingAction::WavesOn:      if (timer) SetWavesActive(timer, true);            break;
+					case PendingAction::WavesOff:     if (timer) SetWavesActive(timer, false);           break;
+					case PendingAction::StartHeat:
+						if (wave)
+						{
+							wave->StartWave(SDK::EEnviroWave::Heat);
+							g_wavePaused = false;
+						}
+						break;
 					default: break;
 				}
 			}
@@ -360,6 +434,8 @@ namespace BetterCheats::Panels::Wave
 			g_timerSubsys.Reset();
 			g_calmLength     = 0.0f;
 			g_pauseWritten   = false;
+			g_wavePaused     = false;
+			g_wavesBefore.reset();
 			g_scanned        = false;
 			g_scanRetryTimer = 0.0f;
 			g_scanAttempts   = 0;
@@ -388,6 +464,8 @@ namespace BetterCheats::Panels::Wave
 		g_waveSubsys.Reset();
 		g_timerSubsys.Reset();
 		g_pauseWritten   = false;
+		g_wavePaused     = false;
+		g_wavesBefore.reset();
 		g_scanned        = false;
 		g_scanRetryTimer = 0.0f;
 		g_scanAttempts   = 0;
@@ -402,13 +480,28 @@ namespace BetterCheats::Panels::Wave
 	{
 		DropPendingAction();
 
-		// The Pause Waves Entirely choice stays; only the write into the timer is
-		// undone, and Tick writes it again if the section comes back on.
-		if (!g_timerSubsys.Get())
-			return;
+		try
+		{
+			SDK::UCrEnviroWaveSubsystem* wave = g_waveSubsys.Get();
+			if (g_wavePaused && wave && wave->IsWavePaused())
+				wave->ResumeCurrentWave();
+			g_wavePaused = false;
 
-		try { ClearWavePause(); }
-		catch (...) { LOG_WARN("Wave: exception clearing wave pause."); }
+			// The Pause Waves Entirely choice stays; only the write into the timer is
+			// undone, and Tick writes it again if the section comes back on.
+			SDK::UCrEnviroWaveTimerSubsystem* timer = g_timerSubsys.Get();
+			if (!timer)
+				return;
+
+			// Only where the waves are still as the last press left them.
+			const bool* stopped = BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bStopWaves.In(timer);
+			if (g_wavesBefore && stopped && !*stopped == g_wavesSet && *g_wavesBefore != g_wavesSet)
+				timer->WavesActive(*g_wavesBefore);
+			g_wavesBefore.reset();
+
+			ClearWavePause();
+		}
+		catch (...) { LOG_WARN("Wave: exception handing back wave state."); }
 	}
 
 	void Tick(float deltaSeconds)
