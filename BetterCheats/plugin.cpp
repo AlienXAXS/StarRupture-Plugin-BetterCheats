@@ -733,6 +733,9 @@ extern "C" {
 #endif
 		// The assets outlive a RELOAD, so the next instance would take an override
 		// for the stock value. Skipped off the game thread (older loaders' RELOAD).
+		// So would a raised maximum, which the next instance would take for the stock one.
+		if (g_initRan.Stats && worldUp && g_self && g_self->hooks->Engine->IsGameThread())
+			BetterCheats::Panels::Attributes::ReleaseValues();
 		if (g_initRan.PowerSection && g_self && g_self->hooks->Engine->IsGameThread())
 		{
 			// With the world up, its templates and placed buildings hold the override too.
