@@ -1,5 +1,6 @@
 #include "plugin.h"
 #include "plugin_helpers.h"
+#include "game_thread.h"
 #include "plugin_config.h"
 #include "aob_resolver.h"
 #include "session_config.h"
@@ -345,6 +346,9 @@ PLUGIN_EXPORT_HOST_INFO()
 // whether the menu is currently open.
 static void OnEngineTick(float deltaSeconds)
 {
+	// Shutdown asks for the game thread even when no feature tick has run.
+	BetterCheats::RecordGameThread();
+
 	// Applies a pending Escape/Q close request. Must run here, on the game
 	// tick, never from inside the panel's own render callback -- see
 	// CheatMenu::TickPendingClose for why. Runs before the ChimeraMain/cheats
