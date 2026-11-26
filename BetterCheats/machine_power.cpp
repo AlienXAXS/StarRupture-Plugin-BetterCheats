@@ -474,9 +474,9 @@ namespace BetterCheats::Panels::Power
 								continue;
 							}
 
-							// Reloading a save reloads this asset from disk, discarding any
-							// in-memory edit from a previous session — re-apply any
-							// persisted override now so newly-spawned entities pick it up.
+							// The asset outlives a world, and its stock value is put back
+							// when one ends -- re-apply any persisted override now so
+							// newly-spawned entities pick it up.
 							const nlohmann::json overrideJson = SessionConfig::Get("power." + entry.assetName, nlohmann::json());
 							if (!overrideJson.is_null())
 							{
@@ -880,9 +880,9 @@ namespace BetterCheats::Panels::Power
 						item.assetName.c_str(), static_cast<void*>(configAsset));
 				}
 
-				// Persist the override so it can be re-applied after a save reload
-				// reloads the asset from disk and discards this in-memory edit. A
-				// reset writes null instead, so the scan stops re-applying it.
+				// Persist the override so the next scan can re-apply it after the
+				// stock value has been put back. A reset writes null instead, so
+				// the scan stops re-applying it.
 				if (item.persist)
 				{
 					if (item.clearOverride)
