@@ -3,6 +3,7 @@
 #include "session_config.h"
 #include "aob_patterns.h"
 #include "map_fields.h"
+#include "object_ref.h"
 
 #include "Chimera_classes.hpp"
 
@@ -20,9 +21,9 @@ namespace BetterCheats::Panels::Wave
 		// Matches by class name and excludes the CDO, same as the pattern used by
 		// other plugins in this project.
 		// -------------------------------------------------------------------------
-		static SDK::UCrEnviroWaveSubsystem*      g_waveSubsys  = nullptr;
-		static SDK::UCrEnviroWaveTimerSubsystem* g_timerSubsys = nullptr;
-		static bool                              g_scanned     = false;
+		static ObjectRef<SDK::UCrEnviroWaveSubsystem>      g_waveSubsys;
+		static ObjectRef<SDK::UCrEnviroWaveTimerSubsystem> g_timerSubsys;
+		static bool                                        g_scanned     = false;
 
 		// The configured calm length. The game assigns NextWaveTimer from its
 		// WaitingDuration and the cheat only ever writes it back, so the largest
@@ -74,13 +75,13 @@ namespace BetterCheats::Panels::Wave
 
 				if (!doneWave && obj != waveCDO && obj->Class == waveClass)
 				{
-					g_waveSubsys = static_cast<SDK::UCrEnviroWaveSubsystem*>(obj);
+					g_waveSubsys.Set(static_cast<SDK::UCrEnviroWaveSubsystem*>(obj));
 					doneWave = true;
 					continue;
 				}
 				if (!doneTimer && obj != timerCDO && obj->Class == timerClass)
 				{
-					g_timerSubsys = static_cast<SDK::UCrEnviroWaveTimerSubsystem*>(obj);
+					g_timerSubsys.Set(static_cast<SDK::UCrEnviroWaveTimerSubsystem*>(obj));
 					doneTimer = true;
 					continue;
 				}
@@ -89,14 +90,16 @@ namespace BetterCheats::Panels::Wave
 
 		void RunObjectScan()
 		{
-			g_waveSubsys  = nullptr;
-			g_timerSubsys = nullptr;
-			g_calmLength  = 0.0f;
+			g_waveSubsys.Reset();
+			g_timerSubsys.Reset();
+			g_calmLength = 0.0f;
 			++g_scanAttempts;
 
 			FindWaveSubsystems();
 
-			if (g_waveSubsys && g_timerSubsys)
+			const bool haveWave  = g_waveSubsys.Get() != nullptr;
+			const bool haveTimer = g_timerSubsys.Get() != nullptr;
+			if (haveWave && haveTimer)
 			{
 				g_scanned = true;
 				return;
@@ -105,8 +108,8 @@ namespace BetterCheats::Panels::Wave
 			if (g_scanAttempts >= kMaxScanAttempts)
 			{
 				g_scanned = true;
-				if (!g_waveSubsys)  LOG_INFO("Wave: UCrEnviroWaveSubsystem isn't available in this world.");
-				if (!g_timerSubsys) LOG_INFO("Wave: UCrEnviroWaveTimerSubsystem isn't available in this world.");
+				if (!haveWave)  LOG_INFO("Wave: UCrEnviroWaveSubsystem isn't available in this world.");
+				if (!haveTimer) LOG_INFO("Wave: UCrEnviroWaveTimerSubsystem isn't available in this world.");
 			}
 		}
 
@@ -136,14 +139,14 @@ namespace BetterCheats::Panels::Wave
 		template <typename T>
 		T TimerRead(const PluginField<T>& field, T fallback)
 		{
-			const T* value = field.In(g_timerSubsys);
+			const T* value = field.In(g_timerSubsys.Get());
 			return value ? *value : fallback;
 		}
 
 		template <typename T>
 		void TimerWrite(const PluginField<T>& field, T value)
 		{
-			if (T* slot = field.In(g_timerSubsys))
+			if (T* slot = field.In(g_timerSubsys.Get()))
 				*slot = value;
 		}
 
@@ -153,7 +156,7 @@ namespace BetterCheats::Panels::Wave
 		void WriteTimerPause(bool paused)
 		{
 			TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_bPause, paused);
-			SDK::ACrWaveTimerActor* timerActor = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_TimerActor, g_timerSubsys);
+			SDK::ACrWaveTimerActor* timerActor = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_TimerActor, g_timerSubsys.Get());
 			BetterCheats::Fields::Store(BetterCheats::Fields::CrWaveTimerActor_bPause, timerActor, paused);
 		}
 
@@ -163,23 +166,23 @@ namespace BetterCheats::Panels::Wave
 		void RefreshSnapshot()
 		{
 			WaveSnapshot snap;
-			if (g_waveSubsys)
+			if (SDK::UCrEnviroWaveSubsystem* wave = g_waveSubsys.Get())
 			{
 				snap.subsysFound = true;
 				try
 				{
-					snap.inProgress = g_waveSubsys->IsWaveInProgress();
-					snap.isPaused   = g_waveSubsys->IsWavePaused();
-					snap.waveType   = g_waveSubsys->GetCurrentType();
-					snap.waveStage  = g_waveSubsys->GetCurrentStage();
-					snap.progress   = g_waveSubsys->GetCurrentStageProgress();
+					snap.inProgress = wave->IsWaveInProgress();
+					snap.isPaused   = wave->IsWavePaused();
+					snap.waveType   = wave->GetCurrentType();
+					snap.waveStage  = wave->GetCurrentStage();
+					snap.progress   = wave->GetCurrentStageProgress();
 				}
 				catch (...)
 				{
 					LOG_WARN("Wave: exception reading wave subsystem state.");
 				}
 			}
-			if (g_timerSubsys)
+			if (g_timerSubsys.Get())
 			{
 				snap.timerFound = true;
 				try
@@ -229,7 +232,7 @@ namespace BetterCheats::Panels::Wave
 
 		void EnforceWavePause()
 		{
-			if (!g_timerSubsys)
+			if (!g_timerSubsys.Get())
 				return;
 
 			try
@@ -256,13 +259,14 @@ namespace BetterCheats::Panels::Wave
 		// so a broken cycle stays broken across reloads unless something does this.
 		void RearmTimer()
 		{
-			if (!g_timerSubsys)
+			SDK::UCrEnviroWaveTimerSubsystem* timer = g_timerSubsys.Get();
+			if (!timer)
 				return;
 
 			if (g_calmLength > 0.0f)
 				TimerWrite(BetterCheats::Fields::CrEnviroWaveTimerSubsystem_NextWaveTimer, g_calmLength);
 			// Sets bWaitingForNextWave, clears bStopWaves and re-arms the HUD's NextTime.
-			g_timerSubsys->WavesActive(true);
+			timer->WavesActive(true);
 			const bool paused = g_pauseWavesEnabled.load();
 			WriteTimerPause(paused);
 			g_pauseWritten = paused;
@@ -276,24 +280,26 @@ namespace BetterCheats::Panels::Wave
 			if (action == PendingAction::None)
 				return;
 
+			SDK::UCrEnviroWaveSubsystem*      wave  = g_waveSubsys.Get();
+			SDK::UCrEnviroWaveTimerSubsystem* timer = g_timerSubsys.Get();
 			try
 			{
 				switch (action)
 				{
-					case PendingAction::Pause:        if (g_waveSubsys)  g_waveSubsys->PauseCurrentWave();                       break;
-					case PendingAction::Resume:       if (g_waveSubsys)  g_waveSubsys->ResumeCurrentWave();                      break;
+					case PendingAction::Pause:        if (wave)  wave->PauseCurrentWave();               break;
+					case PendingAction::Resume:       if (wave)  wave->ResumeCurrentWave();              break;
 					case PendingAction::Cancel:
-						if (g_waveSubsys)
+						if (wave)
 						{
-							g_waveSubsys->CancelCurrentWave();
+							wave->CancelCurrentWave();
 							RearmTimer();
 						}
 						break;
-					case PendingAction::RestartTimer: RearmTimer();                                                         break;
-					case PendingAction::SkipSegment:  if (g_waveSubsys)  g_waveSubsys->ForceWaveStageProgress(1.0f);             break;
-					case PendingAction::WavesOn:      if (g_timerSubsys) g_timerSubsys->WavesActive(true);                       break;
-					case PendingAction::WavesOff:     if (g_timerSubsys) g_timerSubsys->WavesActive(false);                      break;
-					case PendingAction::StartHeat:    if (g_waveSubsys)  g_waveSubsys->StartWave(SDK::EEnviroWave::Heat);        break;
+					case PendingAction::RestartTimer: RearmTimer();                                      break;
+					case PendingAction::SkipSegment:  if (wave)  wave->ForceWaveStageProgress(1.0f);     break;
+					case PendingAction::WavesOn:      if (timer) timer->WavesActive(true);               break;
+					case PendingAction::WavesOff:     if (timer) timer->WavesActive(false);              break;
+					case PendingAction::StartHeat:    if (wave)  wave->StartWave(SDK::EEnviroWave::Heat); break;
 					default: break;
 				}
 			}
@@ -349,8 +355,8 @@ namespace BetterCheats::Panels::Wave
 		}
 		void OnWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
 		{
-			g_waveSubsys     = nullptr;
-			g_timerSubsys    = nullptr;
+			g_waveSubsys.Reset();
+			g_timerSubsys.Reset();
 			g_calmLength     = 0.0f;
 			g_pauseWritten   = false;
 			g_scanned        = false;
@@ -375,8 +381,8 @@ namespace BetterCheats::Panels::Wave
 			self->hooks->World->UnregisterOnWorldBeginPlay(&OnWorldBeginPlay);
 			self->hooks->World->UnregisterOnAfterWorldEndPlay(&OnWorldEndPlay);
 		}
-		g_waveSubsys     = nullptr;
-		g_timerSubsys    = nullptr;
+		g_waveSubsys.Reset();
+		g_timerSubsys.Reset();
 		g_pauseWritten   = false;
 		g_scanned        = false;
 		g_scanRetryTimer = 0.0f;
@@ -387,7 +393,7 @@ namespace BetterCheats::Panels::Wave
 	{
 		// The Pause Waves Entirely choice stays; only the write into the timer is
 		// undone, and Tick writes it again if the section comes back on.
-		if (!g_timerSubsys)
+		if (!g_timerSubsys.Get())
 			return;
 
 		try { ClearWavePause(); }
