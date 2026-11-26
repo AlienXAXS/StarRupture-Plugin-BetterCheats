@@ -802,9 +802,10 @@ namespace BetterCheats::Features
 		if (PluginMap::ResolveLateFields(g_slotSizeScanner, g_slotSizeSelf,
 				Fields::WBP_InventorySlot_SetSlotSize, Fields::WBP_InventorySlot_SetSlotSize_InSize))
 		{
-			// Built from here on, so the loader switching it off reads as the server's rules.
-			g_slotSizeBuiltLate = true;
+			// Built from here on, so the loader switching it off reads as a deny. On first:
+			// a draw thread must not see it built and still off.
 			InventorySlotSize.on = true;
+			g_slotSizeBuiltLate = true;
 		}
 	}
 

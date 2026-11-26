@@ -291,11 +291,13 @@ namespace BetterCheats::Panels::Inventory
 			return g_slotCaptures.back();
 		}
 
-		// The server's rules, as against a build that merely lacks the widget's rows:
-		// that one is still sized by the direct writes.
+		// Switched off after it was on, by a server's rules or a local deny, as against
+		// a build that merely lacks the widget's rows: that one is still sized by the
+		// direct writes.
 		bool SlotSizingDenied()
 		{
-			return BetterCheats::Features::StateOf(BetterCheats::Features::InventorySlotSize) == BetterCheats::Features::Why::HostRules;
+			const PluginMap::Feature& sizing = BetterCheats::Features::InventorySlotSize;
+			return !sizing.On() && BetterCheats::Features::Built(sizing);
 		}
 
 		float g_appliedSlotScale = 1.0f; // game thread only
@@ -2665,13 +2667,21 @@ namespace BetterCheats::Panels::Inventory
 
 		imgui->Spacing();
 
-		bool fit = !greyed && g_wantFitToPanel.load();
+		// A greyed section has already said why.
+		const bool sizingDenied = !greyed && SlotSizingDenied();
+		if (sizingDenied)
+			imgui->TextWrapped(BetterCheats::Features::ReasonText(
+				BetterCheats::Features::StateOf(BetterCheats::Features::InventorySlotSize)));
+
+		bool fit = !greyed && !sizingDenied && g_wantFitToPanel.load();
+		imgui->BeginDisabled(sizingDenied);
 		if (imgui->Checkbox("Shrink slots to fit the inventory frame", &fit))
 		{
 			g_wantFitToPanel.store(fit);
 			g_rescaleBuilt.store(true);
 			SessionConfig::Set("playerInventory.fitToPanel", fit);
 		}
+		imgui->EndDisabled();
 
 		imgui->Spacing();
 
