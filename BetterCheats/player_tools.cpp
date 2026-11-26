@@ -824,6 +824,12 @@ namespace BetterCheats::Panels::Tools
 		catch (...) {}
 	}
 
+	void ForgetSettings()
+	{
+		ReleaseValues();
+		g_overload = false;
+	}
+
 	void Tick(float deltaSeconds)
 	{
 		BetterCheats::RecordGameThread();

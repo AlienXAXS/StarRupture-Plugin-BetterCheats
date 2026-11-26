@@ -13,6 +13,11 @@ namespace BetterCheats::Panels::Building
 	// while the game runs, and Tick applies the toggle again if it comes back on.
 	// Game thread only.
 	void ReleaseValues();
+
+	// For a shut cheats gate: ReleaseValues, then drops every toggle, since the
+	// detours act on a toggle and its feature flag alone. ApplySavedConfig reads
+	// them back. Game thread only.
+	void ForgetSettings();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
 

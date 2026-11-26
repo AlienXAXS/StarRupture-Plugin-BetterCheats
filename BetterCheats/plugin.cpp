@@ -48,6 +48,13 @@ static struct
 // the previous world's data, which a re-apply must not read.
 static std::atomic<bool> g_sessionCurrent{ false };
 
+// The cheats gate, as load complete and the tick last found it. Game thread only.
+// Open: sections may have written values. Released: the gate shut after that and
+// they were taken back. Load waiting: a world finished loading while it was shut.
+static bool g_gateOpen     = false;
+static bool g_gateReleased = false;
+static bool g_loadWaiting  = false;
+
 // Each section's flag as the tick last saw it, and whether it still owes a
 // re-apply. A host (or a version-map miss) can switch a flag off while the game
 // runs: the tick notices the edge, gives back what the section wrote, and on the
@@ -118,6 +125,30 @@ static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(
 	return now;
 }
 
+// Takes back what the sections wrote once the cheats gate shuts. Each section
+// reads as switched off, so FollowFlag applies its saved settings again when the
+// gate opens. Game thread only.
+static void ReleaseForShutGate()
+{
+	using namespace BetterCheats;
+	FollowFlag(g_initRan.Stats, false, g_wasOn.Stats, nullptr, nullptr);
+	FollowFlag(g_initRan.BuildFree, false, g_wasOn.BuildFree, nullptr, nullptr);
+	FollowFlag(g_initRan.BuildAnywhere, false, g_wasOn.BuildAnywhere, nullptr, nullptr);
+	FollowFlag(g_initRan.BuildUnlock, false, g_wasOn.BuildUnlock, nullptr, nullptr);
+	Panels::Building::ForgetSettings();
+	FollowFlag(g_initRan.Inventory, false, g_wasOn.Inventory, &Panels::Inventory::ReleaseValues, nullptr);
+	FollowFlag(g_initRan.StackSize, false, g_wasOn.StackSize, &Panels::Inventory::ReleaseStackSizes, nullptr);
+	FollowFlag(g_initRan.Movement, false, g_wasOn.Movement,
+		[] { Panels::Movement::ReleaseValues(true); }, nullptr);
+	FollowFlag(g_initRan.Mining, false, g_wasOn.Mining, nullptr, nullptr);
+	if (g_initRan.Mining)
+		Panels::Tools::ForgetSettings();
+	FollowFlag(g_initRan.Weapons, false, g_wasOn.Weapons, &Panels::Weapons::ReleaseValues, nullptr);
+	FollowFlag(g_initRan.Wave, false, g_wasOn.Wave, &Panels::Wave::ReleaseValues, nullptr);
+	FollowFlag(g_initRan.Enemies, false, g_wasOn.Enemies, &Panels::Enemies::ReleaseValues, nullptr);
+	FollowFlag(g_initRan.PowerSection, false, g_wasOn.PowerSection, &Panels::Power::ReleaseValues, nullptr);
+}
+
 IPluginSelf* GetSelf() { return g_self; }
 
 PluginPresets::Store BetterCheats::g_presets([](const char* msg) { LOG_WARN("%s", msg); });
@@ -179,10 +210,13 @@ static void OnCloseKeyPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 // JSON config and re-apply any persisted cheat settings.
 static void OnExperienceLoadComplete()
 {
-	if (!BetterCheats::GameContext::AreCheatsAllowed())
-	{
+	// A joining client has no server rules yet, so a shut gate only postpones
+	// this: the tick runs it when the gate opens.
+	g_loadWaiting = !BetterCheats::GameContext::AreCheatsAllowed();
+	if (g_loadWaiting)
 		return;
-	}
+
+	g_gateOpen = true;
 
 	if (!BetterCheats::SessionConfig::Reload())
 	{
@@ -219,6 +253,7 @@ static void OnExperienceLoadComplete()
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* /*name*/)
 {
 	g_sessionCurrent = false;
+	g_loadWaiting    = false;
 }
 
 // PluginGameThreadCallback wrapper for the hot-reload path above.
@@ -279,7 +314,22 @@ static void OnEngineTick(float deltaSeconds)
 	// below ran against server-replicated state on join — crashing the client even
 	// with the menu correctly refusing to open.
 	if (!BetterCheats::GameContext::AreCheatsAllowed())
+	{
+		if (g_gateOpen && BetterCheats::GameContext::IsRefusalDecided())
+		{
+			g_gateOpen     = false;
+			g_gateReleased = true;
+			ReleaseForShutGate();
+		}
 		return;
+	}
+
+	g_gateOpen = true;
+	if (g_loadWaiting)
+		OnExperienceLoadComplete();
+	else if (g_gateReleased && g_sessionCurrent.load())
+		BetterCheats::Panels::Building::ApplySavedConfig();
+	g_gateReleased = false;
 
 	// After the gates: the release and the re-apply both touch game objects, which
 	// only a cheats world has. A flag that changed while gated is picked up on
@@ -584,6 +634,7 @@ extern "C" {
 
 		g_initRan = {};
 		g_wasOn = {};
+		g_gateOpen = g_gateReleased = g_loadWaiting = false;
 		g_sessionCurrent = false;
 		g_self = nullptr;
 	}

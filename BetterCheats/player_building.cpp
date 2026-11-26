@@ -673,6 +673,18 @@ namespace BetterCheats::Panels::Building
 		ClearKeeperUnlock();
 	}
 
+	void ForgetSettings()
+	{
+		ReleaseValues();
+		g_noBuildCost                   = false;
+		g_noStabilityCheck              = false;
+		g_unlockAllBuildings            = false;
+		g_unlockAllRecipes              = false;
+		g_deconstructWindowsDuringWaves = false;
+		g_buildWindowsAnywhere          = false;
+		g_buildBenchesAnywhere          = false;
+	}
+
 	void Shutdown()
 	{
 		IPluginHookUtils* hooks = GetHooks() ? GetHooks()->Hooks : nullptr;

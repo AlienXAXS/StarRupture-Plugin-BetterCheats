@@ -11,6 +11,11 @@ namespace BetterCheats::Panels::Tools
 	// callbacks. Shutdown ends with it; the plugin also calls it when the Tools
 	// section is switched off while the game runs. Game thread only.
 	void ReleaseValues();
+
+	// For a shut cheats gate: ReleaseValues, then drops the One Hit Kill Laser
+	// toggle, since the mining damage detour acts on it and the feature flag
+	// alone. ApplySavedConfig reads it back. Game thread only.
+	void ForgetSettings();
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
 
