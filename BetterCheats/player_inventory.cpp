@@ -741,6 +741,9 @@ namespace BetterCheats::Panels::Inventory
 		constexpr int kStackCeiling = 9999;
 		constexpr int kStackSizeOff = kStackFloor;
 
+		// The global and category tiers hold one int each: a number
+		// (kStackSizeOff = off), or -N for N times each item's own default.
+		// One value, so Tick never reads a number and a multiple half-changed.
 		std::atomic<int> g_stackSize{ kStackSizeOff };
 
 		// Per-item override, keyed by the item's true UniqueItemName (an exact
@@ -825,6 +828,19 @@ namespace BetterCheats::Panels::Inventory
 			return (std::max)(originalMaxStack, ClampStackValue(size));
 		}
 
+		// The same for a global or category tier, which can also be a multiple.
+		int SizeUnderTier(int originalMaxStack, int tier)
+		{
+			return RaiseOnly(originalMaxStack,
+				tier < 0 ? (std::min)(originalMaxStack, kStackCeiling) * -tier : tier);
+		}
+
+		// A saved or preset multiple as a tier, or off when it isn't one.
+		int MultipleTier(int multiple)
+		{
+			return multiple >= 2 ? -(std::min)(multiple, kStackCeiling) : kStackSizeOff;
+		}
+
 		// EUIItemType's own enum names, not a raw/crafted/building/consumable
 		// split -- the game has no "crafted" or "building" bucket in this
 		// field, so relabelling would just invent a mapping that doesn't
@@ -865,9 +881,9 @@ namespace BetterCheats::Panels::Inventory
 			return false;
 		}
 
-		// The category tier's size for one item, or the global one while the
-		// category has no override.
-		int CategorySizeFor(const StackEntry& e, int globalSize,
+		// The tier that covers one item: its category's, or the global one while
+		// the category has no override.
+		int CategoryTierFor(const StackEntry& e, int globalSize,
 			const std::unordered_map<int, int>& categoryOverrides)
 		{
 			auto catIt = categoryOverrides.find(static_cast<int>(e.category));
@@ -882,9 +898,9 @@ namespace BetterCheats::Panels::Inventory
 			const std::unordered_map<std::string, int>& itemOverrides)
 		{
 			auto itemIt = itemOverrides.find(e.uniqueName);
-			const int size = (itemIt != itemOverrides.end()) ? itemIt->second
-			                                                 : CategorySizeFor(e, globalSize, categoryOverrides);
-			return RaiseOnly(e.originalMaxStack, size);
+			if (itemIt != itemOverrides.end())
+				return RaiseOnly(e.originalMaxStack, itemIt->second);
+			return SizeUnderTier(e.originalMaxStack, CategoryTierFor(e, globalSize, categoryOverrides));
 		}
 
 		// Persisted as one array of {uniqueName, value} objects -- the same
@@ -943,10 +959,26 @@ namespace BetterCheats::Panels::Inventory
 				snapshot = g_categoryOverrides;
 			}
 
-			nlohmann::json arr = nlohmann::json::array();
+			// Numbers and multiples are saved apart: categorySizes only ever
+			// holds numbers (1 = off).
+			nlohmann::json sizes     = nlohmann::json::array();
+			nlohmann::json multiples = nlohmann::json::array();
 			for (const auto& kv : snapshot)
-				arr.push_back({ {"category", CategoryLabel(static_cast<SDK::EUIItemType>(kv.first))}, {"value", kv.second} });
-			SessionConfig::Set("playerInventory.stacks.categorySizes", arr);
+			{
+				const char* label = CategoryLabel(static_cast<SDK::EUIItemType>(kv.first));
+				if (kv.second < 0) multiples.push_back({ {"category", label}, {"value", -kv.second} });
+				else               sizes.push_back({ {"category", label}, {"value", kv.second} });
+			}
+			SessionConfig::Set("playerInventory.stacks.categorySizes", sizes);
+			SessionConfig::Set("playerInventory.stacks.categoryMultiples", multiples);
+		}
+
+		// A multiple is saved under its own key, with the size left at off.
+		void PersistGlobalTier()
+		{
+			const int tier = g_stackSize.load();
+			SessionConfig::Set("playerInventory.stacks.globalSize", tier < 0 ? kStackSizeOff : tier);
+			SessionConfig::Set("playerInventory.stacks.globalMultiple", tier < 0 ? -tier : 0);
 		}
 
 		void SetCategoryOverride(SDK::EUIItemType category, int value)
@@ -1252,6 +1284,7 @@ namespace BetterCheats::Panels::Inventory
 		}
 
 		constexpr const char* kStackOffText = "Off - each item keeps its own";
+		constexpr const char* kStackNumberHint = "Number";
 		constexpr int         kStackListRows = 20;   // the item list is at least this tall
 
 		// Render thread. The size box being typed in. A size is committed when
@@ -1291,6 +1324,43 @@ namespace BetterCheats::Panels::Inventory
 			return false;
 		}
 
+		// The x2, x5 and x10 buttons. itemDefault is the row's item default, or
+		// 0 on a global or category row. Returns the multiple pressed, or 0.
+		int StackMultipleButtons(IModLoaderImGui* imgui, int itemDefault)
+		{
+			int pressed = 0;
+			for (int multiple : { 2, 5, 10 })
+			{
+				if (multiple != 2)
+					imgui->SameLine(0.0f, -1.0f);
+				char label[8];
+				snprintf(label, sizeof(label), "x%d", multiple);
+				if (imgui->Button(label))
+				{
+					pressed = multiple;
+					g_stackEditId.clear();
+				}
+				if (imgui->IsItemHovered())
+				{
+					char tooltip[64];
+					if (itemDefault > 0)
+						snprintf(tooltip, sizeof(tooltip), "Stack to %d", SizeUnderTier(itemDefault, -multiple));
+					else
+						snprintf(tooltip, sizeof(tooltip), "%d times each item's own default", multiple);
+					imgui->SetTooltip(tooltip);
+				}
+			}
+			return pressed;
+		}
+
+		// A global or category tier in words.
+		void FormatStackTier(char* out, size_t cap, int tier)
+		{
+			if (tier < 0)                   snprintf(out, cap, "x%d of each item's default", -tier);
+			else if (tier == kStackSizeOff) snprintf(out, cap, "%s", kStackOffText);
+			else                            snprintf(out, cap, "Number: %d", tier);
+		}
+
 		// A reset button with its tooltip, for the stack size tables.
 		bool StackResetButton(IModLoaderImGui* imgui, const char* tooltip)
 		{
@@ -1298,6 +1368,36 @@ namespace BetterCheats::Panels::Inventory
 			if (imgui->IsItemHovered())
 				imgui->SetTooltip(tooltip);
 			return pressed;
+		}
+
+		// Stack size presets are the "Inventory" group of the plugin's presets
+		// file, <plugin folder>/config/BetterCheats-Presets.ini, which every
+		// world shares. Each preset is a "[Inventory:<name>]" section of
+		// key=number lines (see plugin_presets.h). The typed name is only ever
+		// a section name, never a path.
+		//
+		//   version=1               format version; absent means 1
+		//   size=N                  global size, 1 = off; -2 = a multiple
+		//   multiple=N              global multiple; 0 = not a multiple
+		//   categorySize:<label>=N  CategoryLabel(); -1 = follows global,
+		//                           1 = off, -2 = a multiple
+		//   categoryMultiple:<label>=N   that category's multiple; 0 = not one
+		//   item:<key>=N            Fields::ItemKeyOf(), the item's unique name
+		//                           (or asset name); -1 = no size of its own
+		//
+		// A multiple counts only where the matching size says -2. A key a preset
+		// lacks leaves that setting as it is. The file is read once at start and
+		// written only by Save, Rename and Delete.
+		constexpr float kPresetVersion  = 1.0f;
+		constexpr int   kPresetNone     = -1;
+		constexpr int   kPresetMultiple = -2;
+
+		// Whole and within what a size can be, so the cast is always safe.
+		// Call only with a finite value.
+		int PresetNumber(float value)
+		{
+			return static_cast<int>(std::lround((std::clamp)(value,
+				static_cast<float>(kPresetMultiple), static_cast<float>(kStackCeiling))));
 		}
 
 		// Render thread. Global size row, category rows, search + "only show changed"
@@ -1317,7 +1417,8 @@ namespace BetterCheats::Panels::Inventory
 			                    "current cap until picked up, split, or merged again. Items that\n"
 			                    "don't stack at all are shown but can't be changed here.");
 			imgui->TextDisabled("A size only raises a stack: an item that already stacks higher\n"
-			                    "keeps its own size. Type a size and press Enter.");
+			                    "keeps its own size. Type a size and press Enter, or pick x2, x5\n"
+			                    "or x10 of the default.");
 			imgui->Spacing();
 
 			AdoptPendingStackItemsIfReady();
@@ -1343,16 +1444,23 @@ namespace BetterCheats::Panels::Inventory
 			// item happened not to be part of the saved preset.
 			{
 				static PluginPresets::RowState s_presetRow;
+				static const char*             s_presetError = nullptr;
 
-				std::vector<std::string> categoryKeys(g_stackCategories.size());
-				for (size_t i = 0; i < g_stackCategories.size(); ++i)
+				const size_t categoryCount = g_stackCategories.size();
+				std::vector<std::string> categoryKeys(categoryCount);
+				std::vector<std::string> multipleKeys(categoryCount);
+				for (size_t i = 0; i < categoryCount; ++i)
+				{
 					categoryKeys[i] = std::string("categorySize:") + CategoryLabel(g_stackCategories[i]);
+					multipleKeys[i] = std::string("categoryMultiple:") + CategoryLabel(g_stackCategories[i]);
+				}
 
 				std::vector<std::string> itemKeys(g_stackItems.size());
 				for (size_t i = 0; i < g_stackItems.size(); ++i)
 					itemKeys[i] = "item:" + g_stackItems[i].uniqueName;
 
-				const int fieldCount = 1 + static_cast<int>(g_stackCategories.size()) + static_cast<int>(g_stackItems.size());
+				// version, size, multiple, then two per category and one per item.
+				const int fieldCount = 3 + static_cast<int>(2 * categoryCount + g_stackItems.size());
 				std::vector<PluginPresets::Field> fields(fieldCount);
 
 				auto getLive = [&](PluginPresets::Field* out)
@@ -1369,46 +1477,92 @@ namespace BetterCheats::Panels::Inventory
 					}
 
 					int idx = 0;
-					out[idx++] = { "size", static_cast<float>(g_stackSize.load()) };
+					auto put = [&](const char* key, int value) { out[idx++] = { key, static_cast<float>(value) }; };
+					auto putTier = [&](const char* sizeKey, const char* multipleKey, int tier)
+					{
+						put(sizeKey, tier < 0 ? kPresetMultiple : tier);
+						put(multipleKey, tier < 0 ? -tier : 0);
+					};
 
-					for (size_t i = 0; i < g_stackCategories.size(); ++i)
+					out[idx++] = { "version", kPresetVersion };
+					putTier("size", "multiple", g_stackSize.load());
+					for (size_t i = 0; i < categoryCount; ++i)
 					{
 						const auto it = categoryOverrides.find(static_cast<int>(g_stackCategories[i]));
-						out[idx++] = { categoryKeys[i].c_str(), it != categoryOverrides.end() ? static_cast<float>(it->second) : -1.0f };
+						if (it != categoryOverrides.end())
+							putTier(categoryKeys[i].c_str(), multipleKeys[i].c_str(), it->second);
+						else
+						{
+							put(categoryKeys[i].c_str(), kPresetNone);
+							put(multipleKeys[i].c_str(), 0);
+						}
 					}
 					for (size_t i = 0; i < g_stackItems.size(); ++i)
 					{
 						const auto it = itemOverrides.find(g_stackItems[i].uniqueName);
-						out[idx++] = { itemKeys[i].c_str(), it != itemOverrides.end() ? static_cast<float>(it->second) : -1.0f };
+						put(itemKeys[i].c_str(), it != itemOverrides.end() ? it->second : kPresetNone);
 					}
 				};
+				// f arrives seeded with the live values, so a setting the preset
+				// doesn't mention comes through as it already is.
 				auto applyFields = [&](const PluginPresets::Field* f, int count)
 				{
-					int idx = 0;
-					if (idx < count)
+					s_presetError = nullptr;
+					if (count != fieldCount || BetterCheats::g_presets.IsReadOnly())
+						return;
+					if (f[0].value != kPresetVersion)
 					{
-						const int size = ClampStackValue(static_cast<int>(f[idx].value + 0.5f));
-						g_stackSize.store(size);
-						SessionConfig::Set("playerInventory.stacks.globalSize", size);
+						s_presetError = "That preset was saved in a format this version can't read. Nothing was changed.";
+						return;
 					}
-					++idx;
+					for (int i = 0; i < count; ++i)
+					{
+						if (!std::isfinite(f[i].value))
+						{
+							s_presetError = "That preset has a value that isn't a number. Nothing was changed.";
+							return;
+						}
+					}
 
-					for (SDK::EUIItemType cat : g_stackCategories)
+					int idx = 1;
+					auto next = [&] { return PresetNumber(f[idx++].value); };
+
+					const int size           = next();
+					const int globalMultiple = next();
+					if (size != kPresetMultiple)
+						g_stackSize.store(ClampStackValue(size));
+					else if (globalMultiple >= 2)
+						g_stackSize.store(MultipleTier(globalMultiple));
+
 					{
-						if (idx >= count) break;
-						const float v = f[idx].value;
-						if (v < 0.0f) ClearCategoryOverride(cat);
-						else          SetCategoryOverride(cat, ClampStackValue(static_cast<int>(v + 0.5f)));
-						++idx;
+						std::lock_guard<std::mutex> lock(g_categoryMutex);
+						for (SDK::EUIItemType cat : g_stackCategories)
+						{
+							const int value    = next();
+							const int multiple = next();
+							if (value == kPresetMultiple)
+							{
+								if (multiple >= 2)
+									g_categoryOverrides[static_cast<int>(cat)] = MultipleTier(multiple);
+							}
+							else if (value < 0) g_categoryOverrides.erase(static_cast<int>(cat));
+							else                g_categoryOverrides[static_cast<int>(cat)] = ClampStackValue(value);
+						}
 					}
-					for (const StackEntry& e : g_stackItems)
 					{
-						if (idx >= count) break;
-						const float v = f[idx].value;
-						if (v < 0.0f) ClearStackOverride(e.uniqueName);
-						else          SetStackOverride(e.uniqueName, ClampStackValue(static_cast<int>(v + 0.5f)));
-						++idx;
+						std::lock_guard<std::mutex> lock(g_overrideMutex);
+						for (const StackEntry& e : g_stackItems)
+						{
+							const int value = next();
+							if (value < 0) g_stackOverrides.erase(e.uniqueName);
+							else           g_stackOverrides[e.uniqueName] = ClampStackValue(value);
+						}
 					}
+
+					PersistGlobalTier();
+					PersistCategoryOverrides();
+					PersistStackOverrides();
+					g_stackEditId.clear();
 					RefreshFilteredStackItems();
 				};
 				auto isBuiltin      = [](const char*) { return false; };
@@ -1416,6 +1570,15 @@ namespace BetterCheats::Panels::Inventory
 
 				PluginPresets::RenderSavedRow(imgui, BetterCheats::g_presets, "inventory_saved_presets", "Inventory",
 					fields.data(), fieldCount, getLive, applyFields, isBuiltin, computeSuggest, s_presetRow);
+
+				if (BetterCheats::g_presets.IsReadOnly())
+					imgui->TextDisabled(BetterCheats::g_presets.LoadFailed()
+						? "The presets file couldn't be read. Presets can't be loaded or saved until the\n"
+						  "game restarts. Your current settings are unchanged."
+						: "The presets file has lines that can't be read, so presets can't be loaded or\n"
+						  "saved here. The file and your current settings are unchanged.");
+				else if (s_presetError)
+					imgui->TextDisabled(s_presetError);
 			}
 			imgui->Spacing();
 
@@ -1425,10 +1588,12 @@ namespace BetterCheats::Panels::Inventory
 			// field, see the StackEntry::category comment). A category follows
 			// the global size until it gets one of its own.
 			int globalSize = g_stackSize.load();
-			if (imgui->BeginTable("##stack_tier_table", 3, kTableFlags))
+			if (imgui->BeginTable("##stack_tier_table", 5, kTableFlags))
 			{
 				imgui->TableSetupColumn("Attribute", kColumnFixed, 0.0f);
-				imgui->TableSetupColumn("Size", kColumnStretch, 1.0f);
+				imgui->TableSetupColumn("Size", kColumnStretch, 0.5f);
+				imgui->TableSetupColumn("Multiples", kColumnFixed, 0.0f);
+				imgui->TableSetupColumn("Now", kColumnStretch, 1.0f);
 				imgui->TableSetupColumn("", kColumnFixed, 0.0f);
 
 				imgui->TableNextRow(0, 0.0f);
@@ -1438,27 +1603,43 @@ namespace BetterCheats::Panels::Inventory
 				if (globalSize != kStackSizeOff) imgui->Text("Stack size");
 				else                             imgui->TextDisabled("Stack size");
 				if (imgui->IsItemHovered())
-					imgui->SetTooltip("Every stackable item stacks to at least this many.\n"
+					imgui->SetTooltip("Every stackable item stacks to at least this many: the number\n"
+					                  "you type, or a multiple of its own default.\n"
 					                  "Items that already stack higher keep their own size.\n"
 					                  "Empty or 1 = off. A category or item size below replaces this.");
 
 				int  typed      = 0;
 				bool setGlobal  = false;
+				int  newGlobal  = kStackSizeOff;
 				imgui->TableSetColumnIndex(1);
-				if (StackSizeBox(imgui, "global", globalSize != kStackSizeOff ? globalSize : 0, kStackOffText, typed))
+				if (StackSizeBox(imgui, "global", globalSize > kStackSizeOff ? globalSize : 0, kStackNumberHint, typed))
+				{
+					newGlobal = ClampStackValue(typed);
 					setGlobal = true;
+				}
 				imgui->TableSetColumnIndex(2);
+				if (const int multiple = StackMultipleButtons(imgui, 0))
+				{
+					newGlobal = MultipleTier(multiple);
+					setGlobal = true;
+				}
+				imgui->TableSetColumnIndex(3);
+				char tierText[64];
+				FormatStackTier(tierText, sizeof(tierText), globalSize);
+				imgui->AlignTextToFramePadding();
+				imgui->TextDisabled(tierText);
+				imgui->TableSetColumnIndex(4);
 				if (StackResetButton(imgui, "Turn off: each item keeps its own size."))
 				{
-					typed     = kStackSizeOff;
+					newGlobal = kStackSizeOff;
 					setGlobal = true;
 					g_stackEditId.clear();
 				}
 				if (setGlobal)
 				{
-					globalSize = ClampStackValue(typed);
+					globalSize = newGlobal;
 					g_stackSize.store(globalSize);
-					SessionConfig::Set("playerInventory.stacks.globalSize", globalSize);
+					PersistGlobalTier();
 					RefreshFilteredStackItems();
 				}
 				imgui->PopID();
@@ -1473,13 +1654,8 @@ namespace BetterCheats::Panels::Inventory
 				{
 					const auto catIt       = categorySnapshot.find(static_cast<int>(cat));
 					const bool hasOverride = catIt != categorySnapshot.end();
-					const int  shown       = hasOverride && catIt->second != kStackSizeOff ? catIt->second : 0;
-
-					char hint[48];
-					if (!hasOverride && globalSize != kStackSizeOff)
-						snprintf(hint, sizeof(hint), "All items: %d", globalSize);
-					else
-						snprintf(hint, sizeof(hint), "%s", kStackOffText);
+					const int  tier        = hasOverride ? catIt->second : globalSize;
+					const int  shown       = hasOverride && tier > kStackSizeOff ? tier : 0;
 
 					int itemCount = 0;
 					for (const StackEntry& e : g_stackItems)
@@ -1501,7 +1677,7 @@ namespace BetterCheats::Panels::Inventory
 					}
 
 					imgui->TableSetColumnIndex(1);
-					if (StackSizeBox(imgui, std::string("category:") + CategoryLabel(cat), shown, hint, typed))
+					if (StackSizeBox(imgui, std::string("category:") + CategoryLabel(cat), shown, kStackNumberHint, typed))
 					{
 						if (typed == 0 || typed == globalSize)
 							ClearCategoryOverride(cat);
@@ -1510,6 +1686,22 @@ namespace BetterCheats::Panels::Inventory
 						RefreshFilteredStackItems();
 					}
 					imgui->TableSetColumnIndex(2);
+					if (const int multiple = StackMultipleButtons(imgui, 0))
+					{
+						if (MultipleTier(multiple) == globalSize)
+							ClearCategoryOverride(cat);
+						else
+							SetCategoryOverride(cat, MultipleTier(multiple));
+						RefreshFilteredStackItems();
+					}
+					imgui->TableSetColumnIndex(3);
+					FormatStackTier(tierText, sizeof(tierText), tier);
+					char nowText[96];
+					snprintf(nowText, sizeof(nowText), "%s%s",
+						!hasOverride && tier != kStackSizeOff ? "Follows above - " : "", tierText);
+					imgui->AlignTextToFramePadding();
+					imgui->TextDisabled(nowText);
+					imgui->TableSetColumnIndex(4);
 					if (StackResetButton(imgui, "Follow the stack size above."))
 					{
 						g_stackEditId.clear();
@@ -1594,8 +1786,8 @@ namespace BetterCheats::Panels::Inventory
 						// itself be inheriting global (no category override) or an
 						// explicit category override.
 						const auto  categoryIt   = categoryOverrides.find(static_cast<int>(e.category));
-						const int   categorySize = CategorySizeFor(e, globalSize, categoryOverrides);
-						const int   inherited    = RaiseOnly(e.originalMaxStack, categorySize);
+						const int   categoryTier = CategoryTierFor(e, globalSize, categoryOverrides);
+						const int   inherited    = SizeUnderTier(e.originalMaxStack, categoryTier);
 
 						const auto  overrideIt   = overrides.find(e.uniqueName);
 						const bool  hasOverride  = overrideIt != overrides.end();
@@ -1611,14 +1803,12 @@ namespace BetterCheats::Panels::Inventory
 						else                           imgui->TextDisabled(e.name.c_str());
 						if (imgui->IsItemHovered())
 						{
-							char global[32];
-							if (globalSize != kStackSizeOff) snprintf(global, sizeof(global), "%d", globalSize);
-							else                             snprintf(global, sizeof(global), "off");
+							char global[64];
+							FormatStackTier(global, sizeof(global), globalSize);
 
-							char category[48];
-							if (categoryIt == categoryOverrides.end())  snprintf(category, sizeof(category), "follows global");
-							else if (categoryIt->second != kStackSizeOff) snprintf(category, sizeof(category), "%d", categoryIt->second);
-							else                                        snprintf(category, sizeof(category), "off");
+							char category[64];
+							if (categoryIt == categoryOverrides.end()) snprintf(category, sizeof(category), "follows global");
+							else                                       FormatStackTier(category, sizeof(category), categoryIt->second);
 
 							char tooltip[384];
 							const int n = snprintf(tooltip, sizeof(tooltip),
@@ -1659,26 +1849,8 @@ namespace BetterCheats::Panels::Inventory
 						}
 
 						imgui->TableSetColumnIndex(3);
-						for (int multiple : { 2, 5, 10 })
-						{
-							if (multiple != 2)
-								imgui->SameLine(0.0f, -1.0f);
-							char label[8];
-							snprintf(label, sizeof(label), "x%d", multiple);
-							const int size = RaiseOnly(e.originalMaxStack,
-								(std::min)(e.originalMaxStack, kStackCeiling) * multiple);
-							if (imgui->Button(label))
-							{
-								chosen = size;
-								g_stackEditId.clear();
-							}
-							if (imgui->IsItemHovered())
-							{
-								char tooltip[48];
-								snprintf(tooltip, sizeof(tooltip), "Stack to %d", size);
-								imgui->SetTooltip(tooltip);
-							}
-						}
+						if (const int multiple = StackMultipleButtons(imgui, e.originalMaxStack))
+							chosen = SizeUnderTier(e.originalMaxStack, -multiple);
 
 						imgui->TableSetColumnIndex(4);
 						if (StackResetButton(imgui, "Follow the category and global sizes."))
@@ -2199,7 +2371,14 @@ namespace BetterCheats::Panels::Inventory
 		SessionConfig::Remove("playerInventory.stacks.categoryOverrides");
 		{
 			const nlohmann::json saved = SessionConfig::Get("playerInventory.stacks.globalSize", kStackSizeOff);
-			g_stackSize.store(ClampStackValue(saved.is_number() ? saved.get<int>() : kStackSizeOff));
+			int tier = ClampStackValue(saved.is_number() ? saved.get<int>() : kStackSizeOff);
+			if (tier == kStackSizeOff)
+			{
+				const nlohmann::json multiple = SessionConfig::Get("playerInventory.stacks.globalMultiple", 0);
+				if (multiple.is_number())
+					tier = MultipleTier(multiple.get<int>());
+			}
+			g_stackSize.store(tier);
 		}
 
 		{
@@ -2224,16 +2403,24 @@ namespace BetterCheats::Panels::Inventory
 
 		{
 			std::unordered_map<int, int> loaded;
-			const nlohmann::json arr = SessionConfig::Get("playerInventory.stacks.categorySizes", nlohmann::json::array());
-			if (arr.is_array())
+			// Multiples first: a size saved for the same category replaces one.
+			for (const bool isMultiple : { true, false })
 			{
+				const nlohmann::json arr = SessionConfig::Get(isMultiple ? "playerInventory.stacks.categoryMultiples"
+					: "playerInventory.stacks.categorySizes", nlohmann::json::array());
+				if (!arr.is_array())
+					continue;
 				for (const auto& e : arr)
 				{
 					const std::string label = e.value("category", std::string());
 					SDK::EUIItemType  cat{};
 					if (label.empty() || !e.contains("value") || !e["value"].is_number() || !CategoryFromLabel(label, cat))
 						continue;
-					loaded[static_cast<int>(cat)] = ClampStackValue(e["value"].get<int>());
+					const int value = e["value"].get<int>();
+					if (!isMultiple)
+						loaded[static_cast<int>(cat)] = ClampStackValue(value);
+					else if (value >= 2)
+						loaded[static_cast<int>(cat)] = MultipleTier(value);
 				}
 			}
 			std::lock_guard<std::mutex> lock(g_categoryMutex);
