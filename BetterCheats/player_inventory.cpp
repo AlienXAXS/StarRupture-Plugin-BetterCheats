@@ -1206,9 +1206,12 @@ namespace BetterCheats::Panels::Inventory
 					float valueF = static_cast<float>(BetterCheats::Fields::ValueOr(BetterCheats::Fields::AuItemDataBase_MaxStack, item));
 					const std::string key = StackComposeKey(e.uniqueName);
 
+					const float before = valueF;
 					BetterCheats::ApplyComposedRow(state.composed, item, valueF, key, active,
 						static_cast<float>(desired), BetterCheats::ComposedAttribute::Mode::Absolute,
 						static_cast<float>(kStackFloor), static_cast<float>(kStackCeiling));
+					if (valueF == before)
+						continue;
 
 					const int newValue = static_cast<int>(valueF + 0.5f);
 					if (int32_t* maxStack = BetterCheats::Fields::AuItemDataBase_MaxStack.In(item); maxStack && *maxStack != newValue)
@@ -1218,13 +1221,16 @@ namespace BetterCheats::Panels::Inventory
 			catch (...) {}
 		}
 
-		// Game thread only. Hands every live item its original MaxStack back
-		// and drops the persisted compose state.
+		// Game thread only. Hands each item we changed its original MaxStack
+		// back and drops its persisted compose state. Items we only looked at
+		// are never written.
 		void RestoreStackSizes()
 		{
 			for (auto& kv : g_stackComposed)
 			{
 				StackComposeState& state = kv.second;
+				if (!state.composed.IsActive())
+					continue;
 				SDK::UAuItemDataBase* item = state.item.Get();
 				if (!item)
 				{
