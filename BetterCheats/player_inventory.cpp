@@ -18,6 +18,7 @@
 #include "AuItems_classes.hpp"
 
 #include <algorithm>
+#include <cfloat>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -65,6 +66,7 @@ namespace BetterCheats::Panels::Inventory
 
 		// ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp
 		constexpr int kTableFlags  = (1 << 6) | (1 << 9) | (3 << 13);
+		constexpr int kColumnStretch = 1 << 3; // ImGuiTableColumnFlags_WidthStretch
 		constexpr int kColumnFixed = 1 << 4; // ImGuiTableColumnFlags_WidthFixed
 
 		bool g_commandRegistered = false;
@@ -1249,6 +1251,55 @@ namespace BetterCheats::Panels::Inventory
 			}
 		}
 
+		constexpr const char* kStackOffText = "Off - each item keeps its own";
+		constexpr int         kStackListRows = 20;   // the item list is at least this tall
+
+		// Render thread. The size box being typed in. A size is committed when
+		// the box is left, so a half-typed number is never applied.
+		std::string g_stackEditId;
+		char        g_stackEditText[8] = {};
+
+		// A numeric entry that shows `shown`, or `hint` when shown is 0. True
+		// when an edit is committed: `typed` is the number, or 0 for a box
+		// left empty. Anything that isn't a whole number is ignored.
+		bool StackSizeBox(IModLoaderImGui* imgui, const std::string& id, int shown, const char* hint, int& typed)
+		{
+			char idle[sizeof(g_stackEditText)] = {};
+			if (shown > 0)
+				snprintf(idle, sizeof(idle), "%d", shown);
+			const bool editing = g_stackEditId == id;
+			char* text = editing ? g_stackEditText : idle;
+
+			imgui->SetNextItemWidth(-FLT_MIN);
+			if (imgui->InputTextWithHint("##size", hint, text, sizeof(g_stackEditText)) && !editing)
+			{
+				g_stackEditId = id;
+				memcpy(g_stackEditText, idle, sizeof(g_stackEditText));
+			}
+
+			if (imgui->IsItemDeactivatedAfterEdit())
+			{
+				const std::string entered = g_stackEditId == id ? g_stackEditText : text;
+				g_stackEditId.clear();
+				if (entered.find_first_not_of("0123456789") != std::string::npos)
+					return false;
+				typed = entered.empty() ? 0 : ClampStackValue(atoi(entered.c_str()));
+				return true;
+			}
+			if (g_stackEditId == id && !imgui->IsItemActive())
+				g_stackEditId.clear();
+			return false;
+		}
+
+		// A reset button with its tooltip, for the stack size tables.
+		bool StackResetButton(IModLoaderImGui* imgui, const char* tooltip)
+		{
+			const bool pressed = BetterCheats::UI::ResetButton(imgui, "##reset");
+			if (imgui->IsItemHovered())
+				imgui->SetTooltip(tooltip);
+			return pressed;
+		}
+
 		// Render thread. Global size row, category rows, search + "only show changed"
 		// filter, then a scrolled table of every filtered item -- follows the
 		// same shared-row-helper shape as player_weapons.cpp's tables, and the
@@ -1266,7 +1317,7 @@ namespace BetterCheats::Panels::Inventory
 			                    "current cap until picked up, split, or merged again. Items that\n"
 			                    "don't stack at all are shown but can't be changed here.");
 			imgui->TextDisabled("A size only raises a stack: an item that already stacks higher\n"
-			                    "keeps its own size.");
+			                    "keeps its own size. Type a size and press Enter.");
 			imgui->Spacing();
 
 			AdoptPendingStackItemsIfReady();
@@ -1368,65 +1419,49 @@ namespace BetterCheats::Panels::Inventory
 			}
 			imgui->Spacing();
 
-			// ---- global size -----------------------------------------------------
+			// ---- global and category sizes --------------------------------------
+			// One table so the two tiers line up. One row per category actually
+			// present in the scan (EUIItemType -- the game's own item-type
+			// field, see the StackEntry::category comment). A category follows
+			// the global size until it gets one of its own.
 			int globalSize = g_stackSize.load();
-			if (imgui->BeginTable("##stack_size_table", 3, kTableFlags))
+			if (imgui->BeginTable("##stack_tier_table", 3, kTableFlags))
 			{
-				const float sizeLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
-					[](int) { return "Stack size"; });
-
-				imgui->TableSetupColumn("Attribute", kColumnFixed,
-					BetterCheats::UI::GetReadoutColumnWidth(imgui, sizeLabelReserve));
-				imgui->TableSetupColumn("Value", 0, 0.54f);
-				imgui->TableSetupColumn("",      0, 0.10f);
+				imgui->TableSetupColumn("Attribute", kColumnFixed, 0.0f);
+				imgui->TableSetupColumn("Size", kColumnStretch, 1.0f);
+				imgui->TableSetupColumn("", kColumnFixed, 0.0f);
 
 				imgui->TableNextRow(0, 0.0f);
+				imgui->PushIDStr("##stack_global");
+				imgui->TableSetColumnIndex(0);
+				imgui->AlignTextToFramePadding();
+				if (globalSize != kStackSizeOff) imgui->Text("Stack size");
+				else                             imgui->TextDisabled("Stack size");
+				if (imgui->IsItemHovered())
+					imgui->SetTooltip("Every stackable item stacks to at least this many.\n"
+					                  "Items that already stack higher keep their own size.\n"
+					                  "Empty or 1 = off. A category or item size below replaces this.");
 
-				float sizeValue = static_cast<float>(globalSize);
-
-				BetterCheats::UI::RowSpec spec;
-				spec.label        = "Stack size";
-				spec.tooltip      = "Every stackable item stacks to at least this many.\n"
-				                    "Items that already stack higher keep their own size; 1 = off.\n"
-				                    "A category or per-item size below replaces this.";
-				spec.value        = &sizeValue;
-				spec.minValue     = static_cast<float>(kStackFloor);
-				spec.maxValue     = static_cast<float>(kStackCeiling);
-				spec.step         = 1.0f;
-				spec.format       = "%.0f";
-				spec.wholeNumbers = true;
-				spec.resetValue   = static_cast<float>(kStackSizeOff);
-				spec.active       = globalSize != kStackSizeOff;
-				spec.labelReserve = sizeLabelReserve;
-
-				if (BetterCheats::UI::BuildRow(imgui, spec).changed)
+				int  typed      = 0;
+				bool setGlobal  = false;
+				imgui->TableSetColumnIndex(1);
+				if (StackSizeBox(imgui, "global", globalSize != kStackSizeOff ? globalSize : 0, kStackOffText, typed))
+					setGlobal = true;
+				imgui->TableSetColumnIndex(2);
+				if (StackResetButton(imgui, "Turn off: each item keeps its own size."))
 				{
-					globalSize = static_cast<int>(sizeValue);
+					typed     = kStackSizeOff;
+					setGlobal = true;
+					g_stackEditId.clear();
+				}
+				if (setGlobal)
+				{
+					globalSize = ClampStackValue(typed);
 					g_stackSize.store(globalSize);
 					SessionConfig::Set("playerInventory.stacks.globalSize", globalSize);
 					RefreshFilteredStackItems();
 				}
-
-				imgui->EndTable();
-			}
-
-			imgui->Spacing();
-
-			// ---- category tier --------------------------------------------------
-			// One row per category actually present in the scan (EUIItemType --
-			// the game's own item-type field, see the StackEntry::category
-			// comment). Inherits the global size until explicitly
-			// overridden; resetting a category drops it back to inheriting.
-			if (!g_stackCategories.empty() && imgui->BeginTable("##stack_category_table", 3, kTableFlags))
-			{
-				const float catLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui,
-					static_cast<int>(g_stackCategories.size()),
-					[](int i) { return CategoryLabel(g_stackCategories[i]); });
-
-				imgui->TableSetupColumn("Attribute", kColumnFixed,
-					BetterCheats::UI::GetReadoutColumnWidth(imgui, catLabelReserve));
-				imgui->TableSetupColumn("Value", 0, 0.54f);
-				imgui->TableSetupColumn("",      0, 0.10f);
+				imgui->PopID();
 
 				std::unordered_map<int, int> categorySnapshot;
 				{
@@ -1436,9 +1471,15 @@ namespace BetterCheats::Panels::Inventory
 
 				for (SDK::EUIItemType cat : g_stackCategories)
 				{
-					const auto  catIt        = categorySnapshot.find(static_cast<int>(cat));
-					const bool  hasOverride  = catIt != categorySnapshot.end();
-					float       catValue     = static_cast<float>(hasOverride ? catIt->second : globalSize);
+					const auto catIt       = categorySnapshot.find(static_cast<int>(cat));
+					const bool hasOverride = catIt != categorySnapshot.end();
+					const int  shown       = hasOverride && catIt->second != kStackSizeOff ? catIt->second : 0;
+
+					char hint[48];
+					if (!hasOverride && globalSize != kStackSizeOff)
+						snprintf(hint, sizeof(hint), "All items: %d", globalSize);
+					else
+						snprintf(hint, sizeof(hint), "%s", kStackOffText);
 
 					int itemCount = 0;
 					for (const StackEntry& e : g_stackItems)
@@ -1446,34 +1487,33 @@ namespace BetterCheats::Panels::Inventory
 
 					imgui->PushIDStr(CategoryLabel(cat));
 					imgui->TableNextRow(0, 0.0f);
-
-					char tooltip[192];
-					snprintf(tooltip, sizeof(tooltip),
-						"%d item%s. %s", itemCount, itemCount == 1 ? "" : "s",
-						hasOverride ? "Overrides the global stack size for this category."
-						            : "Inherits the global stack size until you change this row.");
-
-					BetterCheats::UI::RowSpec spec;
-					spec.label        = CategoryLabel(cat);
-					spec.tooltip      = tooltip;
-					spec.value        = &catValue;
-					spec.minValue     = static_cast<float>(kStackFloor);
-					spec.maxValue     = static_cast<float>(kStackCeiling);
-					spec.step         = 1.0f;
-					spec.format       = "%.0f";
-					spec.wholeNumbers = true;
-					spec.resetValue   = static_cast<float>(globalSize);   // reset = "go back to inheriting global"
-					spec.active       = hasOverride;
-					spec.labelReserve = catLabelReserve;
-
-					const BetterCheats::UI::RowResult result = BetterCheats::UI::BuildRow(imgui, spec);
-					if (result.changed)
+					imgui->TableSetColumnIndex(0);
+					imgui->AlignTextToFramePadding();
+					if (hasOverride) imgui->Text(CategoryLabel(cat));
+					else             imgui->TextDisabled(CategoryLabel(cat));
+					if (imgui->IsItemHovered())
 					{
-						const int size = static_cast<int>(catValue);
-						if (result.resetClicked || size == globalSize)
+						char tooltip[192];
+						snprintf(tooltip, sizeof(tooltip), "%d item%s. %s\n1 = off for this category.",
+							itemCount, itemCount == 1 ? "" : "s",
+							hasOverride ? "Has its own setting." : "Follows the stack size above.");
+						imgui->SetTooltip(tooltip);
+					}
+
+					imgui->TableSetColumnIndex(1);
+					if (StackSizeBox(imgui, std::string("category:") + CategoryLabel(cat), shown, hint, typed))
+					{
+						if (typed == 0 || typed == globalSize)
 							ClearCategoryOverride(cat);
 						else
-							SetCategoryOverride(cat, size);
+							SetCategoryOverride(cat, typed);
+						RefreshFilteredStackItems();
+					}
+					imgui->TableSetColumnIndex(2);
+					if (StackResetButton(imgui, "Follow the stack size above."))
+					{
+						g_stackEditId.clear();
+						ClearCategoryOverride(cat);
 						RefreshFilteredStackItems();
 					}
 
@@ -1515,7 +1555,9 @@ namespace BetterCheats::Panels::Inventory
 			// ---- per-item list --------------------------------------------------
 			float availX = 0.0f, availY = 0.0f;
 			imgui->GetContentRegionAvail(&availX, &availY);
-			const float listH = availY > 150.0f ? availY : 150.0f;
+			// The rest of the page, but never less than a readable run of rows:
+			// the sections above leave little or nothing on a long page.
+			const float listH = (std::max)(availY, imgui->GetFrameHeightWithSpacing() * kStackListRows);
 
 			std::unordered_map<std::string, int> overrides;
 			{
@@ -1529,22 +1571,19 @@ namespace BetterCheats::Panels::Inventory
 			}
 			if (imgui->BeginChild("##stack_item_list", -1.0f, listH, false))
 			{
-				const float itemLabelReserve = BetterCheats::UI::PrescanLabelWidth(imgui,
-					static_cast<int>(g_filteredStackIndices.size()),
-					[](int i) { return g_stackItems[g_filteredStackIndices[i]].name.c_str(); });
-
 				// RefreshFilteredStackItems() rebuilds g_filteredStackIndices in
 				// place -- calling it while the range-for below is still iterating
 				// that same vector would invalidate the iterator mid-loop. Defer to
 				// after the loop instead.
 				bool needsRefilter = false;
 
-				if (imgui->BeginTable("##stack_item_table", 3, kTableFlags))
+				if (imgui->BeginTable("##stack_item_table", 5, kTableFlags))
 				{
-					imgui->TableSetupColumn("Attribute", kColumnFixed,
-						BetterCheats::UI::GetReadoutColumnWidth(imgui, itemLabelReserve));
-					imgui->TableSetupColumn("Value", 0, 0.54f);
-					imgui->TableSetupColumn("",      0, 0.10f);
+					imgui->TableSetupColumn("Item", kColumnStretch, 1.0f);
+					imgui->TableSetupColumn("Default", kColumnFixed, 0.0f);
+					imgui->TableSetupColumn("Size", kColumnStretch, 0.5f);
+					imgui->TableSetupColumn("Multiples", kColumnFixed, 0.0f);
+					imgui->TableSetupColumn("", kColumnFixed, 0.0f);
 
 					for (int filteredIndex : g_filteredStackIndices)
 					{
@@ -1554,54 +1593,108 @@ namespace BetterCheats::Panels::Inventory
 						// falls back to if its item-level override is reset. May
 						// itself be inheriting global (no category override) or an
 						// explicit category override.
-						const bool  categoryOverridden = categoryOverrides.count(static_cast<int>(e.category)) != 0;
-						const int   inherited          = RaiseOnly(e.originalMaxStack,
-							CategorySizeFor(e, globalSize, categoryOverrides));
+						const auto  categoryIt   = categoryOverrides.find(static_cast<int>(e.category));
+						const int   categorySize = CategorySizeFor(e, globalSize, categoryOverrides);
+						const int   inherited    = RaiseOnly(e.originalMaxStack, categorySize);
 
 						const auto  overrideIt   = overrides.find(e.uniqueName);
 						const bool  hasOverride  = overrideIt != overrides.end();
-						float       rowValue     = static_cast<float>(hasOverride
-							? RaiseOnly(e.originalMaxStack, overrideIt->second) : inherited);
+						const int   rowValue     = hasOverride
+							? RaiseOnly(e.originalMaxStack, overrideIt->second) : inherited;
 
 						imgui->PushIDStr(e.uniqueName.c_str());
 						imgui->TableNextRow(0, 0.0f);
 
-						char tooltip[384];
-						int n = snprintf(tooltip, sizeof(tooltip), "Original: %d", e.originalMaxStack);
-						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nGlobal: %d -> %d",
-							globalSize, RaiseOnly(e.originalMaxStack, globalSize));
-						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nCategory (%s): %s -> %d",
-							CategoryLabel(e.category),
-							categoryOverridden ? "overridden" : "inherits global",
-							inherited);
-						n += snprintf(tooltip + n, sizeof(tooltip) - n, "\nThis item: %s",
-							hasOverride ? "overridden (winning)" : "inherits category");
-						if (!e.canStack)
-							snprintf(tooltip + n, sizeof(tooltip) - n,
-								"\n\nThis item does not stack (StackingType is DoNotStack) --\nMaxStack is left untouched regardless of any tier above.");
-
-						BetterCheats::UI::RowSpec spec;
-						spec.label        = e.name.c_str();
-						spec.tooltip      = tooltip;
-						spec.value        = &rowValue;
-						spec.minValue     = static_cast<float>((std::min)(e.originalMaxStack, kStackCeiling));   // raise-only
-						spec.maxValue     = static_cast<float>(kStackCeiling);
-						spec.step         = 1.0f;
-						spec.format       = "%.0f";
-						spec.wholeNumbers = true;
-						spec.resetValue   = static_cast<float>(inherited);
-						spec.active       = e.canStack && hasOverride;
-						spec.disableSlider = !e.canStack;
-						spec.labelReserve = itemLabelReserve;
-
-						const BetterCheats::UI::RowResult result = BetterCheats::UI::BuildRow(imgui, spec);
-						if (result.changed && e.canStack)
+						imgui->TableSetColumnIndex(0);
+						imgui->AlignTextToFramePadding();
+						if (e.canStack && hasOverride) imgui->Text(e.name.c_str());
+						else                           imgui->TextDisabled(e.name.c_str());
+						if (imgui->IsItemHovered())
 						{
-							const int newInt = static_cast<int>(rowValue);
-							if (result.resetClicked || newInt == inherited)
-								ClearStackOverride(e.uniqueName);
-							else
-								SetStackOverride(e.uniqueName, newInt);
+							char global[32];
+							if (globalSize != kStackSizeOff) snprintf(global, sizeof(global), "%d", globalSize);
+							else                             snprintf(global, sizeof(global), "off");
+
+							char category[48];
+							if (categoryIt == categoryOverrides.end())  snprintf(category, sizeof(category), "follows global");
+							else if (categoryIt->second != kStackSizeOff) snprintf(category, sizeof(category), "%d", categoryIt->second);
+							else                                        snprintf(category, sizeof(category), "off");
+
+							char tooltip[384];
+							const int n = snprintf(tooltip, sizeof(tooltip),
+								"Default: %d\nGlobal: %s\nCategory (%s): %s\nThis item: %s",
+								e.originalMaxStack, global, CategoryLabel(e.category), category,
+								hasOverride ? "has its own size" : "follows its category");
+							if (!e.canStack && n > 0 && n < static_cast<int>(sizeof(tooltip)))
+								snprintf(tooltip + n, sizeof(tooltip) - n,
+									"\n\nThis item does not stack, so no setting changes it.");
+							imgui->SetTooltip(tooltip);
+						}
+
+						imgui->TableSetColumnIndex(1);
+						imgui->AlignTextToFramePadding();
+						char defaultText[32];
+						snprintf(defaultText, sizeof(defaultText), "Default %d", e.originalMaxStack);
+						imgui->TextDisabled(defaultText);
+
+						if (!e.canStack)
+						{
+							imgui->TableSetColumnIndex(2);
+							imgui->AlignTextToFramePadding();
+							imgui->TextDisabled("Doesn't stack");
+							imgui->PopID();
+							continue;
+						}
+
+						// 0 = nothing chosen this frame.
+						int chosen = 0;
+						int typed  = 0;
+						bool clear = false;
+
+						imgui->TableSetColumnIndex(2);
+						if (StackSizeBox(imgui, "item:" + e.uniqueName, rowValue, "", typed))
+						{
+							if (typed == 0) clear = true;
+							else            chosen = RaiseOnly(e.originalMaxStack, typed);
+						}
+
+						imgui->TableSetColumnIndex(3);
+						for (int multiple : { 2, 5, 10 })
+						{
+							if (multiple != 2)
+								imgui->SameLine(0.0f, -1.0f);
+							char label[8];
+							snprintf(label, sizeof(label), "x%d", multiple);
+							const int size = RaiseOnly(e.originalMaxStack,
+								(std::min)(e.originalMaxStack, kStackCeiling) * multiple);
+							if (imgui->Button(label))
+							{
+								chosen = size;
+								g_stackEditId.clear();
+							}
+							if (imgui->IsItemHovered())
+							{
+								char tooltip[48];
+								snprintf(tooltip, sizeof(tooltip), "Stack to %d", size);
+								imgui->SetTooltip(tooltip);
+							}
+						}
+
+						imgui->TableSetColumnIndex(4);
+						if (StackResetButton(imgui, "Follow the category and global sizes."))
+						{
+							g_stackEditId.clear();
+							clear = true;
+						}
+
+						if (clear || (chosen != 0 && chosen == inherited))
+						{
+							ClearStackOverride(e.uniqueName);
+							needsRefilter = true;
+						}
+						else if (chosen != 0)
+						{
+							SetStackOverride(e.uniqueName, chosen);
 							needsRefilter = true;
 						}
 
