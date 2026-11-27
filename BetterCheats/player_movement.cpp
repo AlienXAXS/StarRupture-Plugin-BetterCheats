@@ -12,6 +12,7 @@
 #include "cheat_math.h"
 #include "player_lookup.h"
 #include "game_thread.h"
+#include "object_ref.h"
 
 #include "Chimera_classes.hpp"
 
@@ -76,11 +77,12 @@ namespace BetterCheats::Panels::Movement
 		// around a base without falling through it.
 		std::atomic<bool>  g_passThroughWalls{ true };
 
-		// Applied state — game thread only. g_appliedTo is compared, never
-		// dereferenced blind: the pawn is replaced on respawn, so state belonging to
-		// a character that is no longer the local pawn is dropped rather than restored.
-		bool                         g_active    = false;
-		SDK::ACrCharacterPlayerBase* g_appliedTo = nullptr;
+		// Applied state — game thread only. The altered character can stop being
+		// the local pawn and come back, so its state and saved values are kept
+		// while it is alive. Another character as the local pawn drops them.
+		bool                                   g_active = false;
+		ObjectRef<SDK::ACrCharacterPlayerBase> g_altered;
+		SDK::FName                             g_alteredName{};
 
 		SDK::ECollisionEnabled g_savedCollision      = SDK::ECollisionEnabled::QueryAndPhysics;
 		float                  g_savedMaxFlySpeed    = kFallbackMaxFlySpeed;
@@ -106,6 +108,20 @@ namespace BetterCheats::Panels::Movement
 			return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 		}
 
+		// The altered character, or null once it is gone. The name tells apart a
+		// later character that got the same slot and address.
+		SDK::ACrCharacterPlayerBase* AlteredCharacter()
+		{
+			SDK::ACrCharacterPlayerBase* character = g_altered.Get();
+			return character && character->Name == g_alteredName ? character : nullptr;
+		}
+
+		void ForgetAltered()
+		{
+			g_active = false;
+			g_altered.Reset();
+		}
+
 		void Enable(SDK::ACrCharacterPlayerBase* character)
 		{
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
@@ -123,16 +139,16 @@ namespace BetterCheats::Panels::Movement
 			move->bCheatFlying = 1;
 			move->SetMovementMode(SDK::EMovementMode::MOVE_Flying, 0);
 
-			g_active    = true;
-			g_appliedTo = character;
+			g_active      = true;
+			g_alteredName = character->Name;
+			g_altered.Set(character);
 
 			LOG_INFO("Movement: no-clip enabled.");
 		}
 
 		void Disable(SDK::ACrCharacterPlayerBase* character)
 		{
-			g_active    = false;
-			g_appliedTo = nullptr;
+			ForgetAltered();
 
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			SDK::UCapsuleComponent* capsule = character->CapsuleComponent;
@@ -160,6 +176,8 @@ namespace BetterCheats::Panels::Movement
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			if (!move)
 				return;
+
+			move->bCheatFlying = 1;
 
 			// Zipline, slide and dash all drive the movement mode themselves, so
 			// take it back whenever something else has changed it.
@@ -440,8 +458,7 @@ namespace BetterCheats::Panels::Movement
 
 		// Detects a respawn/world change and drops every composed slot before
 		// anything below tries to Apply/Release against an attribute set that may
-		// already be gone. Mirrors the g_appliedTo check MaintainNoClip/Tick already
-		// use for the same reason.
+		// already be gone.
 		SDK::ACrCharacterPlayerBase* g_composedCharacter = nullptr;
 
 		void ForgetComposedIfCharacterChanged(SDK::ACrCharacterPlayerBase* character)
@@ -1446,8 +1463,7 @@ namespace BetterCheats::Panels::Movement
 			for (int a = 0; a < kAttrCount; ++a)
 				g_composedAttrs[a].Forget();
 			g_composedMaxEnergy.Forget();
-			g_active    = false;
-			g_appliedTo = nullptr;
+			ForgetAltered();
 			g_noClipWanted.store(false);
 			return;
 		}
@@ -1461,21 +1477,21 @@ namespace BetterCheats::Panels::Movement
 		for (int a = 0; a < kAttrCount; ++a)
 			g_composedAttrs[a].Forget();
 		g_composedMaxEnergy.Forget();
-		g_active    = false;
-		g_appliedTo = nullptr;
+		ForgetAltered();
 		g_noClipWanted.store(false);
 	}
 
 	void ReleaseValues(bool restoreRaw)
 	{
 		// Leaving a character permanently non-colliding would outlive the plugin,
-		// so put it back — but only if the pawn we changed is still the live one.
+		// so put it back, unless it is gone or another character has replaced it.
 		try
 		{
 			SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
 
-			if (g_active && character && character == g_appliedTo)
-				Disable(character);
+			SDK::ACrCharacterPlayerBase* altered = AlteredCharacter();
+			if (g_active && altered && (!character || character == altered))
+				Disable(altered);
 
 			// Same rule for the composed overrides: hand CurrentValue back only if
 			// it's still the same character/attribute-set combination they were
@@ -1535,8 +1551,7 @@ namespace BetterCheats::Panels::Movement
 		}
 		catch (...) {}
 
-		g_active    = false;
-		g_appliedTo = nullptr;
+		ForgetAltered();
 	}
 
 	void ForgetNoClipWish()
@@ -1564,12 +1579,13 @@ namespace BetterCheats::Panels::Movement
 				ServerLink::ForgetMovement();
 			}
 
-			// Respawn or a world change replaces the pawn; the one we altered is
-			// gone, so forget it rather than writing through a freed pointer.
-			if (g_appliedTo && g_appliedTo != character)
+			// Respawn or a world change replaces the pawn. No local character is
+			// not enough: the one we altered may come back, still altered.
+			if (g_active)
 			{
-				g_active    = false;
-				g_appliedTo = nullptr;
+				SDK::ACrCharacterPlayerBase* altered = AlteredCharacter();
+				if (!altered || (character && character != altered))
+					ForgetAltered();
 			}
 
 			// Same idea for the composed GAS/Max Energy overrides -- drop them before
