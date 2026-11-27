@@ -5,6 +5,7 @@
 #include "aob_resolver.h"
 #include "session_config.h"
 #include "game_context.h"
+#include "server_link.h"
 #include "cheat_menu.h"
 #include "player_attributes.h"
 #include "player_building.h"
@@ -138,6 +139,7 @@ static bool FollowFlag(bool initRan, bool now, FlagEdge& edge, void (*released)(
 // apply later, possibly in another world.
 static void DropQueuedClicks()
 {
+	BetterCheats::ServerLink::DropQueued();
 	BetterCheats::Panels::Skills::DropPendingEdits();
 	BetterCheats::Panels::Corporations::DropPendingEdit();
 	BetterCheats::Panels::Wave::DropPendingAction();
@@ -306,6 +308,7 @@ static void ForgetWorldSettings()
 
 static void OnAfterWorldEndPlay(SDK::UWorld* /*world*/, const char* name)
 {
+	BetterCheats::ServerLink::Reset();
 	g_sessionCurrent = false;
 	g_worldBegun     = false;
 	g_loadWaiting    = false;
@@ -416,6 +419,8 @@ static void OnEngineTick(float deltaSeconds)
 	else if (g_gateReleased && SessionReady())
 		BetterCheats::Panels::Building::ApplySavedConfig();
 	g_gateReleased = false;
+
+	BetterCheats::ServerLink::Tick();
 
 	// After the gates: the release and the re-apply both touch game objects, which
 	// only a cheats world has. A flag that changed while gated is picked up on
@@ -638,6 +643,7 @@ extern "C" {
 
 		// Register the cheat menu widget
 		BetterCheats::CheatMenu::Initialize(self);
+		BetterCheats::ServerLink::Initialize(self);
 
 		// Register the toggle keybind — modloader tracks rebinds automatically
 		const char* toggleKey = BetterCheatsConfig::Config::GetToggleKey();
@@ -710,6 +716,7 @@ extern "C" {
 		BetterCheats::Panels::Building::Shutdown();
 
 		BetterCheats::CheatMenu::Shutdown();
+		BetterCheats::ServerLink::Shutdown();
 		BetterCheats::GameContext::Shutdown();
 		if (g_initRan.Items)
 			BetterCheats::Panels::Items::Shutdown();

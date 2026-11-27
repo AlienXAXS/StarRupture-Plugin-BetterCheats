@@ -134,20 +134,6 @@ namespace BetterCheats::ServerProtocol
 		return std::string(text.substr(0, end));
 	}
 
-	// For a UI call that takes a printf format: received text must never be one.
-	inline std::string EscapeFormat(std::string_view text)
-	{
-		std::string out;
-		out.reserve(text.size());
-		for (char c : text)
-		{
-			out += c;
-			if (c == '%')
-				out += '%';
-		}
-		return out;
-	}
-
 	// Empty for anything that is not a well formed "res" of protocol 1.
 	inline std::optional<Reply> ParseReply(const uint8_t* data, size_t size)
 	{
@@ -215,10 +201,11 @@ namespace BetterCheats::ServerProtocol
 	}
 
 	// True only for a readable "major.minor.patch" (a leading v and a suffix are
-	// ignored) that is older than 1.28.0.
+	// ignored) that is older than 1.28.0. A "-dev" build is named after the last
+	// release while it already holds newer work, so it is never judged.
 	inline bool IsLoaderTagTooOld(const char* tag)
 	{
-		if (!tag)
+		if (!tag || std::string_view(tag).find("-dev") != std::string_view::npos)
 			return false;
 		if (*tag == 'v')
 			++tag;

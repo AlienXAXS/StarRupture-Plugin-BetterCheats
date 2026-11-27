@@ -42,7 +42,6 @@ int main()
 	const auto odd = Parse("res|1|7|maybe|");
 	CHECK(odd && odd->status == Status::Refused && odd->reason == kNoReason);
 	CHECK(Parse("res|1|7|error|%s%n")->reason == "%s%n");
-	CHECK(EscapeFormat("100% %s") == "100%% %%s");
 	CHECK(Parse("res|1|7|refused|" + std::string(500, 'a'))->reason.size() == kMaxReason);
 	CHECK(Clip("ab\xC3\xA9", 3) == "ab");
 
@@ -58,7 +57,8 @@ int main()
 	CHECK(cap && HandlerOf(*cap, "cheat.wave").version == 0 && HandlerOf(*cap, "cheat.corp").version == 0);
 	CHECK(cap && HandlerOf(*cap, "cheat.stat").version == 0);
 
-	CHECK(IsLoaderTagTooOld("v1.27.3") && IsLoaderTagTooOld("1.23.2-dev.4") && !IsLoaderTagTooOld("1.28.0-rc.6"));
+	CHECK(IsLoaderTagTooOld("v1.27.3") && IsLoaderTagTooOld("1.23.2-gss.4") && !IsLoaderTagTooOld("1.28.0-rc.6"));
+	CHECK(!IsLoaderTagTooOld("1.27.0-dev.4") && !IsLoaderTagTooOld(""));
 	CHECK(!IsLoaderTagTooOld("dev") && !IsLoaderTagTooOld(nullptr));
 	CHECK(!IsLoaderTagTooOld("v1.28.0") && IsLoaderTagTooOld("1.27.0"));
 	CHECK(!IsLoaderTagTooOld(nullptr) && !IsLoaderTagTooOld("dev"));

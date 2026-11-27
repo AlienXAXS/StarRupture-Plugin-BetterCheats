@@ -12,15 +12,27 @@
 
 namespace BetterCheats::ServerLink
 {
-	enum class Op { Give, Wave, Stack, Corp, Count };
+	// One per server-held feature slot. The three build rules share an op.
+	enum class Op { Give, Wave, Stack, Corp, Power, Enemy, Weapon, Grid, Plant, Mine,
+		BuildFree, BuildAnywhere, BuildUnlock, Count };
 
 	// What the last request of an op came to. `text` may be the server's own
 	// words, so it is never a format string.
 	struct Result
 	{
 		std::string text;
-		std::string waveState;   // "", "idle", "running" or "paused"
-		int         value = -1;  // corp points or stack size the server reported
+		// Every field the server's ok replies have reported, the latest value of
+		// each. Forgotten on deny and with the connection. Untrusted text.
+		ServerProtocol::Fields fields;
+
+		// Empty when the server has not reported the key.
+		std::string Value(const char* key) const
+		{
+			for (const auto& field : fields)
+				if (field.first == key)
+					return field.second;
+			return {};
+		}
 	};
 
 	// PluginInit / PluginShutdown.

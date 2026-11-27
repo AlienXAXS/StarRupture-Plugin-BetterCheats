@@ -3,6 +3,7 @@
 #include "game_context.h"
 
 #include <Windows.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <mutex>
@@ -20,6 +21,7 @@ namespace BetterCheats::ServerLink
 		constexpr const char* kChecking  = "Asking the server what it can do...";
 		constexpr const char* kSending   = "Waiting for the server...";
 		constexpr const char* kDone      = "Done.";
+		constexpr size_t      kMaxKept   = 32;
 
 		struct What
 		{
@@ -53,27 +55,33 @@ namespace BetterCheats::ServerLink
 		IPluginSelf*      g_self = nullptr;
 		std::atomic<bool> g_canSend{ false };
 
-		const char* OpName(Op op)
+		struct OpInfo
 		{
-			switch (op)
-			{
-			case Op::Give:  return "cheat.give";
-			case Op::Wave:  return "cheat.wave";
-			case Op::Stack: return "cheat.stack";
-			default:        return "cheat.corp";
-			}
-		}
+			const char*               name;
+			const PluginMap::Feature* feature;
+		};
 
-		const PluginMap::Feature& FeatureOf(Op op)
-		{
-			switch (op)
-			{
-			case Op::Give:  return Features::Items;
-			case Op::Wave:  return Features::Wave;
-			case Op::Stack: return Features::StackSize;
-			default:        return Features::Corporations;
-			}
-		}
+		// In Op order.
+		const OpInfo kOps[] = {
+			{ "cheat.give",   &Features::Items },
+			{ "cheat.wave",   &Features::Wave },
+			{ "cheat.stack",  &Features::StackSize },
+			{ "cheat.corp",   &Features::Corporations },
+			{ "cheat.power",  &Features::Power },
+			{ "cheat.enemy",  &Features::Enemies },
+			{ "cheat.weapon", &Features::Weapons },
+			{ "cheat.grid",   &Features::Inventory },
+			{ "cheat.plant",  &Features::Inventory },
+			{ "cheat.mine",   &Features::Mining },
+			{ "cheat.build",  &Features::BuildFree },
+			{ "cheat.build",  &Features::BuildAnywhere },
+			{ "cheat.build",  &Features::BuildUnlock },
+		};
+		static_assert(sizeof(kOps) / sizeof(kOps[0]) == kOpCount);
+
+		const char* OpName(Op op) { return kOps[static_cast<size_t>(op)].name; }
+
+		const PluginMap::Feature& FeatureOf(Op op) { return *kOps[static_cast<size_t>(op)].feature; }
 
 		Result& ResultOf(Op op) { return g_results[static_cast<size_t>(op)]; }
 
@@ -171,14 +179,15 @@ namespace BetterCheats::ServerLink
 			if (reply->status != Protocol::Status::Ok)
 				return;
 
-			if (const std::string* state = reply->Find("state"))
-				if (*state == "idle" || *state == "running" || *state == "paused")
-					result.waveState = *state;
-
-			const char* key = entry->what.op == Op::Corp ? "points" : entry->what.op == Op::Stack ? "size" : nullptr;
-			if (const std::string* number = key ? reply->Find(key) : nullptr)
-				if (const auto value = Protocol::ParseNumber(*number, 999999999u))
-					result.value = static_cast<int>(*value);
+			for (auto& [key, value] : reply->fields)
+			{
+				auto kept = std::find_if(result.fields.begin(), result.fields.end(),
+					[&](const auto& field) { return field.first == key; });
+				if (kept != result.fields.end())
+					kept->second = std::move(value);
+				else if (result.fields.size() < kMaxKept)
+					result.fields.emplace_back(std::move(key), std::move(value));
+			}
 		}
 	}
 
@@ -244,10 +253,7 @@ namespace BetterCheats::ServerLink
 			if (!ready)
 			{
 				if (g_wasReady)
-				{
 					ResetLocked();
-					g_serverTag.clear();
-				}
 				if (g_notReadySince == 0)
 					g_notReadySince = now;
 				g_neverReady = now - g_notReadySince >= Protocol::kTimeoutMs;
@@ -255,6 +261,11 @@ namespace BetterCheats::ServerLink
 			}
 			g_wasReady   = true;
 			g_neverReady = false;
+
+			// A deny puts the server's toggles back, so what it reported is void.
+			for (size_t i = 0; i < kOpCount; ++i)
+				if (!kOps[i].feature->On())
+					g_results[i] = {};
 
 			for (const auto& expired : g_waiting.Expire(now))
 			{
@@ -357,6 +368,6 @@ namespace BetterCheats::ServerLink
 
 	void Say(IModLoaderImGui* imgui, const std::string& text)
 	{
-		imgui->TextWrapped(Protocol::EscapeFormat(text).c_str());
+		imgui->TextWrapped(text.c_str());   // the loader prints it through "%s"
 	}
 }
