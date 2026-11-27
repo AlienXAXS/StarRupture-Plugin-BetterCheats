@@ -60,8 +60,8 @@ int main()
 
 	CHECK(IsLoaderTagTooOld("v1.27.3") && IsLoaderTagTooOld("1.23.2-dev.4") && !IsLoaderTagTooOld("1.28.0-rc.6"));
 	CHECK(!IsLoaderTagTooOld("dev") && !IsLoaderTagTooOld(nullptr));
-	CHECK(CapTimeoutText("v1.28.0") == kNeedsServerUtility);
-	CHECK(CapTimeoutText("1.27.0") == kNeedsServerLoader && CapTimeoutText(nullptr) == kNeedsServerLoader);
+	CHECK(!IsLoaderTagTooOld("v1.28.0") && IsLoaderTagTooOld("1.27.0"));
+	CHECK(!IsLoaderTagTooOld(nullptr) && !IsLoaderTagTooOld("dev"));
 
 	CHECK(!SendFailureText(1));
 	for (int result : { 0, -1, -2, -3, 99 })

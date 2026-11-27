@@ -31,7 +31,7 @@ namespace BetterCheats::ServerProtocol
 	inline constexpr const char* kNeedsClientLoader = "Needs ModLoader 1.28.0 or newer.";
 	inline constexpr const char* kNoServerUtility   = "This server does not run ServerUtility.";
 	inline constexpr const char* kNeedsServerLoader = "This server needs ModLoader 1.28.0 or newer.";
-	inline constexpr const char* kNeedsServerUtility = "This server needs ServerUtility 0.19.0 or newer.";
+	inline constexpr const char* kNoCapAnswer       = "ServerUtility on this server didn't answer.";
 	inline constexpr const char* kNotOnThisBuild    = "Not available on this server's game build.";
 	inline constexpr const char* kNoAnswer          = "No answer from the server.";
 	inline constexpr const char* kTooManyWaiting    = "Still waiting for the server. Try again in a moment.";
@@ -226,16 +226,6 @@ namespace BetterCheats::ServerProtocol
 		if (sscanf_s(tag, "%u.%u.%u", &major, &minor, &patch) != 3)
 			return false;
 		return major < 1 || (major == 1 && minor < 28);
-	}
-
-	// A cap request nobody answered. An old server loader and an old
-	// ServerUtility look the same, so the build tag picks the text.
-	inline const char* CapTimeoutText(const char* serverTag)
-	{
-		unsigned major = 0, minor = 0, patch = 0;
-		const char* digits = serverTag && *serverTag == 'v' ? serverTag + 1 : serverTag;
-		const bool readable = digits && sscanf_s(digits, "%u.%u.%u", &major, &minor, &patch) == 3;
-		return readable && !IsLoaderTagTooOld(serverTag) ? kNeedsServerUtility : kNeedsServerLoader;
 	}
 
 	// The requests still waiting for a reply. `What` is the owner's note of what
