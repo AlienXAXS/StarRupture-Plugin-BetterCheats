@@ -9,6 +9,7 @@
 #include "server_protocol.h"
 
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,7 +17,7 @@ namespace BetterCheats::ServerLink
 {
 	// One per server-held feature slot. The three build rules share an op.
 	enum class Op { Give, Wave, Stack, Corp, Power, Enemy, Weapon, Grid, Plant, Mine,
-		BuildFree, BuildAnywhere, BuildUnlock, Count };
+		Stat, BuildFree, BuildAnywhere, BuildUnlock, Count };
 
 	// What the last request of an op came to. `text` may be the server's own
 	// words, so it is never a format string.
@@ -139,6 +140,13 @@ namespace BetterCheats::ServerLink
 
 	// Any thread.
 	Result LastResult(Op op);
+
+	// Any thread. The stats the server holds locked for this player, comma
+	// separated, empty for none. No value when the server doesn't hold stat
+	// locks: not joined, it can't run cheat.stat, or its state has not listed
+	// them. The player rows then work as they do on their own. The one place
+	// that decides this.
+	std::optional<std::string> StatLocks();
 
 	// Any thread. Whether the server says Unlock All Buildings stands, so this
 	// player's game needs its own copy.

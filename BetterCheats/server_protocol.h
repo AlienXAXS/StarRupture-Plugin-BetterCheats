@@ -211,9 +211,39 @@ namespace BetterCheats::ServerProtocol
 		return { *version, std::string_view(*value).substr(comma + 1) == "on" };
 	}
 
+	// Whether a comma-separated list holds exactly this name.
+	inline bool ListHas(std::string_view list, std::string_view name)
+	{
+		for (;;)
+		{
+			const size_t comma = list.find(',');
+			if (list.substr(0, comma) == name)
+				return true;
+			if (comma == std::string_view::npos)
+				return false;
+			list.remove_prefix(comma + 1);
+		}
+	}
+
+	// The same for one rule of an op: off when the cap reply lists its build
+	// rules without it. A reply with no list has every rule.
+	inline Handler HandlerOf(const Reply& cap, std::string_view op, const char* rule)
+	{
+		Handler handler = HandlerOf(cap, op);
+		if (const std::string* rules = cap.Find("build.rules"); rule && rules && !ListHas(*rules, rule))
+			handler.on = false;
+		return handler;
+	}
+
+	// The stats cheat.stat can lock, in wire order.
+	inline constexpr const char* kStats[] = {
+		"health", "energy", "shield", "hydration", "calories", "oxygen", "toxicity",
+		"radiation", "heat", "drain", "corrosion", "infection", "temperature"
+	};
+
 	// What a cheat.state reply reports on. Both build rules that can be switched
 	// off share the parts list.
-	enum class Held { Stack, Wave, Power, Corp, Enemy, Weapon, Grid, Plant, Mine, BuildParts, BuildUnlock };
+	enum class Held { Stack, Wave, Power, Corp, Enemy, Weapon, Grid, Plant, Mine, Stat, BuildParts, BuildUnlock };
 
 	inline bool IsNumberIn(std::string_view text, float min, float max)
 	{
@@ -315,6 +345,19 @@ namespace BetterCheats::ServerProtocol
 		case Held::Mine:
 			number("mine", "boost", "1", [](std::string_view v) { return IsNumberIn(v, 1.0f, 10.0f); });
 			onOff("heat", "heat");
+			break;
+		case Held::Stat:
+			if (const std::string* lock = state.Find("lock"))
+			{
+				// The known names, once each. A value with none of them that is
+				// not "none" says nothing.
+				std::string locked;
+				for (const char* stat : kStats)
+					if (ListHas(*lock, stat))
+						locked += (locked.empty() ? "" : ",") + std::string(stat);
+				if (!locked.empty() || *lock == "none")
+					out.emplace_back("locks", std::move(locked));
+			}
 			break;
 		case Held::BuildParts:
 			if (const std::string* parts = state.Find("build"))

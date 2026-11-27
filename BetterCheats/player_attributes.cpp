@@ -13,8 +13,11 @@
 #include <cfloat>
 #include <initializer_list>
 #include <mutex>
+#include <optional>
+#include <string>
 #include "plugin_map.h"
 #include "map_fields.h"
+#include "server_link.h"
 
 namespace BetterCheats::Panels::Attributes
 {
@@ -82,7 +85,7 @@ namespace BetterCheats::Panels::Attributes
 
 		// Draws the lock checkbox with a green frame while active and a tooltip
 		// explaining its effect, instead of a "Locked" label that overflows the column.
-		void RenderLockCheckbox(IModLoaderImGui* imgui, LockSlot& lock)
+		void RenderLockCheckbox(IModLoaderImGui* imgui, LockSlot& lock, const char* tooltip = kLockTooltip)
 		{
 			const bool wasLocked = lock.locked;
 			if (wasLocked)
@@ -97,7 +100,7 @@ namespace BetterCheats::Panels::Attributes
 			if (wasLocked)
 				imgui->PopStyleColor(3);
 
-			imgui->SetItemTooltip(kLockTooltip);
+			imgui->SetItemTooltip(tooltip);
 		}
 
 		// GetLocalCharacter (player_lookup.h) is game-thread only — never call it
@@ -392,6 +395,22 @@ namespace BetterCheats::Panels::Attributes
 				RefreshHealthHudOnGameThread(nullptr);
 		}
 
+		// The locks the server holds for this player, read once a frame by
+		// RenderImGui() for its rows. No value: the rows use their own locks.
+		std::optional<std::string> s_serverLocks;
+
+		// The Locked box of a row whose lock the server holds: it shows what the
+		// server reports, and a click asks the server.
+		void RenderServerLockCheckbox(IModLoaderImGui* imgui, AttrId id)
+		{
+			const char* const stat = ServerProtocol::kStats[static_cast<int>(id)];
+			const bool held = ServerProtocol::ListHas(*s_serverLocks, stat);
+			LockSlot shown{ held };
+			RenderLockCheckbox(imgui, shown, "While ticked, the server holds this attribute.");
+			if (shown.locked != held)
+				ServerLink::Queue(ServerLink::Op::Stat, { { "stat", stat }, { "lock", shown.locked ? "on" : "off" } });
+		}
+
 		// -------------------------------------------------------------------------
 		// Shared row widget — one aligned table row: label, a slider that both
 		// displays and edits the live value (dragging it queues a write that
@@ -402,8 +421,9 @@ namespace BetterCheats::Panels::Attributes
 		void RenderAttributeRow(IModLoaderImGui* imgui, const char* label, AttrId id, const AttrSnapshot& attr,
 			const char* snapLabel, float snapTarget, bool greyed)
 		{
-			LockSlot unavailable;
-			LockSlot& lock = greyed ? unavailable : g_locks[static_cast<int>(id)];
+			const bool serverLock = s_serverLocks.has_value();
+			LockSlot unsaved;
+			LockSlot& lock = greyed || serverLock ? unsaved : g_locks[static_cast<int>(id)];
 
 			// While unlocked, keep the slider following the live attribute value;
 			// once locked, it holds steady at the value Tick() pins to.
@@ -426,7 +446,8 @@ namespace BetterCheats::Panels::Attributes
 			if (imgui->SliderFloat("##value", &lock.value, attr.min, attr.max, format))
 			{
 				QueueAttributeEdit(id, lock.value);
-				PersistLock(id, lock);
+				if (!serverLock)
+					PersistLock(id, lock);
 			}
 
 			imgui->TableSetColumnIndex(2);
@@ -434,14 +455,20 @@ namespace BetterCheats::Panels::Attributes
 			{
 				lock.value = snapTarget;
 				QueueAttributeEdit(id, snapTarget);
-				PersistLock(id, lock);
+				if (!serverLock)
+					PersistLock(id, lock);
 			}
 
 			imgui->TableSetColumnIndex(3);
-			const bool wasLocked = lock.locked;
-			RenderLockCheckbox(imgui, lock);
-			if (lock.locked != wasLocked)
-				PersistLock(id, lock);
+			if (serverLock)
+				RenderServerLockCheckbox(imgui, id);
+			else
+			{
+				const bool wasLocked = lock.locked;
+				RenderLockCheckbox(imgui, lock);
+				if (lock.locked != wasLocked)
+					PersistLock(id, lock);
+			}
 
 			imgui->PopID();
 		}
@@ -568,7 +595,8 @@ namespace BetterCheats::Panels::Attributes
 		RefreshSnapshot(character);
 		ApplyPendingEdits(character);
 
-		if (!character)
+		// While the server holds the locks, this plugin's own pin nothing.
+		if (!character || ServerLink::StatLocks())
 			return;
 
 		for (int i = 0; i < kAttrCount; ++i)
@@ -604,6 +632,8 @@ namespace BetterCheats::Panels::Attributes
 			std::lock_guard<std::mutex> lock(g_snapshotMutex);
 			snapshot = g_snapshot;
 		}
+
+		s_serverLocks = greyed ? std::nullopt : ServerLink::StatLocks();
 
 		if (!snapshot.hasCharacter)
 		{
@@ -653,7 +683,9 @@ namespace BetterCheats::Panels::Attributes
 			};
 			auto applyFields = [](const PluginPresets::Field* f, int count)
 			{
-				for (int i = 0; i < kAttrCount && (i * 2 + 1) < count; ++i)
+				// While the server holds the locks, the saved ones are not on
+				// screen, so loading a preset keeps them.
+				for (int i = 0; !s_serverLocks && i < kAttrCount && (i * 2 + 1) < count; ++i)
 				{
 					g_locks[i].locked = f[i * 2].value != 0.0f;
 					g_locks[i].value  = f[i * 2 + 1].value;
@@ -670,8 +702,17 @@ namespace BetterCheats::Panels::Attributes
 		}
 		imgui->Spacing();
 
-		imgui->TextWrapped("Tick \"Locked\" to continuously pin an attribute to the value "
-			"set on its slider, even while the menu is closed.");
+		if (s_serverLocks)
+		{
+			if (const std::string result = ServerLink::LastResult(ServerLink::Op::Stat).text; !result.empty())
+				ServerLink::Say(imgui, result);
+		}
+
+		imgui->TextWrapped(s_serverLocks
+			? "Tick \"Locked\" to have the server hold an attribute at its value on the server. "
+			  "The sliders don't set that value, and loading a preset leaves these locks alone."
+			: "Tick \"Locked\" to continuously pin an attribute to the value "
+			  "set on its slider, even while the menu is closed.");
 		imgui->Spacing();
 
 		// ---------------------------------------------------------------------

@@ -96,6 +96,8 @@ namespace BetterCheats::ServerLink
 			const PluginMap::Feature* feature;
 			// What cheat.state reports for this slot. Empty: nothing.
 			std::optional<Protocol::Held> held;
+			// The op's rule in the cap reply's build.rules. Null: the op has none.
+			const char* rule = nullptr;
 		};
 		using Held = Protocol::Held;
 
@@ -111,9 +113,10 @@ namespace BetterCheats::ServerLink
 			{ "cheat.grid",   &Features::Inventory, Held::Grid },
 			{ "cheat.plant",  &Features::Inventory, Held::Plant },
 			{ "cheat.mine",   &Features::Mining, Held::Mine },
-			{ "cheat.build",  &Features::BuildFree, Held::BuildParts },
-			{ "cheat.build",  &Features::BuildAnywhere, Held::BuildParts },
-			{ "cheat.build",  &Features::BuildUnlock, Held::BuildUnlock },
+			{ "cheat.stat",   &Features::Stats, Held::Stat },
+			{ "cheat.build",  &Features::BuildFree, Held::BuildParts, "free" },
+			{ "cheat.build",  &Features::BuildAnywhere, Held::BuildParts, "anywhere" },
+			{ "cheat.build",  &Features::BuildUnlock, Held::BuildUnlock, "unlock" },
 		};
 		static_assert(sizeof(kOps) / sizeof(kOps[0]) == kOpCount);
 
@@ -194,6 +197,12 @@ namespace BetterCheats::ServerLink
 				return false;
 			const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, op);
 			return handler.version && handler.on;
+		}
+
+		// What the cap reply says about an op, its build rule included.
+		Protocol::Handler HandlerLocked(Op op)
+		{
+			return Protocol::HandlerOf(g_capReply, OpName(op), kOps[static_cast<size_t>(op)].rule);
 		}
 
 		// The server listed the op as on and now can't run it, so what it can do
@@ -388,6 +397,10 @@ namespace BetterCheats::ServerLink
 				}
 			if (entry->what.op == Op::Power && entry->what.order > g_powerFloor)
 				PowerChangedLocked(entry->what.order, !entry->what.resetsAllPower);
+
+			// The reply names one stat, so the list of locks is asked for again.
+			if (entry->what.op == Op::Stat)
+				g_state.Want();
 
 			if (entry->what.order < result.order)
 				return;
@@ -631,7 +644,7 @@ namespace BetterCheats::ServerLink
 			return g_capFailure;
 		case Cap::Got:
 		{
-			const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, OpName(op));
+			const Protocol::Handler handler = HandlerLocked(op);
 			return handler.version && handler.on ? std::string() : std::string(Protocol::kNotOnThisBuild);
 		}
 		default:
@@ -654,8 +667,20 @@ namespace BetterCheats::ServerLink
 		std::lock_guard<std::mutex> lock(g_mutex);
 		if (g_cap == Cap::Failed)
 			return g_capRefused ? Route::Refused : Route::Local;
-		const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, OpName(op));
+		const Protocol::Handler handler = HandlerLocked(op);
 		return g_cap == Cap::Got && handler.version && !handler.on ? Route::Refused : Route::Local;
+	}
+
+	std::optional<std::string> StatLocks()
+	{
+		if (RouteOf(Op::Stat) != Route::Server)
+			return std::nullopt;
+
+		std::lock_guard<std::mutex> lock(g_mutex);
+		for (const auto& [key, value] : ResultOf(Op::Stat).fields)
+			if (key == "locks")
+				return value;
+		return std::nullopt;
 	}
 
 	bool ServerOwns(Row row)

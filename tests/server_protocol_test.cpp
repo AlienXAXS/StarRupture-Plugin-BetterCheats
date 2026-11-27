@@ -57,6 +57,32 @@ int main()
 	CHECK(cap && HandlerOf(*cap, "cheat.wave").version == 0 && HandlerOf(*cap, "cheat.corp").version == 0);
 	CHECK(cap && HandlerOf(*cap, "cheat.stat").version == 0);
 
+	// ListHas: whole names only.
+	CHECK(ListHas("free", "free") && ListHas("free,anywhere,unlock", "anywhere") && ListHas("a,,unlock", "unlock"));
+	for (const char* list : { "", ",", "fre", "freer", " free", "free ", "FREE", "anywhere;free" })
+		CHECK(!ListHas(list, "free"));
+
+	// HandlerOf with a build rule: only a rule list that leaves it out turns it off.
+	const auto ruled = [](const char* fields, const char* rule)
+	{
+		const auto reply = Parse(std::string("res|1|41|ok|") + fields);
+		return reply ? HandlerOf(*reply, "cheat.build", rule) : Handler{ 99, true };
+	};
+	for (const char* rule : { "free", "anywhere", "unlock" })
+	{
+		CHECK(ruled("|cheat.build=1,on", rule).on);          // an older server: no list
+		CHECK(ruled("|cheat.build=1,on|build.rules=free,anywhere,unlock", rule).on);
+		CHECK(!ruled("|cheat.build=1,off|build.rules=free,anywhere,unlock", rule).on);
+		CHECK(ruled("|build.rules=free,anywhere,unlock", rule).version == 0);
+		for (const char* none : { "|cheat.build=1,on|build.rules=", "|cheat.build=1,on|build.rules=none",
+			"|cheat.build=1,on|build.rules=,,,", "|cheat.build=1,on|build.rules=teleport,FREE, unlock,anywhere " })
+			CHECK(!ruled(none, rule).on && ruled(none, rule).version == 1);
+	}
+	const char* const some = "|cheat.build=1,on|build.rules=later,unlock,unlock|later=on";
+	CHECK(ruled(some, "unlock").on && !ruled(some, "free").on && !ruled(some, "anywhere").on);
+	CHECK(ruled(some, nullptr).on);                              // an op with no rule
+	CHECK(!ruled(("|cheat.build=1,on|build.rules=" + std::string(900, 'f')).c_str(), "free").on);
+
 	CHECK(IsLoaderTagTooOld("v1.27.3") && IsLoaderTagTooOld("1.23.2-gss.4") && !IsLoaderTagTooOld("1.28.0-rc.6"));
 	CHECK(!IsLoaderTagTooOld("1.27.0-dev.4") && IsLoaderTagTooOld(""));
 	CHECK(!IsLoaderTagTooOld("dev") && IsLoaderTagTooOld(nullptr));
@@ -146,7 +172,7 @@ int main()
 		return reply ? HeldFields(*reply, what) : Fields{ { "unparsed", "" } };
 	};
 	const Held all[] = { Held::Stack, Held::Wave, Held::Power, Held::Corp, Held::Enemy, Held::Weapon,
-		Held::Grid, Held::Plant, Held::Mine, Held::BuildParts, Held::BuildUnlock };
+		Held::Grid, Held::Plant, Held::Mine, Held::Stat, Held::BuildParts, Held::BuildUnlock };
 	for (Held what : all)
 		CHECK(held("", what).empty());                    // missing keys
 	for (Held what : all)
@@ -175,6 +201,23 @@ int main()
 	CHECK(held("|plant=6", Held::Plant).empty());
 	CHECK((held("|mine=4.00|heat=on", Held::Mine) == Fields{ { "boost", "4.00" }, { "heat", "on" } }));
 	CHECK((held("|mine=off|heat=1", Held::Mine) == Fields{ { "boost", "1" } }));
+	std::string every;
+	for (const char* stat : kStats)
+		every += (every.empty() ? "" : ",") + std::string(stat);
+	CHECK(every == "health,energy,shield,hydration,calories,oxygen,toxicity,radiation,heat,drain,"
+		"corrosion,infection,temperature");
+	CHECK((held(("|lock=" + every).c_str(), Held::Stat) == Fields{ { "locks", every } }));
+	CHECK((held("|lock=none", Held::Stat) == Fields{ { "locks", "" } }));
+	// Keys that follow the list in the same reply stay out of it.
+	CHECK((held("|lock=health,temperature|fly=off|speed=off", Held::Stat) == Fields{ { "locks", "health,temperature" } }));
+	CHECK((held("|lock=none|fly=off|speed=off", Held::Stat) == Fields{ { "locks", "" } }));
+	CHECK(held("|fly=off|speed=off", Held::Stat).empty());
+	CHECK((held("|lock=drain,mana,health,drain,", Held::Stat) == Fields{ { "locks", "health,drain" } }));
+	for (const char* bad : { "|lock=", "|lock=,", "|lock=mana", "|lock=on", "|lock=Health", "|lock= health",
+		"|lock=healthy,heal", "|lock=health;drain", "|lock=%s%n", "|locks=health", "|lock" })
+		CHECK(held(bad, Held::Stat).empty());
+	CHECK(held(("|lock=" + std::string(900, 'h')).c_str(), Held::Stat).empty());
+	CHECK((held(("|lock=" + std::string(900, ',') + "heat").c_str(), Held::Stat) == Fields{ { "locks", "heat" } }));
 	CHECK((held("|build=free,anywhere", Held::BuildParts) == Fields{ { "parts", "free,anywhere" } }));
 	CHECK((held("|build=none", Held::BuildParts) == Fields{ { "parts", "" } }));
 	CHECK((held("|unlock=on", Held::BuildUnlock) == Fields{ { "on", "on" } }));
