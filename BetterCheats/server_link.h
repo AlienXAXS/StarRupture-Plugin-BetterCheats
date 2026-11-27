@@ -51,6 +51,10 @@ namespace BetterCheats::ServerLink
 	// server can do, every waiting request and every result.
 	void Reset();
 
+	// Any thread. Changes with every Reset, so a list gathered for one
+	// connection can tell it belongs to an earlier one.
+	uint32_t Connection();
+
 	// Any thread. Why the server can't run the op, or empty when it can.
 	std::string Blocker(Op op);
 

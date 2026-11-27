@@ -39,6 +39,7 @@ namespace BetterCheats::ServerLink
 		enum class Cap { NotSent, Waiting, Got, Failed };
 
 		std::mutex               g_mutex;
+		std::atomic<uint32_t>    g_connection{ 0 };
 		Protocol::Waiting<What>  g_waiting;
 		std::vector<Queued>      g_queued;
 		std::array<Result, kOpCount> g_results;
@@ -97,6 +98,7 @@ namespace BetterCheats::ServerLink
 
 		void ResetLocked()
 		{
+			++g_connection;
 			g_waiting.Clear();
 			g_queued.clear();
 			g_results = {};
@@ -117,11 +119,19 @@ namespace BetterCheats::ServerLink
 			return g_serverTagSeen && Protocol::IsLoaderTagTooOld(g_serverTag.c_str());
 		}
 
+		// What was clicked and not sent yet won't be, so its row stops waiting.
+		void DropQueuedLocked()
+		{
+			for (const Queued& queued : g_queued)
+				ResultOf(queued.op).text.clear();
+			g_queued.clear();
+		}
+
 		void FailCapLocked(std::string why)
 		{
 			g_cap = Cap::Failed;
 			g_capFailure = std::move(why);
-			g_queued.clear();
+			DropQueuedLocked();
 		}
 
 		// A request that left no entry waiting: the send did not queue.
@@ -251,9 +261,7 @@ namespace BetterCheats::ServerLink
 	void DropQueued()
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
-		for (const Queued& queued : g_queued)
-			ResultOf(queued.op).text.clear();
-		g_queued.clear();
+		DropQueuedLocked();
 	}
 
 	void Tick()
@@ -353,6 +361,11 @@ namespace BetterCheats::ServerLink
 		// Outside the lock: the loader is not called while it is held.
 		for (const Outgoing& request : outgoing)
 			Send(request.id, request.what, request.message);
+	}
+
+	uint32_t Connection()
+	{
+		return g_connection;
 	}
 
 	std::string Blocker(Op op)

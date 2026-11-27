@@ -21,6 +21,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,9 +56,10 @@ namespace BetterCheats::Panels::Power
 		{
 			std::string assetName;
 			std::string name;
+			float       value;   // this game's own, which the server's starts from
 		};
 		std::vector<ServerBuilding> g_serverBuildings;   // under g_pendingMutex
-		bool                        g_serverScanned = false;  // under g_pendingMutex
+		std::optional<uint32_t>     g_serverScan;        // under g_pendingMutex: the connection it was for
 
 		// Pristine (unmodified) ElectricityValue per asset, captured the first time
 		// a config asset is seen — i.e. before any override from this session has
@@ -410,6 +412,8 @@ namespace BetterCheats::Panels::Power
 				return;
 			}
 
+			const uint32_t connection = BetterCheats::ServerLink::Connection();
+
 			if (BetterCheats::GameContext::IsBetweenWorlds())
 			{
 				g_scanSkipped = true;
@@ -483,7 +487,7 @@ namespace BetterCheats::Panels::Power
 							if (forServer)
 							{
 								if (*electricity != 0.0f)
-									serverBuildings.push_back({ assetName, entry.name });
+									serverBuildings.push_back({ assetName, entry.name, *electricity });
 								continue;
 							}
 
@@ -555,7 +559,7 @@ namespace BetterCheats::Panels::Power
 				if (forServer)
 				{
 					g_serverBuildings = std::move(serverBuildings);
-					g_serverScanned   = true;
+					g_serverScan      = connection;
 				}
 				else
 				{
@@ -1079,13 +1083,23 @@ namespace BetterCheats::Panels::Power
 		using BetterCheats::ServerLink::Op;
 		static std::string s_selected;
 		static float       s_value = 100.0f;
+		static uint32_t    s_connection = 0;
+
+		const uint32_t connection = BetterCheats::ServerLink::Connection();
+		if (s_connection != connection)
+		{
+			s_connection = connection;
+			s_selected.clear();
+			s_value = 100.0f;
+		}
 
 		std::vector<ServerBuilding> buildings;
 		bool scanned = false;
 		{
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
-			buildings = g_serverBuildings;
-			scanned   = g_serverScanned;
+			scanned = g_serverScan == connection;
+			if (scanned)
+				buildings = g_serverBuildings;
 		}
 
 		imgui->SeparatorText("Power Output / Consumption");
@@ -1104,7 +1118,10 @@ namespace BetterCheats::Panels::Power
 			{
 				imgui->PushIDStr(building.assetName.c_str());
 				if (imgui->Selectable(building.name.c_str(), &building == selected))
+				{
 					s_selected = building.assetName;
+					s_value    = building.value;
+				}
 				imgui->PopID();
 			}
 			imgui->EndCombo();
