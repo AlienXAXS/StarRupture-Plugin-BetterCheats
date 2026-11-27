@@ -907,21 +907,39 @@ namespace BetterCheats::Panels::Tools
 			if (last.ChangedSince(seen))
 				boost = last.NumberOr("boost", 1.0f, 10.0f, 1.0f);
 
+			// The two share an op, so its answer goes under the one last clicked.
+			static bool heatAnswers = false;
+			const auto answer = [imgui]
+			{
+				const std::string result = ServerLink::LastResult(kOp).text;
+				if (!result.empty())
+					ServerLink::Say(imgui, result);
+			};
+
 			ServerLink::Say(imgui, "The server runs the drill overheat and mining boost cheats here. 1x boost is off.");
 			if (const std::string heat = last.Value("heat"); last.readBack && !heat.empty())
 				ServerLink::Say(imgui, "No drill overheat on the server: " + heat);
 			if (imgui->SmallButton("No drill overheat: on##server_mine"))
+			{
 				ServerLink::Queue(kOp, { { "heat", "on" } });
+				heatAnswers = true;
+			}
 			imgui->SameLine(0.0f, 8.0f);
 			if (imgui->SmallButton("No drill overheat: off##server_mine"))
+			{
 				ServerLink::Queue(kOp, { { "heat", "off" } });
+				heatAnswers = true;
+			}
+			if (heatAnswers)
+				answer();
 			imgui->SliderFloat("Mining Boost##server_mine", &boost, 1.0f, 10.0f, "%.2fx");
 			if (imgui->SmallButton("Apply boost##server_mine"))
+			{
 				ServerLink::Queue(kOp, { { "boost", ServerLink::Number(boost) } });
-
-			const std::string result = ServerLink::LastResult(kOp).text;
-			if (!result.empty())
-				ServerLink::Say(imgui, result);
+				heatAnswers = false;
+			}
+			if (!heatAnswers)
+				answer();
 			imgui->Spacing();
 		}
 	}

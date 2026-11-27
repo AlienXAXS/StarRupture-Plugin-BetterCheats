@@ -2724,6 +2724,14 @@ namespace BetterCheats::Panels::Inventory
 		const bool serverGrid = !greyed && ServerLink::ServerOwns(ServerLink::Rows::Grid);
 		const ServerLink::Route gridRoute =
 			serverGrid ? ServerLink::RouteOf(ServerLink::Op::Grid) : ServerLink::Route::Local;
+		// The route can come back to this game on the same connection. The
+		// player's own grid returns then, so a click never saves the server's.
+		if (!greyed && serverInSteppers && gridRoute == ServerLink::Route::Local)
+		{
+			columns = wantColumns;
+			rows    = wantRows;
+			serverInSteppers = false;
+		}
 		const bool gridHeld = serverGrid && gridRoute != ServerLink::Route::Server;
 		if (gridHeld)
 		{

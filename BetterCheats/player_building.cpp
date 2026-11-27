@@ -880,6 +880,9 @@ namespace BetterCheats::Panels::Building
 					ReleaseValues();
 				else if (!g_keeperUnlockWritten)
 					WriteKeeperUnlock();
+				// Reads as a change once the row is this game's again, so the
+				// player's own setting replaces whatever the server's reply wrote.
+				g_prevUnlockAllBuildings = !g_unlockAllBuildings;
 			}
 			else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 			{
