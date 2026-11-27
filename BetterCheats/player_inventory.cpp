@@ -1133,6 +1133,10 @@ namespace BetterCheats::Panels::Inventory
 
 				if (g_onlyShowChangedStacks)
 				{
+					// A tier never resizes an item that can't stack.
+					if (!e.canStack)
+						continue;
+
 					const int effective = EffectiveStackFor(e, globalSize, categoryOverrides, overrides);
 					if (effective == e.originalMaxStack)
 						continue;
