@@ -208,7 +208,8 @@ static PluginInfo s_pluginInfo = {
 	PLUGIN_DECLARED_INTERFACE,
 	PLUGIN_TARGET_CLIENT,
 	PLUGIN_GAME_BUILT_CL,
-	PLUGIN_MAP_MIGRATED
+	// Every detour checks its own feature and calls the original while that is off.
+	PLUGIN_MAP_MIGRATED | PLUGIN_HANDLES_HOST_DENY
 };
 
 // Keybind callback — fires on key press to toggle the menu
