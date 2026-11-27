@@ -52,18 +52,22 @@ namespace BetterCheats::Panels
 
 		void RenderServerCorporations(IModLoaderImGui* imgui)
 		{
-			// Apply sets the server's total, so the untouched 0 is never sent.
-			static int      points     = 0;
-			static bool     entered    = false;
-			static uint32_t connection = 0;
-			if (const uint32_t now = ServerLink::Connection(); connection != now)
+			// Apply sets the server's total, so only a typed value is sent.
+			static int      points  = 0;
+			static bool     entered = false;
+			static uint64_t seen    = 0;
+			const ServerLink::Result last = ServerLink::LastResult(ServerLink::Op::Corp);
+			const std::string        held = last.Value("points");
+			// A new connection changes the stamp too.
+			if (last.ChangedSince(seen))
 			{
-				connection = now;
-				points     = 0;
-				entered    = false;
+				points  = static_cast<int>(ServerProtocol::ParseNumber(held, 999999999u).value_or(0));
+				entered = false;
 			}
 
 			imgui->SeparatorText("Data Points");
+			if (!held.empty())
+				ServerLink::Say(imgui, "Data Points on the server: " + held);
 			if (imgui->InputInt("##server_data_points", &points, 1, 100))
 				entered = true;
 			points = std::clamp(points, 0, 999999999);

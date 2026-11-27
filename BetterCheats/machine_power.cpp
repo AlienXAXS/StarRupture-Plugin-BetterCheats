@@ -1102,9 +1102,29 @@ namespace BetterCheats::Panels::Power
 				buildings = g_serverBuildings;
 		}
 
+		// Drawn only while this page is shown, which is when the list is asked for.
+		const BetterCheats::ServerLink::PowerList list = BetterCheats::ServerLink::ShowPowerList();
+		const auto listedValue = [&list](const std::string& asset) -> const BetterCheats::ServerProtocol::PowerValue*
+		{
+			for (const auto& one : list.values)
+				if (one.asset == asset)
+					return &one;
+			return nullptr;
+		};
+		static uint64_t s_listSeen = 0;
+		if (s_listSeen != list.stamp)
+		{
+			s_listSeen = list.stamp;
+			if (const auto* one = listedValue(s_selected))
+				s_value = one->value;
+		}
+
 		imgui->SeparatorText("Power Output / Consumption");
+		const bool rescan = imgui->Button("Rescan##server_power");
+		if (rescan)
+			BetterCheats::ServerLink::RescanPowerList();
 		// Once, then on request: an empty result must not rescan every frame.
-		if (!scanned || imgui->Button("Rescan##server_power"))
+		if (!scanned || rescan)
 			RequestRescan();
 
 		const ServerBuilding* selected = nullptr;
@@ -1120,7 +1140,8 @@ namespace BetterCheats::Panels::Power
 				if (imgui->Selectable(building.name.c_str(), &building == selected))
 				{
 					s_selected = building.assetName;
-					s_value    = building.value;
+					const auto* one = listedValue(building.assetName);
+					s_value    = one ? one->value : building.value;
 				}
 				imgui->PopID();
 			}
@@ -1129,10 +1150,29 @@ namespace BetterCheats::Panels::Power
 
 		imgui->InputFloat("Power##server_power", &s_value, 1.0f, 100.0f, "%.2f");
 		s_value = std::clamp(s_value, 0.01f, 1000000.0f);
-		imgui->TextWrapped("Power starts at the value in your own game, which may not be what the server has now.");
+		imgui->TextWrapped(listedValue(s_selected)
+			? "Power starts at the value the server listed."
+			: "Power starts at the value in your own game, which may not be what the server has now.");
 		// Only a read-back counts them, and a change to power drops the count.
 		if (const std::string edited = BetterCheats::ServerLink::LastResult(Op::Power).Value("edited"); !edited.empty())
 			BetterCheats::ServerLink::Say(imgui, "Buildings with edited power on the server: " + edited);
+		// The names are this game's where it has the building, else the server's text.
+		for (const auto& one : list.values)
+		{
+			if (one.value == one.normal)
+				continue;
+			std::string name = one.asset;
+			for (const auto& building : buildings)
+				if (building.assetName == one.asset)
+					name = building.name;
+			char numbers[96];
+			snprintf(numbers, sizeof(numbers), ": %.2f (normal %.2f)", one.value, one.normal);
+			BetterCheats::ServerLink::Say(imgui, name + numbers);
+		}
+		if (list.more)
+			imgui->TextWrapped("The server could not list every building, so more may be edited.");
+		if (!list.note.empty())
+			BetterCheats::ServerLink::Say(imgui, "Power list: " + list.note);
 
 		char value[32];
 		snprintf(value, sizeof(value), "%.2f", s_value);
