@@ -17,6 +17,7 @@ namespace BetterCheats::ServerLink
 	namespace
 	{
 		constexpr uint64_t    kRetryMs   = 1000;
+		constexpr uint64_t    kCapAgainMs = 10000;
 		constexpr size_t      kOpCount   = static_cast<size_t>(Op::Count);
 		constexpr const char* kChecking  = "Asking the server what it can do...";
 		constexpr const char* kSending   = "Waiting for the server...";
@@ -49,9 +50,12 @@ namespace BetterCheats::ServerLink
 		uint64_t                 g_notReadySince  = 0;
 		bool                     g_wasReady       = false;
 		bool                     g_neverReady     = false;
+		bool                     g_capStale       = false;
+		uint64_t                 g_capSentMs      = 0;
 		// From the ready callback, which fires once per connection, so a world
 		// ending must not forget it.
 		std::string              g_serverTag;
+		bool                     g_serverTagSeen  = false;
 
 		IPluginSelf*      g_self = nullptr;
 		std::atomic<bool> g_canSend{ false };
@@ -104,6 +108,13 @@ namespace BetterCheats::ServerLink
 			g_notReadySince = 0;
 			g_wasReady      = false;
 			g_neverReady    = false;
+			g_capStale      = false;
+			g_capSentMs     = 0;
+		}
+
+		bool ServerLoaderTooOldLocked()
+		{
+			return g_serverTagSeen && Protocol::IsLoaderTagTooOld(g_serverTag.c_str());
 		}
 
 		void FailCapLocked(std::string why)
@@ -149,6 +160,7 @@ namespace BetterCheats::ServerLink
 			std::lock_guard<std::mutex> lock(g_mutex);
 			ResetLocked();
 			g_serverTag = serverBuildTag ? Protocol::Clip(serverBuildTag, 64) : std::string();
+			g_serverTagSeen = true;
 		}
 
 		void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
@@ -169,6 +181,10 @@ namespace BetterCheats::ServerLink
 					g_capReply = std::move(*reply);
 					g_cap = Cap::Got;
 				}
+				else if (g_cap == Cap::Got)
+				{
+					g_capStale = true;   // asking again failed: the last answer stands for now
+				}
 				else
 				{
 					g_capRefused = reply->status == Protocol::Status::Refused;
@@ -180,7 +196,14 @@ namespace BetterCheats::ServerLink
 			Result& result = ResultOf(entry->what.op);
 			result.text = reply->reason.empty() ? kDone : reply->reason;
 			if (reply->status != Protocol::Status::Ok)
+			{
+				// The server listed this op as on and now can't run it, so what
+				// it can do has changed.
+				if (reply->reason == Protocol::kNotOnThisBuild && g_cap == Cap::Got
+					&& Protocol::HandlerOf(g_capReply, OpName(entry->what.op)).on)
+					g_capStale = true;
 				return;
+			}
 
 			for (auto& [key, value] : reply->fields)
 			{
@@ -272,20 +295,28 @@ namespace BetterCheats::ServerLink
 
 			for (const auto& expired : g_waiting.Expire(now))
 			{
-				if (expired.what.cap)
+				if (expired.what.cap && g_cap == Cap::Got)
+					g_capStale = true;
+				else if (expired.what.cap)
 					FailCapLocked(Protocol::kNoCapAnswer);
 				else
 					ResultOf(expired.what.op).text = Protocol::kNoAnswer;
 			}
 
-			if (g_cap == Cap::NotSent && now >= g_capRetryMs && !Protocol::IsLoaderTagTooOld(g_serverTag.c_str()))
+			const bool firstCap = g_cap == Cap::NotSent && now >= g_capRetryMs && !ServerLoaderTooOldLocked();
+			const bool capAgain = g_cap == Cap::Got && g_capStale && now - g_capSentMs >= kCapAgainMs;
+			if (firstCap || capAgain)
 			{
 				const What what{ Op::Give, true };
 				if (const uint32_t id = g_waiting.Add(what, now))
 				{
 					if (auto message = Protocol::BuildRequest(id, "cap", {}))
 					{
-						g_cap = Cap::Waiting;
+						// Asking again keeps the last answer until the new one is in.
+						if (firstCap)
+							g_cap = Cap::Waiting;
+						g_capStale  = false;
+						g_capSentMs = now;
 						g_capRetryMs = now + kRetryMs;
 						outgoing.push_back({ id, what, std::move(*message) });
 					}
@@ -330,7 +361,7 @@ namespace BetterCheats::ServerLink
 			return Protocol::kNeedsClientLoader;
 
 		std::lock_guard<std::mutex> lock(g_mutex);
-		if (g_wasReady && Protocol::IsLoaderTagTooOld(g_serverTag.c_str()))
+		if (g_wasReady && ServerLoaderTooOldLocked())
 			return Protocol::kNeedsServerLoader;
 
 		switch (g_cap)

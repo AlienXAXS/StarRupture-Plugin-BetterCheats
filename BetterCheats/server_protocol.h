@@ -208,7 +208,10 @@ namespace BetterCheats::ServerProtocol
 	// release while it already holds newer work, so it is never judged.
 	inline bool IsLoaderTagTooOld(const char* tag)
 	{
-		if (!tag || std::string_view(tag).find("-dev") != std::string_view::npos)
+		// A server that sends no tag predates the tags this needs.
+		if (!tag || !*tag)
+			return true;
+		if (std::string_view(tag).find("-dev") != std::string_view::npos)
 			return false;
 		if (*tag == 'v')
 			++tag;

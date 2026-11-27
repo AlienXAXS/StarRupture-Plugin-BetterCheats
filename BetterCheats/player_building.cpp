@@ -741,6 +741,36 @@ namespace BetterCheats::Panels::Building
 		catch (...) {}
 	}
 
+	// Sets the tech keeper's unlock-all flag and has the game rebuild the
+	// available buildings. Writing the flag alone doesn't refresh the build menu.
+	static void WriteKeeperUnlock()
+	{
+		try
+		{
+			SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper();
+			if (!keeper)
+				return;
+			LOG_DEBUG("Building: TechnologyKeeper = 0x%llx", reinterpret_cast<unsigned long long>(keeper));
+			if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+			{
+				*unlockAll = true;
+				g_keeperUnlockWritten = true;
+			}
+			if (g_checkAvailableBuildings)
+			{
+				LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx)",
+					reinterpret_cast<unsigned long long>(keeper));
+				g_checkAvailableBuildings(keeper, nullptr, 0);
+				LOG_DEBUG("Building: CheckAvailableBuildings returned");
+			}
+			else
+			{
+				LOG_WARN("Building: CheckAvailableBuildings not resolved — menu will not refresh");
+			}
+		}
+		catch (...) { LOG_WARN("Building: exception in unlock all buildings toggle"); }
+	}
+
 	void ReleaseValues()
 	{
 		// The user's choice stays (g_unlockAllBuildings); only the write into the
@@ -849,9 +879,18 @@ namespace BetterCheats::Panels::Building
 			// plugin had written it, take that write back first, so Best Builder does not
 			// take it for the game's own value. The player's value applies again when
 			// Best Builder goes away.
-			// A joined player's unlock is the server's to make.
-			if (Defer::DeferredTo("unlock-all-buildings") || BetterCheats::GameContext::IsJoinedClient())
+			if (Defer::DeferredTo("unlock-all-buildings"))
 				ReleaseValues();
+			else if (BetterCheats::GameContext::IsJoinedClient())
+			{
+				// The server makes a joined player's unlock. The copy here follows
+				// its ok reply, which is forgotten on deny and with the connection.
+				if (!Features::Usable(Features::BuildUnlock)
+					|| ServerLink::LastResult(ServerLink::Op::BuildUnlock).Value("on") != "on")
+					ReleaseValues();
+				else if (!g_keeperUnlockWritten)
+					WriteKeeperUnlock();
+			}
 			else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 			{
 				g_prevUnlockAllBuildings = g_unlockAllBuildings;
@@ -862,31 +901,7 @@ namespace BetterCheats::Panels::Building
 					ReleaseValues();
 					return;
 				}
-				try
-				{
-					SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper();
-					LOG_DEBUG("Building: TechnologyKeeper = 0x%llx", reinterpret_cast<unsigned long long>(keeper));
-					if (keeper)
-					{
-						if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
-						{
-							*unlockAll = true;
-							g_keeperUnlockWritten = true;
-						}
-						if (g_checkAvailableBuildings)
-						{
-							LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx, bUnlockAll=%d)",
-								reinterpret_cast<unsigned long long>(keeper), g_unlockAllBuildings);
-							g_checkAvailableBuildings(keeper, nullptr, 0);
-							LOG_DEBUG("Building: CheckAvailableBuildings returned");
-						}
-						else
-						{
-							LOG_WARN("Building: CheckAvailableBuildings not resolved — menu will not refresh");
-						}
-					}
-				}
-				catch (...) { LOG_WARN("Building: exception in unlock all buildings toggle"); }
+				WriteKeeperUnlock();
 			}
 		}
 	}
