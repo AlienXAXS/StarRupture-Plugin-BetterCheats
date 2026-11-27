@@ -504,6 +504,17 @@ namespace BetterCheats::Panels::Inventory
 			if (!g_pendingResize.load())
 				return;
 
+			// On a server that runs the grid, or refused it, nothing is resized
+			// from here. While it is still being asked, the resize waits.
+			const ServerLink::Route route = ServerLink::RouteOf(ServerLink::Op::Grid);
+			if (route == ServerLink::Route::Checking)
+				return;
+			if (route != ServerLink::Route::Local)
+			{
+				g_pendingResize.store(false);
+				return;
+			}
+
 			// Already clamped at every site that writes them.
 			const int columns = g_wantColumns.load();
 			const int rows    = g_wantRows.load();
@@ -2655,12 +2666,35 @@ namespace BetterCheats::Panels::Inventory
 		if (!greyed && wantColumns != seenColumns) { columns = wantColumns; seenColumns = wantColumns; }
 		if (!greyed && wantRows    != seenRows)    { rows    = wantRows;    seenRows    = wantRows; }
 
+		const ServerLink::Route gridRoute =
+			greyed ? ServerLink::Route::Local : ServerLink::RouteOf(ServerLink::Op::Grid);
+		const bool gridHeld =
+			gridRoute == ServerLink::Route::Checking || gridRoute == ServerLink::Route::Refused;
+		if (gridHeld)
+		{
+			ServerLink::Say(imgui, ServerLink::Blocker(ServerLink::Op::Grid));
+			imgui->BeginDisabled(true);
+		}
+
 		const bool columnsChanged =
 			RenderStepper(imgui, "grid_columns", "Columns", &columns, kMinGridColumns, kMaxGridColumns, greyed);
 		const bool rowsChanged =
 			RenderStepper(imgui, "grid_rows", "Rows", &rows, kMinGridRows, kMaxGridRows, greyed);
 
-		if (columnsChanged || rowsChanged)
+		if (gridHeld)
+			imgui->EndDisabled();
+
+		if (gridRoute == ServerLink::Route::Server)
+		{
+			// The server keeps the new size, so it is sent once, on the button.
+			if (imgui->SmallButton("Apply##server_grid"))
+				ServerLink::Queue(ServerLink::Op::Grid,
+					{ { "cols", std::to_string(columns) }, { "rows", std::to_string(rows) } });
+			const std::string result = ServerLink::LastResult(ServerLink::Op::Grid).text;
+			if (!result.empty())
+				ServerLink::Say(imgui, result);
+		}
+		else if (!gridHeld && (columnsChanged || rowsChanged))
 		{
 			g_wantColumns.store(columns);
 			g_wantRows.store(rows);

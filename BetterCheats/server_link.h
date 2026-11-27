@@ -53,6 +53,14 @@ namespace BetterCheats::ServerLink
 	// Any thread. Why the server can't run the op, or empty when it can.
 	std::string Blocker(Op op);
 
+	// Who applies a cheat that also works from the client: the game here
+	// (not joined, or the server can't run the op), nobody yet (still asking),
+	// the server, or nobody because the server said no.
+	enum class Route { Local, Checking, Server, Refused };
+
+	// Any thread.
+	Route RouteOf(Op op);
+
 	// Any thread. Ignored while the op is blocked.
 	void Queue(Op op, ServerProtocol::Fields fields);
 

@@ -31,7 +31,10 @@ namespace BetterCheats::ServerProtocol
 	inline constexpr const char* kNeedsClientLoader = "Needs ModLoader 1.28.0 or newer.";
 	inline constexpr const char* kNoServerUtility   = "This server does not run ServerUtility.";
 	inline constexpr const char* kNeedsServerLoader = "This server needs ModLoader 1.28.0 or newer.";
-	inline constexpr const char* kNoCapAnswer       = "ServerUtility on this server didn't answer.";
+	// The first ServerUtility release that answers these requests. An older one
+	// stays silent.
+#define BC_MIN_SERVERUTILITY "0.20.0"
+	inline constexpr const char* kNoCapAnswer       = "This server needs ServerUtility " BC_MIN_SERVERUTILITY " or newer.";
 	inline constexpr const char* kNotOnThisBuild    = "Not available on this server's game build.";
 	inline constexpr const char* kNoAnswer          = "No answer from the server.";
 	inline constexpr const char* kTooManyWaiting    = "Still waiting for the server. Try again in a moment.";

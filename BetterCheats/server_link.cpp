@@ -44,6 +44,7 @@ namespace BetterCheats::ServerLink
 		Cap                      g_cap = Cap::NotSent;
 		Protocol::Reply          g_capReply;
 		std::string              g_capFailure;
+		bool                     g_capRefused     = false;
 		uint64_t                 g_capRetryMs     = 0;
 		uint64_t                 g_notReadySince  = 0;
 		bool                     g_wasReady       = false;
@@ -98,6 +99,7 @@ namespace BetterCheats::ServerLink
 			g_cap = Cap::NotSent;
 			g_capReply = {};
 			g_capFailure.clear();
+			g_capRefused    = false;
 			g_capRetryMs    = 0;
 			g_notReadySince = 0;
 			g_wasReady      = false;
@@ -169,6 +171,7 @@ namespace BetterCheats::ServerLink
 				}
 				else
 				{
+					g_capRefused = reply->status == Protocol::Status::Refused;
 					FailCapLocked(reply->reason);
 				}
 				return;
@@ -343,6 +346,24 @@ namespace BetterCheats::ServerLink
 			// A server that never acknowledges the loader has none that can.
 			return g_neverReady ? Protocol::kNeedsServerLoader : kChecking;
 		}
+	}
+
+	Route RouteOf(Op op)
+	{
+		if (!GameContext::IsJoinedClient())
+			return Route::Local;
+
+		const std::string blocker = Blocker(op);
+		if (blocker.empty())
+			return Route::Server;
+		if (blocker == kChecking)
+			return Route::Checking;
+
+		std::lock_guard<std::mutex> lock(g_mutex);
+		if (g_cap == Cap::Failed)
+			return g_capRefused ? Route::Refused : Route::Local;
+		const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, OpName(op));
+		return g_cap == Cap::Got && handler.version && !handler.on ? Route::Refused : Route::Local;
 	}
 
 	void Queue(Op op, Protocol::Fields fields)

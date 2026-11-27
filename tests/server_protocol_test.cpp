@@ -51,7 +51,7 @@ int main()
 	CHECK(!Parse("res|1|7|ok|" + std::string(kMaxMessage, 'a')));
 	CHECK(!ParseReply(nullptr, 4));
 
-	const auto cap = Parse("res|1|41|ok||su=0.19.0|cheat.give=1,on|cheat.move=1,off|cheat.wave=x,on|cheat.corp=2");
+	const auto cap = Parse("res|1|41|ok||su=0.20.0|cheat.give=1,on|cheat.move=1,off|cheat.wave=x,on|cheat.corp=2");
 	CHECK(cap && HandlerOf(*cap, "cheat.give").version == 1 && HandlerOf(*cap, "cheat.give").on);
 	CHECK(cap && HandlerOf(*cap, "cheat.move").version == 1 && !HandlerOf(*cap, "cheat.move").on);
 	CHECK(cap && HandlerOf(*cap, "cheat.wave").version == 0 && HandlerOf(*cap, "cheat.corp").version == 0);
