@@ -196,18 +196,25 @@ namespace BetterCheats::ServerProtocol
 		bool     on      = false;
 	};
 
+	// A number as a request field, two decimals. Empty when it can't be written.
+	inline std::string FixedText(float value)
+	{
+		// Not the printf family: its decimal point follows the locale.
+		char text[64];
+		const auto written = std::to_chars(text, text + sizeof(text), value, std::chars_format::fixed, 2);
+		return written.ec == std::errc() ? std::string(text, written.ptr) : std::string();
+	}
+
 	// The request fields that set a stat's value; a lock the server holds on it
 	// stays, at that value. Empty for a number the server can't read.
 	inline std::optional<Fields> StatValueFields(const char* stat, float value)
 	{
 		if (!(value >= -1.0e9f && value <= 1.0e9f))
 			return std::nullopt;
-		// Not the printf family: its decimal point follows the locale.
-		char text[32];
-		const auto written = std::to_chars(text, text + sizeof(text), value, std::chars_format::fixed, 2);
-		if (written.ec != std::errc())
+		std::string text = FixedText(value);
+		if (text.empty())
 			return std::nullopt;
-		return Fields{ { "stat", stat }, { "value", std::string(text, written.ptr) } };
+		return Fields{ { "stat", stat }, { "value", std::move(text) } };
 	}
 
 	// One "<op>=<handler version>,<on|off>" field of a cap reply.
@@ -257,7 +264,7 @@ namespace BetterCheats::ServerProtocol
 
 	// What a cheat.state reply reports on. Both build rules that can be switched
 	// off share the parts list.
-	enum class Held { Stack, Wave, Power, Corp, Enemy, Weapon, Grid, Plant, Mine, Stat, BuildParts, BuildUnlock };
+	enum class Held { Stack, Wave, Power, Corp, Enemy, Weapon, Grid, Plant, Mine, Stat, BuildParts, BuildUnlock, Move };
 
 	inline bool IsNumberIn(std::string_view text, float min, float max)
 	{
@@ -380,8 +387,40 @@ namespace BetterCheats::ServerProtocol
 		case Held::BuildUnlock:
 			onOff("unlock", "on");
 			break;
+		case Held::Move:
+			// Kept as sent; MovementOf reads them.
+			for (const char* key : { "fly", "speed" })
+				if (const std::string* value = state.Find(key))
+					out.emplace_back(key, *value);
+			break;
 		}
 		return out;
+	}
+
+	inline constexpr float kMinFlyMultiplier = 1.0f;
+	inline constexpr float kMaxFlyMultiplier = 25.0f;
+
+	// The flight and fly speed a server reports for this player.
+	struct Movement
+	{
+		bool  fly   = false;
+		float speed = 1.0f;
+	};
+
+	// Anything but "on", and any speed outside the range, reads as off.
+	inline Movement MovementOf(const std::string& fly, const std::string& speed)
+	{
+		return { fly == "on", NumberOr(speed, kMinFlyMultiplier, kMaxFlyMultiplier, kMinFlyMultiplier) };
+	}
+
+	inline Fields FlyFields(bool on) { return { { "fly", on ? "on" : "off" } }; }
+
+	// Empty outside the range. 1 turns the multiplier off.
+	inline std::optional<Fields> FlySpeedFields(float speed)
+	{
+		if (!(speed >= kMinFlyMultiplier && speed <= kMaxFlyMultiplier))
+			return std::nullopt;
+		return Fields{ { "speed", FixedText(speed) } };
 	}
 
 	// One building of a cheat.power list reply.

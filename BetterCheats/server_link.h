@@ -17,7 +17,7 @@ namespace BetterCheats::ServerLink
 {
 	// One per server-held feature slot. The three build rules share an op.
 	enum class Op { Give, Wave, Stack, Corp, Power, Enemy, Weapon, Grid, Plant, Mine,
-		Stat, BuildFree, BuildAnywhere, BuildUnlock, Count };
+		Stat, BuildFree, BuildAnywhere, BuildUnlock, Move, Count };
 
 	// What the last request of an op came to. `text` may be the server's own
 	// words, so it is never a format string.
@@ -147,6 +147,12 @@ namespace BetterCheats::ServerLink
 	// them. The player rows then work as they do on their own. The one place
 	// that decides this.
 	std::optional<std::string> StatLocks();
+
+	// Any thread. The flight and fly speed the server reports for this player,
+	// off until it reports them. No value when the server doesn't run movement:
+	// not joined, or its capabilities don't list it as on. Flight and Fly Speed
+	// then work as they do on their own. The one place that decides this.
+	std::optional<ServerProtocol::Movement> ServerMovement();
 
 	// Any thread. Whether the server says Unlock All Buildings stands, so this
 	// player's game needs its own copy.

@@ -175,7 +175,7 @@ int main()
 		return reply ? HeldFields(*reply, what) : Fields{ { "unparsed", "" } };
 	};
 	const Held all[] = { Held::Stack, Held::Wave, Held::Power, Held::Corp, Held::Enemy, Held::Weapon,
-		Held::Grid, Held::Plant, Held::Mine, Held::Stat, Held::BuildParts, Held::BuildUnlock };
+		Held::Grid, Held::Plant, Held::Mine, Held::Stat, Held::BuildParts, Held::BuildUnlock, Held::Move };
 	for (Held what : all)
 		CHECK(held("", what).empty());                    // missing keys
 	for (Held what : all)
@@ -281,6 +281,19 @@ int main()
 	state.Want();
 	state.Clear();
 	CHECK(!state.Due(1000000));
+
+	// MovementOf and the movement request fields.
+	CHECK(MovementOf("on", "4").fly && MovementOf("on", "4").speed == 4.0f);
+	CHECK(MovementOf("off", "off").speed == 1.0f);
+	for (const char* bad : { "", "ON", "1", "true", "on " })
+		CHECK(!MovementOf(bad, "").fly);
+	for (const char* bad : { "", "off", "0", "26", "-4", "4x", "4,5", "nan", "inf", "1e9" })
+		CHECK(MovementOf("on", bad).speed == 1.0f);
+	CHECK((FlyFields(true) == Fields{ { "fly", "on" } }));
+	CHECK((FlyFields(false) == Fields{ { "fly", "off" } }));
+	CHECK((FlySpeedFields(2.5f) == Fields{ { "speed", "2.50" } }));
+	CHECK((FlySpeedFields(1.0f) == Fields{ { "speed", "1.00" } }));
+	CHECK(!FlySpeedFields(0.5f) && !FlySpeedFields(25.5f) && !FlySpeedFields(std::numeric_limits<float>::quiet_NaN()));
 
 	std::printf(g_failed ? "%d check(s) failed\n" : "all checks passed\n", g_failed);
 	return g_failed ? 1 : 0;

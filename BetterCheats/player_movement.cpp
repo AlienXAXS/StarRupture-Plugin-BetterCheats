@@ -1,4 +1,5 @@
 #include "player_movement.h"
+#include "server_link.h"
 #include "map_fields.h"
 #include "plugin_helpers.h"
 #include "plugin_config.h"
@@ -105,7 +106,7 @@ namespace BetterCheats::Panels::Movement
 			return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 		}
 
-		void Enable(SDK::ACrCharacterPlayerBase* character)
+		void Enable(SDK::ACrCharacterPlayerBase* character, bool passThrough)
 		{
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			SDK::UCapsuleComponent* capsule = character->CapsuleComponent;
@@ -117,7 +118,7 @@ namespace BetterCheats::Panels::Movement
 			g_savedFlyingBraking = move->BrakingDecelerationFlying;
 			g_savedCheatFlying   = move->bCheatFlying != 0;
 
-			if (g_passThroughWalls.load())
+			if (passThrough)
 				capsule->SetCollisionEnabled(SDK::ECollisionEnabled::NoCollision);
 			move->bCheatFlying = 1;
 			move->SetMovementMode(SDK::EMovementMode::MOVE_Flying, 0);
@@ -154,7 +155,7 @@ namespace BetterCheats::Panels::Movement
 			LOG_INFO("Movement: no-clip disabled.");
 		}
 
-		void MaintainNoClip(SDK::ACrCharacterPlayerBase* character)
+		void MaintainNoClip(SDK::ACrCharacterPlayerBase* character, float multiplier, bool wantGhost)
 		{
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			if (!move)
@@ -169,7 +170,6 @@ namespace BetterCheats::Panels::Movement
 			// the player land and take off again.
 			if (SDK::UCapsuleComponent* capsule = character->CapsuleComponent)
 			{
-				const bool wantGhost = g_passThroughWalls.load();
 				const bool isGhost   = capsule->GetCollisionEnabled() == SDK::ECollisionEnabled::NoCollision;
 				if (wantGhost && !isGhost)
 					capsule->SetCollisionEnabled(SDK::ECollisionEnabled::NoCollision);
@@ -177,7 +177,7 @@ namespace BetterCheats::Panels::Movement
 					capsule->SetCollisionEnabled(g_savedCollision);
 			}
 
-			const float maxSpeed = g_savedMaxFlySpeed * g_flySpeedMultiplier.load();
+			const float maxSpeed = g_savedMaxFlySpeed * multiplier;
 			move->MaxFlySpeed = maxSpeed;
 
 			// Flying braking ships at 0 on most components, which means coasting
@@ -241,7 +241,10 @@ namespace BetterCheats::Panels::Movement
 			if (!GameContext::IsInChimeraMain() || !GameContext::AreCheatsAllowed() || !Features::Usable(Features::Movement))
 				return;
 
-			g_noClipWanted.store(!g_noClipWanted.load());
+			if (const auto server = ServerLink::ServerMovement())
+				ServerLink::Queue(ServerLink::Op::Move, ServerProtocol::FlyFields(!server->fly));
+			else
+				g_noClipWanted.store(!g_noClipWanted.load());
 		}
 
 		// Swaps the live registration and persists the new combo. The loader
@@ -1562,14 +1565,24 @@ namespace BetterCheats::Panels::Movement
 				return;
 			}
 
-			const bool wanted = g_noClipWanted.load();
+			// While the server runs movement, this game only matches what it
+			// reports. The choice made here is dropped, so flight doesn't start
+			// again by itself afterwards. The server's flight passes through walls,
+			// and the saved settings stay as they are.
+			const auto server = ServerLink::ServerMovement();
+			if (server)
+				g_noClipWanted.store(false);
+			const bool  wanted      = server ? server->fly : g_noClipWanted.load();
+			const bool  passThrough = server || g_passThroughWalls.load();
+			const float multiplier  = server ? server->speed : g_flySpeedMultiplier.load();
+
 			if (wanted && !g_active)
-				Enable(character);
+				Enable(character, passThrough);
 			else if (!wanted && g_active)
 				Disable(character);
 
 			if (g_active)
-				MaintainNoClip(character);
+				MaintainNoClip(character, multiplier, passThrough);
 
 			// Independent of no-clip -- these are gameplay-effect re-evaluated
 			// attributes, so an active override has to be re-asserted every tick.
@@ -1675,9 +1688,19 @@ namespace BetterCheats::Panels::Movement
 		if (!greyed)
 			ReadNoClipKey(currentKey, sizeof(currentKey));
 
-		bool  noClip = !greyed && g_noClipWanted.load();
-		bool  ghost  = !greyed && g_passThroughWalls.load();
-		float speed  = greyed ? kMinFlySpeedMultiplier : g_flySpeedMultiplier.load();
+		const auto server = greyed ? std::nullopt : ServerLink::ServerMovement();
+
+		// Fly Speed while the server runs it: the value being dragged, asked for
+		// once when it is let go. Render thread only.
+		static std::optional<std::pair<float, uint32_t>> s_speedEdit;   // value, connection
+		if (!server)
+			s_speedEdit.reset();
+
+		bool  noClip = !greyed && (server ? server->fly : g_noClipWanted.load());
+		bool  ghost  = !greyed && (server || g_passThroughWalls.load());
+		float speed  = greyed ? kMinFlySpeedMultiplier
+			: !server ? g_flySpeedMultiplier.load()
+			: s_speedEdit ? s_speedEdit->first : server->speed;
 
 		if (imgui->BeginTable("##noclip_table", 2, kTableFlags))
 		{
@@ -1693,7 +1716,12 @@ namespace BetterCheats::Panels::Movement
 
 			imgui->TableSetColumnIndex(1);
 			if (imgui->Checkbox("Active##noclip", &noClip))
-				g_noClipWanted.store(noClip);
+			{
+				if (server)
+					ServerLink::Queue(ServerLink::Op::Move, ServerProtocol::FlyFields(noClip));
+				else
+					g_noClipWanted.store(noClip);
+			}
 
 			imgui->SameLine(0.0f, 12.0f);
 			imgui->Text("Hotkey:");
@@ -1718,11 +1746,13 @@ namespace BetterCheats::Panels::Movement
 				                  "Off: Retain collision so you can fly around without clipping through floors.");
 
 			imgui->TableSetColumnIndex(1);
+			imgui->BeginDisabled(server.has_value());
 			if (imgui->Checkbox("Enabled##passwalls", &ghost))
 			{
 				g_passThroughWalls.store(ghost);
 				SessionConfig::Set("playerMovement.passThroughWalls", ghost);
 			}
+			imgui->EndDisabled();
 
 			// Row 3: Fly Speed
 			imgui->TableNextRow(0, 0.0f);
@@ -1731,14 +1761,34 @@ namespace BetterCheats::Panels::Movement
 			imgui->Text("Fly Speed Multiplier");
 			imgui->TableSetColumnIndex(1);
 			imgui->SetNextItemWidth(BetterCheats::UI::GetSliderWidthCap(imgui));
-			if (imgui->SliderFloat("##fly_speed", &speed, kMinFlySpeedMultiplier, kMaxFlySpeedMultiplier,
-				greyed ? "-" : "%.1fx"))
+			const bool speedChanged = imgui->SliderFloat("##fly_speed", &speed, kMinFlySpeedMultiplier,
+				kMaxFlySpeedMultiplier, greyed ? "-" : "%.1fx");
+			if (server)
+			{
+				if (speedChanged)
+					s_speedEdit = { speed, ServerLink::Connection() };
+				if (s_speedEdit && imgui->IsItemDeactivatedAfterEdit() && s_speedEdit->second == ServerLink::Connection())
+				{
+					if (auto fields = ServerProtocol::FlySpeedFields(s_speedEdit->first))
+						ServerLink::Queue(ServerLink::Op::Move, std::move(*fields));
+				}
+				if (!imgui->IsItemActive())
+					s_speedEdit.reset();
+			}
+			else if (speedChanged)
 			{
 				g_flySpeedMultiplier.store(speed);
 				SessionConfig::Set("playerMovement.flySpeedMultiplier", speed);
 			}
 
 			imgui->EndTable();
+		}
+
+		if (server)
+		{
+			const std::string result = ServerLink::LastResult(ServerLink::Op::Move).text;
+			if (!result.empty())
+				ServerLink::Say(imgui, result);
 		}
 
 		imgui->Spacing();

@@ -117,6 +117,7 @@ namespace BetterCheats::ServerLink
 			{ "cheat.build",  &Features::BuildFree, Held::BuildParts, "free" },
 			{ "cheat.build",  &Features::BuildAnywhere, Held::BuildParts, "anywhere" },
 			{ "cheat.build",  &Features::BuildUnlock, Held::BuildUnlock, "unlock" },
+			{ "cheat.move",   &Features::Movement, Held::Move },
 		};
 		static_assert(sizeof(kOps) / sizeof(kOps[0]) == kOpCount);
 
@@ -681,6 +682,15 @@ namespace BetterCheats::ServerLink
 			if (key == "locks")
 				return value;
 		return std::nullopt;
+	}
+
+	std::optional<Protocol::Movement> ServerMovement()
+	{
+		if (RouteOf(Op::Move) != Route::Server)
+			return std::nullopt;
+
+		const Result result = LastResult(Op::Move);
+		return Protocol::MovementOf(result.Value("fly"), result.Value("speed"));
 	}
 
 	bool ServerOwns(Row row)
