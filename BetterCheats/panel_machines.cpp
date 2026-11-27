@@ -2,6 +2,7 @@
 #include "machine_power.h"
 
 #include "map_fields.h"
+#include "server_link.h"
 
 namespace BetterCheats::Panels
 {
@@ -13,7 +14,9 @@ namespace BetterCheats::Panels
 
 	void RenderMachines_Power(IModLoaderImGui* imgui)
 	{
-		Features::Section(imgui, Features::Power, [&](bool greyed) { Power::RenderImGui(imgui, greyed); });
+		ServerLink::Section(imgui, Features::Power, ServerLink::Op::Power,
+			[&](bool greyed) { Power::RenderImGui(imgui, greyed); },
+			[&] { Power::RenderServerImGui(imgui); });
 	}
 
 	void RenderMachines_LogisticDrones(IModLoaderImGui* imgui)

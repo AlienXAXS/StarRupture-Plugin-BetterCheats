@@ -28,6 +28,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "server_link.h"
 
 // The grid itself is one UFUNCTION call; the slot widgets are plain UMG field
 // writes, made from a detour on UCrUW_InventoryContainer::InitInventorySlots so
@@ -2725,6 +2726,26 @@ namespace BetterCheats::Panels::Inventory
 		RenderPlantPickup(imgui, greyed);
 	}
 
+	namespace
+	{
+		void RenderServerStackSizes(IModLoaderImGui* imgui)
+		{
+			static int size = 0;
+
+			imgui->SeparatorText("Item Stack Sizes");
+			imgui->InputInt("##server_stack_size", &size, 1, 100);
+			size = std::clamp(size, 0, 9999);
+			imgui->SameLine(0.0f, 8.0f);
+			if (imgui->SmallButton("Apply##server_stack_size"))
+				ServerLink::Queue(ServerLink::Op::Stack, { { "size", std::to_string(size) } });
+			imgui->TextDisabled("0 puts the server's own sizes back. A size only raises a stack.");
+
+			const std::string current = ServerLink::LastResult(ServerLink::Op::Stack).Value("size");
+			if (!current.empty())
+				ServerLink::Say(imgui, "In effect: " + current);
+		}
+	}
+
 	void RenderStackSizes(IModLoaderImGui* imgui)
 	{
 		if (!Features::Usable(Features::StackSize))
@@ -2733,9 +2754,9 @@ namespace BetterCheats::Panels::Inventory
 			imgui->Separator();
 		}
 
-		Features::Section(imgui, Features::StackSize, [&](bool greyed)
-		{
-			RenderItemStackSizes(imgui, greyed);
-		}, Features::StateOf(Features::Inventory));
+		ServerLink::Section(imgui, Features::StackSize, ServerLink::Op::Stack,
+			[&](bool greyed) { RenderItemStackSizes(imgui, greyed); },
+			[&] { RenderServerStackSizes(imgui); },
+			Features::StateOf(Features::Inventory));
 	}
 }

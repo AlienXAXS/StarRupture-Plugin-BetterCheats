@@ -10,6 +10,9 @@ namespace BetterCheats::Panels::Power
 
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
 
+	// For a joined player: asks the server to set a building's power.
+	void RenderServerImGui(IModLoaderImGui* imgui);
+
 	// Re-applies the electricity overrides persisted in the active session's
 	// JSON config (see session_config.h) by triggering a fresh building scan.
 	// Call on the game thread after SessionConfig::Reload(), e.g. from

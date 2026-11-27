@@ -19,6 +19,7 @@
 #include "plugin_map.h"
 #include "map_fields.h"
 #include "plugin_images.h"
+#include "server_link.h"
 
 namespace BetterCheats::Panels::Items
 {
@@ -35,6 +36,7 @@ namespace BetterCheats::Panels::Items
 			                                         // if its Blueprint class/package gets unloaded before "Give Item" is clicked.
 			std::string           name;
 			std::string           uniqueName;     // Fields::ItemKeyOf(item): the unique name, or the asset name where there is none
+			std::string           assetPath;      // "<package>.<asset>", what a server is asked for
 			int                   maxStack        = 1;
 			PluginImageId         imageId         = 0;      // from the image table; 0 where the loader has none
 		};
@@ -169,7 +171,10 @@ namespace BetterCheats::Panels::Items
 			IPluginSplash* splash = (self && self->hooks) ? self->hooks->Splash : nullptr;
 
 			// The list stays unloaded, so the next draw asks again.
-			if (BetterCheats::GameContext::IsBetweenWorlds() || !Features::Usable(Features::Items))
+			// A server that gives items still needs this list, which only reads.
+			const bool serverGives = Features::StateOf(Features::Items) == Features::Why::ServerOnly
+				&& BetterCheats::ServerLink::Blocker(BetterCheats::ServerLink::Op::Give).empty();
+			if (BetterCheats::GameContext::IsBetweenWorlds() || (!Features::Usable(Features::Items) && !serverGives))
 			{
 				g_refreshInFlight.store(false, std::memory_order_release);
 				if (splash)
@@ -228,6 +233,10 @@ namespace BetterCheats::Panels::Items
 
 						ItemEntry entry;
 						entry.assetData  = assetData[i];
+						const std::string assetName = assetData[i].AssetName.ToString();
+						entry.assetPath  = assetData[i].PackageName.GetRawString() + "." + assetName;
+						if (entry.assetPath.size() > BetterCheats::ServerProtocol::kMaxAssetPath)
+							entry.assetPath = assetName;
 						SDK::UTexture2D* icon = GetItemIconResource(item);
 						bool iconIsTexture2D = false;
 						if (icon) { try { iconIsTexture2D = icon->IsA(SDK::UTexture2D::StaticClass()); } catch (...) {} }
@@ -468,7 +477,7 @@ namespace BetterCheats::Panels::Items
 #endif
 	}
 
-	void RenderImGui(IModLoaderImGui* imgui, bool greyed)
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed, bool server)
 	{
 		imgui->SeparatorText("Item Spawner");
 
@@ -488,7 +497,7 @@ namespace BetterCheats::Panels::Items
 			return;
 		}
 
-		if (!ResolveAddNewItem())
+		if (!server && !ResolveAddNewItem())
 		{
 			imgui->TextWrapped("Item Spawner is unavailable — UAuItemsComponent::AddNewItem could not be "
 				"located in this game build.");
@@ -625,7 +634,16 @@ namespace BetterCheats::Panels::Items
 		else
 		{
 			if (imgui->Button("Give Item"))
-				RequestGiveItem(selected->uniqueName, totalAmount, g_stacks, maxStack, selected->name, selected->assetData);
+			{
+				if (server)
+				{
+					const int64_t count = std::clamp<int64_t>(static_cast<int64_t>(g_stacks) * maxStack, 1, 9999);
+					BetterCheats::ServerLink::Queue(BetterCheats::ServerLink::Op::Give,
+						{ { "item", selected->assetPath }, { "count", std::to_string(count) } });
+				}
+				else
+					RequestGiveItem(selected->uniqueName, totalAmount, g_stacks, maxStack, selected->name, selected->assetData);
+			}
 			imgui->SameLine(0.0f, 6.0f);
 			char totalLabel[64];
 			snprintf(totalLabel, sizeof(totalLabel), "x%d  (stack %d)", totalAmount, maxStack);

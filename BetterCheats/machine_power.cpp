@@ -26,6 +26,7 @@
 #include <vector>
 #include "plugin_map.h"
 #include "map_fields.h"
+#include "server_link.h"
 
 namespace BetterCheats::Panels::Power
 {
@@ -49,6 +50,13 @@ namespace BetterCheats::Panels::Power
 		// for AdoptPendingIfReady() to pick up.
 		std::vector<PowerEntry> g_entries;
 		bool                    g_loaded = false;
+
+		struct ServerBuilding
+		{
+			std::string assetName;
+			std::string name;
+		};
+		std::vector<ServerBuilding> g_serverBuildings;   // under g_pendingMutex
 
 		// Pristine (unmodified) ElectricityValue per asset, captured the first time
 		// a config asset is seen — i.e. before any override from this session has
@@ -392,7 +400,10 @@ namespace BetterCheats::Panels::Power
 		{
 			// The scan re-applies the persisted overrides, so a host that switched the
 			// Power section off after this was posted must not get them written.
-			if (!BetterCheats::Features::Usable(BetterCheats::Features::Power))
+			// For a server the scan only collects names: nothing is written.
+			const bool forServer = BetterCheats::Features::StateOf(BetterCheats::Features::Power) == BetterCheats::Features::Why::ServerOnly
+				&& BetterCheats::ServerLink::Blocker(BetterCheats::ServerLink::Op::Power).empty();
+			if (!BetterCheats::Features::Usable(BetterCheats::Features::Power) && !forServer)
 			{
 				g_refreshInFlight.store(false, std::memory_order_release);
 				return;
@@ -406,6 +417,7 @@ namespace BetterCheats::Panels::Power
 			}
 
 			std::vector<PowerEntry> entries;
+			std::vector<ServerBuilding> serverBuildings;
 
 			try
 			{
@@ -466,6 +478,13 @@ namespace BetterCheats::Panels::Power
 
 							auto it = configNames.find(packageName);
 							entry.name = (it != configNames.end()) ? it->second : PrettifyAssetName(assetName);
+
+							if (forServer)
+							{
+								if (*electricity != 0.0f)
+									serverBuildings.push_back({ assetName, entry.name });
+								continue;
+							}
 
 							entry.type  = *agentType;
 							entry.value = *electricity;
@@ -532,8 +551,15 @@ namespace BetterCheats::Panels::Power
 
 			{
 				std::lock_guard<std::mutex> lock(g_pendingMutex);
-				g_pendingEntries = std::move(entries);
-				g_pendingReady   = true;
+				if (forServer)
+				{
+					g_serverBuildings = std::move(serverBuildings);
+				}
+				else
+				{
+					g_pendingEntries = std::move(entries);
+					g_pendingReady   = true;
+				}
 				g_refreshInFlight.store(false, std::memory_order_release);
 			}
 		}
@@ -1044,6 +1070,60 @@ namespace BetterCheats::Panels::Power
 				"buildings already placed in the world. The reset arrow restores that "
 				"building's default value.");
 		}
+	}
+
+	void RenderServerImGui(IModLoaderImGui* imgui)
+	{
+		using BetterCheats::ServerLink::Op;
+		static std::string s_selected;
+		static float       s_value = 100.0f;
+
+		std::vector<ServerBuilding> buildings;
+		{
+			std::lock_guard<std::mutex> lock(g_pendingMutex);
+			buildings = g_serverBuildings;
+		}
+
+		imgui->SeparatorText("Power Output / Consumption");
+		if (buildings.empty())
+			RequestRescan();
+
+		const ServerBuilding* selected = nullptr;
+		for (const auto& building : buildings)
+			if (building.assetName == s_selected)
+				selected = &building;
+
+		if (imgui->BeginCombo("Building", selected ? selected->name.c_str() : "(select a building)"))
+		{
+			for (const auto& building : buildings)
+			{
+				imgui->PushIDStr(building.assetName.c_str());
+				if (imgui->Selectable(building.name.c_str(), &building == selected))
+					s_selected = building.assetName;
+				imgui->PopID();
+			}
+			imgui->EndCombo();
+		}
+
+		imgui->InputFloat("Power##server_power", &s_value, 1.0f, 100.0f, "%.2f");
+		s_value = std::clamp(s_value, 0.01f, 1000000.0f);
+
+		char value[32];
+		snprintf(value, sizeof(value), "%.2f", s_value);
+
+		imgui->BeginDisabled(!selected);
+		if (imgui->Button("Apply##server_power"))
+			BetterCheats::ServerLink::Queue(Op::Power,
+				{ { "do", "set" }, { "building", s_selected }, { "value", value } });
+		imgui->SameLine(0.0f, 8.0f);
+		if (imgui->Button("Reset##server_power"))
+			BetterCheats::ServerLink::Queue(Op::Power, { { "do", "reset" }, { "building", s_selected } });
+		imgui->EndDisabled();
+		imgui->SameLine(0.0f, 8.0f);
+		if (imgui->Button("Reset All##server_power"))
+			BetterCheats::ServerLink::Queue(Op::Power, { { "do", "reset-all" } });
+		if (!selected)
+			imgui->TextDisabled("Select a building to apply or reset it.");
 	}
 
 	void RenderImGui(IModLoaderImGui* imgui, bool greyed)

@@ -5,6 +5,7 @@
 namespace BetterCheats::Panels::Items
 {
 	void Initialize();
-	void RenderImGui(IModLoaderImGui* imgui, bool greyed);
+	// `server`: Give Item asks the joined server instead.
+	void RenderImGui(IModLoaderImGui* imgui, bool greyed, bool server = false);
 	void Shutdown();
 }

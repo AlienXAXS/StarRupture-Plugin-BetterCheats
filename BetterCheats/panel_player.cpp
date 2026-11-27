@@ -9,6 +9,7 @@
 #include "player_weapons.h"
 
 #include "map_fields.h"
+#include "server_link.h"
 
 namespace BetterCheats::Panels
 {
@@ -19,7 +20,9 @@ namespace BetterCheats::Panels
 
 	void RenderPlayer_ItemSpawner(IModLoaderImGui* imgui)
 	{
-		Features::Section(imgui, Features::Items, [&](bool greyed) { Items::RenderImGui(imgui, greyed); });
+		ServerLink::Section(imgui, Features::Items, ServerLink::Op::Give,
+			[&](bool greyed) { Items::RenderImGui(imgui, greyed); },
+			[&] { Items::RenderImGui(imgui, false, true); });
 	}
 
 	void RenderPlayer_Inventory(IModLoaderImGui* imgui)
