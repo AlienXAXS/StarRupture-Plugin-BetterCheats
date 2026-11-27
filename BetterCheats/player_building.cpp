@@ -3,6 +3,8 @@
 #include "aob_resolver.h"
 #include "session_config.h"
 #include "defer.h"
+#include "game_context.h"
+#include "server_link.h"
 #include "game_thread.h"
 #include "ui_widgets.h"
 
@@ -30,6 +32,62 @@ namespace BetterCheats::Panels::Building
 		// Valid (1) when active, bypassing the inventory check entirely.
 		// -------------------------------------------------------------------------
 
+		namespace ServerLink = BetterCheats::ServerLink;
+
+		// On a joined client the build cheats are the server's. These hold the
+		// parts it has said are on for this player: set on the tick, read by the
+		// detours. g_anywhereFromServer is also set while the server is being
+		// asked or has said no, so the saved setting does not apply then.
+		std::atomic<bool> g_joinedBuild{ false };
+		std::atomic<bool> g_serverFreeCost{ false };
+		std::atomic<bool> g_serverFreeStability{ false };
+		std::atomic<bool> g_anywhereFromServer{ false };
+		std::atomic<bool> g_serverWindows{ false };
+		std::atomic<bool> g_serverBenches{ false };
+
+		// Whether the server's last reply for the rule lists the part. The list
+		// is the server's text, so only an exact entry counts.
+		bool ServerHasPart(ServerLink::Op op, const char* part)
+		{
+			const std::string parts = ServerLink::LastResult(op).Value("parts");
+			const size_t length = std::strlen(part);
+			for (size_t start = 0; start <= parts.size(); )
+			{
+				size_t end = parts.find(',', start);
+				if (end == std::string::npos)
+					end = parts.size();
+				if (end - start == length && parts.compare(start, length, part) == 0)
+					return true;
+				start = end + 1;
+			}
+			return false;
+		}
+
+		void ForgetServerBuild()
+		{
+			g_serverFreeCost      = false;
+			g_serverFreeStability = false;
+			g_serverWindows       = false;
+			g_serverBenches       = false;
+		}
+
+		// Game thread.
+		void SyncServerBuild()
+		{
+			const bool joined = BetterCheats::GameContext::IsJoinedClient();
+			g_joinedBuild        = joined;
+			g_anywhereFromServer = joined && ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
+			if (!joined)
+			{
+				ForgetServerBuild();
+				return;
+			}
+			g_serverFreeCost      = ServerHasPart(ServerLink::Op::BuildFree, "cost");
+			g_serverFreeStability = ServerHasPart(ServerLink::Op::BuildFree, "stability");
+			g_serverWindows       = ServerHasPart(ServerLink::Op::BuildAnywhere, "windows");
+			g_serverBenches       = ServerHasPart(ServerLink::Op::BuildAnywhere, "benches");
+		}
+
 		using GetPlacementResourceConditionResultFn = int64_t(__fastcall*)(void* self);
 
 		GetPlacementResourceConditionResultFn g_originalGetPlacementResourceConditionResult = nullptr;
@@ -38,7 +96,8 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			if (g_noBuildCost && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-build-cost"))
+			const bool noCost = g_joinedBuild.load() ? g_serverFreeCost.load() : g_noBuildCost;
+			if (noCost && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-build-cost"))
 				return 1; // EAuAPlacementConditionResult::Valid
 
 			return g_originalGetPlacementResourceConditionResult(self);
@@ -67,16 +126,22 @@ namespace BetterCheats::Panels::Building
 		HookHandle       g_hookCheckStabilityDynamicPillar     = nullptr;
 		bool             g_noStabilityCheck                    = false;
 
+		bool StabilitySkipped()
+		{
+			const bool skip = g_joinedBuild.load() ? g_serverFreeStability.load() : g_noStabilityCheck;
+			return skip && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check");
+		}
+
 		bool __fastcall Detour_CheckStabilityCustom(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityCustom(self, placementData);
-			return (g_noStabilityCheck && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return StabilitySkipped() ? true : result;
 		}
 
 		bool __fastcall Detour_CheckStabilityDynamicPillar(void* self, const void* placementData)
 		{
 			bool result = g_originalCheckStabilityDynamicPillar(self, placementData);
-			return (g_noStabilityCheck && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check")) ? true : result;
+			return StabilitySkipped() ? true : result;
 		}
 
 		// -------------------------------------------------------------------------
@@ -244,6 +309,7 @@ namespace BetterCheats::Panels::Building
 		//
 		// The placing client decides placement, so this covers your own
 		// placements in any world, including as a client, and nobody else's.
+		// A server that runs this cheat switches it instead (g_anywhereFromServer).
 		// -------------------------------------------------------------------------
 
 		using CheckMainMeshCollisionFn = uint8_t(__fastcall*)(SDK::ACrAPHelper* self, const void* placementData);
@@ -264,8 +330,16 @@ namespace BetterCheats::Panels::Building
 
 		// What the detours read: the saved setting, unless Best Builder has the
 		// feature. The saved setting itself is never changed.
-		bool WindowsAnywhereOn() { return g_buildWindowsAnywhere.load() && !Defer::DeferredTo("build-anywhere"); }
-		bool BenchesAnywhereOn() { return g_buildBenchesAnywhere.load() && !Defer::DeferredTo("build-anywhere"); }
+		bool WindowsAnywhereOn()
+		{
+			const bool on = g_anywhereFromServer.load() ? g_serverWindows.load() : g_buildWindowsAnywhere.load();
+			return on && !Defer::DeferredTo("build-anywhere");
+		}
+		bool BenchesAnywhereOn()
+		{
+			const bool on = g_anywhereFromServer.load() ? g_serverBenches.load() : g_buildBenchesAnywhere.load();
+			return on && !Defer::DeferredTo("build-anywhere");
+		}
 
 		// The habitat machines, placed into wall slots like windows but not
 		// custom buildings. Personal storage is a module too, but it is a
@@ -756,59 +830,71 @@ namespace BetterCheats::Panels::Building
 		g_prevUnlockAllBuildings  = false;
 		g_keeperUnlockWritten     = false;
 		g_checkAvailableBuildings = nullptr;
+		g_joinedBuild             = false;
+		g_anywhereFromServer      = false;
+		ForgetServerBuild();
+	}
+
+	namespace
+	{
+		void TickUnlock()
+		{
+			// No Stability Check is purely hook-driven (see Detour_CheckStabilityCustom /
+			// Detour_CheckStabilityDynamicPillar above) — nothing to do here per-tick.
+
+			// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
+			// Writing the flag alone is insufficient; the function must run to rebuild
+			// AvailableBuildings and fire the delegate that refreshes the build menu.
+			// While Best Builder has this feature, leave the keeper flag to it. If this
+			// plugin had written it, take that write back first, so Best Builder does not
+			// take it for the game's own value. The player's value applies again when
+			// Best Builder goes away.
+			// A joined player's unlock is the server's to make.
+			if (Defer::DeferredTo("unlock-all-buildings") || BetterCheats::GameContext::IsJoinedClient())
+				ReleaseValues();
+			else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
+			{
+				g_prevUnlockAllBuildings = g_unlockAllBuildings;
+				LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
+				// Switching off only undoes our own write.
+				if (!g_unlockAllBuildings)
+				{
+					ReleaseValues();
+					return;
+				}
+				try
+				{
+					SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper();
+					LOG_DEBUG("Building: TechnologyKeeper = 0x%llx", reinterpret_cast<unsigned long long>(keeper));
+					if (keeper)
+					{
+						if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
+						{
+							*unlockAll = true;
+							g_keeperUnlockWritten = true;
+						}
+						if (g_checkAvailableBuildings)
+						{
+							LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx, bUnlockAll=%d)",
+								reinterpret_cast<unsigned long long>(keeper), g_unlockAllBuildings);
+							g_checkAvailableBuildings(keeper, nullptr, 0);
+							LOG_DEBUG("Building: CheckAvailableBuildings returned");
+						}
+						else
+						{
+							LOG_WARN("Building: CheckAvailableBuildings not resolved — menu will not refresh");
+						}
+					}
+				}
+				catch (...) { LOG_WARN("Building: exception in unlock all buildings toggle"); }
+			}
+		}
 	}
 
 	void Tick(float /*deltaSeconds*/)
 	{
-		// No Stability Check is purely hook-driven (see Detour_CheckStabilityCustom /
-		// Detour_CheckStabilityDynamicPillar above) — nothing to do here per-tick.
-
-		// Unlock all buildings — only act on change so we don't spam CheckAvailableBuildings.
-		// Writing the flag alone is insufficient; the function must run to rebuild
-		// AvailableBuildings and fire the delegate that refreshes the build menu.
-		// While Best Builder has this feature, leave the keeper flag to it. If this
-		// plugin had written it, take that write back first, so Best Builder does not
-		// take it for the game's own value. The player's value applies again when
-		// Best Builder goes away.
-		if (Defer::DeferredTo("unlock-all-buildings"))
-			ReleaseValues();
-		else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
-		{
-			g_prevUnlockAllBuildings = g_unlockAllBuildings;
-			LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
-			// Switching off only undoes our own write.
-			if (!g_unlockAllBuildings)
-			{
-				ReleaseValues();
-				return;
-			}
-			try
-			{
-				SDK::ACrTechnologyKeeper* keeper = GetTechnologyKeeper();
-				LOG_DEBUG("Building: TechnologyKeeper = 0x%llx", reinterpret_cast<unsigned long long>(keeper));
-				if (keeper)
-				{
-					if (bool* unlockAll = BetterCheats::Fields::CrTechnologyKeeper_bUnlockAllBuildings.In(keeper))
-					{
-						*unlockAll = true;
-						g_keeperUnlockWritten = true;
-					}
-					if (g_checkAvailableBuildings)
-					{
-						LOG_DEBUG("Building: calling CheckAvailableBuildings (keeper=0x%llx, bUnlockAll=%d)",
-							reinterpret_cast<unsigned long long>(keeper), g_unlockAllBuildings);
-						g_checkAvailableBuildings(keeper, nullptr, 0);
-						LOG_DEBUG("Building: CheckAvailableBuildings returned");
-					}
-					else
-					{
-						LOG_WARN("Building: CheckAvailableBuildings not resolved — menu will not refresh");
-					}
-				}
-			}
-			catch (...) { LOG_WARN("Building: exception in unlock all buildings toggle"); }
-		}
-
+		SyncServerBuild();
+		TickUnlock();
 	}
 
 	void ApplySavedConfig()
@@ -855,6 +941,36 @@ namespace BetterCheats::Panels::Building
 				imgui->EndDisabled();
 				return false;
 			}
+		}
+
+		// On a joined client, a live row the server is asked for: the reason or
+		// the server's last answer under the description. Rows that stay the
+		// client's own while the server can't run the cheat say nothing then.
+		void ServerNote(IModLoaderImGui* imgui, const PluginMap::Feature& feature, ServerLink::Op op, bool clientFallback)
+		{
+			if (Features::StateOf(feature) != Features::Why::Live || !BetterCheats::GameContext::IsJoinedClient())
+				return;
+			const ServerLink::Route route = ServerLink::RouteOf(op);
+			if (clientFallback && route == ServerLink::Route::Local)
+				return;
+			const std::string text = route == ServerLink::Route::Server
+				? ServerLink::LastResult(op).text : ServerLink::Blocker(op);
+			if (!text.empty())
+				ServerLink::Say(imgui, text);
+		}
+
+		// A joined player's checkbox for one part of a build rule. It shows what
+		// the server says is on, a click asks the server, and it is disabled when
+		// the server can't run the rule. The saved setting is never touched.
+		void ServerCheckbox(IModLoaderImGui* imgui, ServerLink::Op op, const char* rule, const char* part,
+			const char* id, bool serverOn)
+		{
+			const bool live = ServerLink::RouteOf(op) == ServerLink::Route::Server;
+			bool on = live && serverOn;
+			imgui->BeginDisabled(!live);
+			if (imgui->Checkbox(id, &on) && live)
+				ServerLink::Queue(op, { { "rule", rule }, { "on", on ? "on" : "off" }, { "part", part } });
+			imgui->EndDisabled();
 		}
 
 		// Says why a row is greyed out, under its description.
@@ -908,6 +1024,10 @@ namespace BetterCheats::Panels::Building
 
 		imgui->SeparatorText("Placement");
 		const bool anywhereDeferred = Defer::DeferredTo("build-anywhere");
+		const bool joined = BetterCheats::GameContext::IsJoinedClient();
+		// While the server can't run it, "anywhere" stays the client's own.
+		const bool anywhereFromServer = joined
+			&& ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
 
 		if (imgui->BeginTable("##building_placement_table", 2, kTableFlags))
 		{
@@ -923,10 +1043,16 @@ namespace BetterCheats::Panels::Building
 			if (noBuildCostDeferred)
 				ControlledBy(imgui, "no-build-cost");
 			HeldBack(imgui, Features::BuildFree);
+			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noBuildCostDeferred);
-			if (RowOn(imgui, Features::BuildFree, "##no_build_cost") && imgui->Checkbox("##no_build_cost", &g_noBuildCost))
-				SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
+			if (RowOn(imgui, Features::BuildFree, "##no_build_cost"))
+			{
+				if (joined)
+					ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "cost", "##no_build_cost", g_serverFreeCost.load());
+				else if (imgui->Checkbox("##no_build_cost", &g_noBuildCost))
+					SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
+			}
 			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
@@ -938,10 +1064,16 @@ namespace BetterCheats::Panels::Building
 			if (noStabilityDeferred)
 				ControlledBy(imgui, "no-stability-check");
 			HeldBack(imgui, Features::BuildFree);
+			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noStabilityDeferred);
-			if (RowOn(imgui, Features::BuildFree, "##no_stability_check") && imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
-				SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
+			if (RowOn(imgui, Features::BuildFree, "##no_stability_check"))
+			{
+				if (joined)
+					ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "stability", "##no_stability_check", g_serverFreeStability.load());
+				else if (imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
+					SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
+			}
 			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
@@ -973,13 +1105,19 @@ namespace BetterCheats::Panels::Building
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
 			HeldBack(imgui, Features::BuildAnywhere);
+			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true);
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
-			if (RowOn(imgui, Features::BuildAnywhere, "##build_windows_anywhere") && imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere, "##build_windows_anywhere"))
 			{
-				g_buildWindowsAnywhere = buildWindowsAnywhere;
-				SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
+				if (anywhereFromServer)
+					ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "windows", "##build_windows_anywhere", g_serverWindows.load());
+				else if (imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
+				{
+					g_buildWindowsAnywhere = buildWindowsAnywhere;
+					SessionConfig::Set("playerBuilding.buildWindowsAnywhere", buildWindowsAnywhere);
+				}
 			}
 			imgui->EndDisabled();
 
@@ -993,13 +1131,19 @@ namespace BetterCheats::Panels::Building
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
 			HeldBack(imgui, Features::BuildAnywhere);
+			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true);
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
-			if (RowOn(imgui, Features::BuildAnywhere, "##build_benches_anywhere") && imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
+			if (RowOn(imgui, Features::BuildAnywhere, "##build_benches_anywhere"))
 			{
-				g_buildBenchesAnywhere = buildBenchesAnywhere;
-				SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
+				if (anywhereFromServer)
+					ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "benches", "##build_benches_anywhere", g_serverBenches.load());
+				else if (imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
+				{
+					g_buildBenchesAnywhere = buildBenchesAnywhere;
+					SessionConfig::Set("playerBuilding.buildBenchesAnywhere", buildBenchesAnywhere);
+				}
 			}
 			imgui->EndDisabled();
 
@@ -1026,10 +1170,26 @@ namespace BetterCheats::Panels::Building
 			if (unlockBuildingsDeferred)
 				ControlledBy(imgui, "unlock-all-buildings");
 			HeldBack(imgui, Features::BuildUnlock);
+			ServerNote(imgui, Features::BuildUnlock, ServerLink::Op::BuildUnlock, false);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(unlockBuildingsDeferred);
-			if (RowOn(imgui, Features::BuildUnlock, "##unlock_buildings") && imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
-				SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
+			if (RowOn(imgui, Features::BuildUnlock, "##unlock_buildings"))
+			{
+				if (!joined)
+				{
+					if (imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
+						SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);
+				}
+				else
+				{
+					// A grant: it stays on the server, so it is a button, not a toggle.
+					const bool live = ServerLink::RouteOf(ServerLink::Op::BuildUnlock) == ServerLink::Route::Server;
+					imgui->BeginDisabled(!live);
+					if (imgui->SmallButton("Unlock##unlock_buildings") && live)
+						ServerLink::Queue(ServerLink::Op::BuildUnlock, { { "rule", "unlock" }, { "on", "on" } });
+					imgui->EndDisabled();
+				}
+			}
 			imgui->EndDisabled();
 
 			imgui->TableNextRow(0, 0.0f);
