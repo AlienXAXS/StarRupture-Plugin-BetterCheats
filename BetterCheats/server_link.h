@@ -8,6 +8,7 @@
 #include "map_fields.h"
 #include "server_protocol.h"
 
+#include <cstdio>
 #include <string>
 
 namespace BetterCheats::ServerLink
@@ -66,6 +67,14 @@ namespace BetterCheats::ServerLink
 
 	// Any thread.
 	Result LastResult(Op op);
+
+	// A multiplier as a request field: two decimals.
+	inline std::string Number(float value)
+	{
+		char text[32];
+		std::snprintf(text, sizeof(text), "%.2f", value);
+		return text;
+	}
 
 	// Any thread. Text that may hold anything the server sent.
 	void Say(IModLoaderImGui* imgui, const std::string& text);
