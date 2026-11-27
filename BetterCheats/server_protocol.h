@@ -196,6 +196,20 @@ namespace BetterCheats::ServerProtocol
 		bool     on      = false;
 	};
 
+	// The request fields that set a stat's value; a lock the server holds on it
+	// stays, at that value. Empty for a number the server can't read.
+	inline std::optional<Fields> StatValueFields(const char* stat, float value)
+	{
+		if (!(value >= -1.0e9f && value <= 1.0e9f))
+			return std::nullopt;
+		// Not the printf family: its decimal point follows the locale.
+		char text[32];
+		const auto written = std::to_chars(text, text + sizeof(text), value, std::chars_format::fixed, 2);
+		if (written.ec != std::errc())
+			return std::nullopt;
+		return Fields{ { "stat", stat }, { "value", std::string(text, written.ptr) } };
+	}
+
 	// One "<op>=<handler version>,<on|off>" field of a cap reply.
 	inline Handler HandlerOf(const Reply& cap, std::string_view op)
 	{

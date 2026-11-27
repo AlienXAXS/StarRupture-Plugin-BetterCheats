@@ -411,10 +411,37 @@ namespace BetterCheats::Panels::Attributes
 				ServerLink::Queue(ServerLink::Op::Stat, { { "stat", stat }, { "lock", shown.locked ? "on" : "off" } });
 		}
 
+		// The slider being edited while the server holds the locks: its value is
+		// asked for once, when it is let go. Render thread only.
+		struct SliderEdit
+		{
+			AttrId   id;
+			float    value;
+			uint32_t connection;   // never sent to a later one
+		};
+		std::optional<SliderEdit> s_sliderEdit;
+
+		// Right after the row's slider; `changed` is what it returned.
+		void FollowServerSlider(IModLoaderImGui* imgui, AttrId id, bool changed, float value)
+		{
+			if (changed)
+				s_sliderEdit = { id, value, ServerLink::Connection() };
+			if (!s_sliderEdit || s_sliderEdit->id != id)
+				return;
+			if (imgui->IsItemDeactivatedAfterEdit() && s_sliderEdit->connection == ServerLink::Connection())
+			{
+				if (auto fields = ServerProtocol::StatValueFields(ServerProtocol::kStats[static_cast<int>(id)], s_sliderEdit->value))
+					ServerLink::Queue(ServerLink::Op::Stat, std::move(*fields));
+			}
+			if (!imgui->IsItemActive())
+				s_sliderEdit.reset();
+		}
+
 		// -------------------------------------------------------------------------
 		// Shared row widget — one aligned table row: label, a slider that both
 		// displays and edits the live value (dragging it queues a write that
-		// Tick() applies on the game thread), a snap-to button (max for resources,
+		// Tick() applies on the game thread; while the server holds the locks,
+		// letting go asks the server instead), a snap-to button (max for resources,
 		// min for afflictions) in its own column, and the Locked checkbox.
 		// A greyed row shows "-", unticked, and leaves the saved lock alone.
 		// -------------------------------------------------------------------------
@@ -443,11 +470,13 @@ namespace BetterCheats::Panels::Attributes
 				snprintf(format, sizeof(format), "-");
 			else
 				snprintf(format, sizeof(format), "%%.0f / %.0f", attr.max);
-			if (imgui->SliderFloat("##value", &lock.value, attr.min, attr.max, format))
+			const bool changed = imgui->SliderFloat("##value", &lock.value, attr.min, attr.max, format);
+			if (serverLock)
+				FollowServerSlider(imgui, id, changed, lock.value);
+			else if (changed)
 			{
 				QueueAttributeEdit(id, lock.value);
-				if (!serverLock)
-					PersistLock(id, lock);
+				PersistLock(id, lock);
 			}
 
 			imgui->TableSetColumnIndex(2);
@@ -710,7 +739,7 @@ namespace BetterCheats::Panels::Attributes
 
 		imgui->TextWrapped(s_serverLocks
 			? "Tick \"Locked\" to have the server hold an attribute at its value on the server. "
-			  "The sliders don't set that value, and loading a preset leaves these locks alone."
+			  "Letting go of a slider sets the value there, and loading a preset leaves these locks alone."
 			: "Tick \"Locked\" to continuously pin an attribute to the value "
 			  "set on its slider, even while the menu is closed.");
 		imgui->Spacing();

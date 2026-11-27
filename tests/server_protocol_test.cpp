@@ -3,6 +3,9 @@
 
 #include "../BetterCheats/server_protocol.h"
 
+#include <clocale>
+#include <limits>
+
 #include <mutex>
 #include <set>
 #include <thread>
@@ -226,6 +229,17 @@ int main()
 	CHECK((held("|points=999999999", Held::Corp) == Fields{ { "points", "999999999" } }));
 	for (const char* bad : { "|points=1000000000", "|points=-1", "|points=1.5", "|points=", "|points=off" })
 		CHECK(held(bad, Held::Corp).empty());
+
+	// StatValueFields: the request that sets a stat's value.
+	CHECK((StatValueFields("health", 80.0f) == Fields{ { "stat", "health" }, { "value", "80.00" } }));
+	CHECK((StatValueFields("temperature", -12.5f) == Fields{ { "stat", "temperature" }, { "value", "-12.50" } }));
+	CHECK((StatValueFields("heat", 1.0e9f) == Fields{ { "stat", "heat" }, { "value", "1000000000.00" } }));
+	for (float bad : { std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+		-std::numeric_limits<float>::infinity(), 1.0e10f, -1.0e10f })
+		CHECK(!StatValueFields("health", bad));
+	std::setlocale(LC_ALL, "de-DE");
+	CHECK((StatValueFields("health", 2.5f) == Fields{ { "stat", "health" }, { "value", "2.50" } }));
+	std::setlocale(LC_ALL, "C");
 
 	// ParsePowerList: a cheat.power list reply.
 	const auto listed = [](const std::string& fields)
