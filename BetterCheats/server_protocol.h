@@ -29,6 +29,7 @@ namespace BetterCheats::ServerProtocol
 	// again after one that got no answer.
 	inline constexpr uint64_t    kStateSpacingMs = 1000;
 	inline constexpr uint64_t    kStateRetryMs   = 10000;
+	inline constexpr uint64_t    kStateWatchMs   = 5000;
 	inline constexpr uint32_t    kMaxId        = 2147483647u;
 	inline constexpr const char* kTag          = "su.cheat";
 	inline constexpr const char* kTarget       = "ServerUtility";
@@ -405,6 +406,8 @@ namespace BetterCheats::ServerProtocol
 	{
 		bool  fly   = false;
 		float speed = 1.0f;
+
+		bool On() const { return fly || speed > kMinFlyMultiplier; }
 	};
 
 	// Anything but "on", and any speed outside the range, reads as off.
@@ -508,6 +511,15 @@ namespace BetterCheats::ServerProtocol
 				return nowMs - m_sentMs >= kStateSpacingMs;
 			return m_again && nowMs - m_sentMs >= kStateRetryMs;
 		}
+
+		// What is on can end on the server without a word, so it is looked at now
+		// and then. A request that is due or being retried comes first.
+		bool WatchDue(uint64_t nowMs) const
+		{
+			return !m_wanted && !m_again && nowMs - m_sentMs >= kStateWatchMs;
+		}
+
+		void Watched(uint64_t nowMs) { m_sentMs = nowMs; }
 
 		// Nothing to ask for now.
 		void Drop() { m_wanted = m_again = false; }

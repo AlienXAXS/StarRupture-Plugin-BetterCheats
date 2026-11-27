@@ -154,6 +154,10 @@ namespace BetterCheats::ServerLink
 	// then work as they do on their own. The one place that decides this.
 	std::optional<ServerProtocol::Movement> ServerMovement();
 
+	// Game thread. The player's pawn changed, so what was reported may not stand
+	// for it: flight and fly speed read as off until the server is asked again.
+	void ForgetMovement();
+
 	// Any thread. Whether the server says Unlock All Buildings stands, so this
 	// player's game needs its own copy.
 	bool HoldsUnlock();

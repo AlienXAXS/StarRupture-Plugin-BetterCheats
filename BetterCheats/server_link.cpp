@@ -25,7 +25,7 @@ namespace BetterCheats::ServerLink
 		constexpr const char* kDone      = "Done.";
 		constexpr size_t      kMaxKept   = 32;
 
-		enum class Kind { Click, Cap, State, List };
+		enum class Kind { Click, Cap, State, Watch, List };
 
 		struct What
 		{
@@ -234,6 +234,12 @@ namespace BetterCheats::ServerLink
 			DropQueuedLocked();
 		}
 
+		bool MovementOnLocked()
+		{
+			const Result& result = ResultOf(Op::Move);
+			return Protocol::MovementOf(result.Value("fly"), result.Value("speed")).On();
+		}
+
 		// A request that left no entry waiting: the send did not queue.
 		void SendFailedLocked(const What& what, int result)
 		{
@@ -241,6 +247,8 @@ namespace BetterCheats::ServerLink
 			const bool cap = what.kind == Kind::Cap;
 			if (result == -1)
 				FailCapLocked(text);
+			else if (what.kind == Kind::Watch)
+				return;     // the next one asks again
 			else if (what.kind == Kind::State)
 			{
 				if (result == 0)
@@ -291,10 +299,12 @@ namespace BetterCheats::ServerLink
 
 		// A cheat.state answer. A slot it does not report is not on, unless a
 		// request sent after this one has already been answered for it.
-		void ApplyStateLocked(const Protocol::Reply& state, uint64_t order)
+		void ApplyStateLocked(const Protocol::Reply& state, uint64_t order, bool movementOnly)
 		{
 			for (size_t i = 0; i < kOpCount; ++i)
 			{
+				if (movementOnly && static_cast<Op>(i) != Op::Move)
+					continue;
 				Result& result = g_results[i];
 				if (!kOps[i].held || !kOps[i].feature->On() || order <= result.order)
 					continue;
@@ -309,7 +319,7 @@ namespace BetterCheats::ServerLink
 				}
 			}
 			// Not behind this player's own rules. A missing key is off.
-			if (order > g_unlockOrder)
+			if (!movementOnly && order > g_unlockOrder)
 			{
 				const std::string* unlock = state.Find("unlock");
 				g_unlockHeld  = unlock && *unlock == "on";
@@ -328,11 +338,11 @@ namespace BetterCheats::ServerLink
 			if (!entry)
 				return;
 
-			if (entry->what.kind == Kind::State)
+			if (entry->what.kind == Kind::State || entry->what.kind == Kind::Watch)
 			{
 				if (reply->status == Protocol::Status::Ok)
 				{
-					ApplyStateLocked(*reply, entry->what.order);
+					ApplyStateLocked(*reply, entry->what.order, entry->what.kind == Kind::Watch);
 					return;
 				}
 				// Refused: what earlier replies reported stands.
@@ -520,7 +530,7 @@ namespace BetterCheats::ServerLink
 			for (const auto& expired : g_waiting.Expire(now))
 			{
 				// An unanswered cheat.state changes nothing and no row waits on it.
-				if (expired.what.kind == Kind::State)
+				if (expired.what.kind == Kind::State || expired.what.kind == Kind::Watch)
 				{
 					g_state.Unanswered(expired.id);
 					continue;
@@ -579,6 +589,19 @@ namespace BetterCheats::ServerLink
 						outgoing.push_back({ id, what, std::move(*message) });
 						g_state.Sent(id, now);
 					}
+				}
+			}
+			// Only movement is taken from this one: a full read-back every few
+			// seconds would reset what the menu is editing elsewhere.
+			else if (modOn && g_cap == Cap::Got && g_state.WatchDue(now) && ServerListsLocked(Protocol::kStateOp)
+				&& MovementOnLocked() && !g_waiting.Full())
+			{
+				const What what{ Op::Give, Kind::Watch, ++g_order };
+				const uint32_t id = g_waiting.Add(what, now);
+				if (auto message = Protocol::BuildRequest(id, Protocol::kStateOp, {}))
+				{
+					outgoing.push_back({ id, what, std::move(*message) });
+					g_state.Watched(now);
 				}
 			}
 
@@ -700,6 +723,19 @@ namespace BetterCheats::ServerLink
 
 		const Result result = LastResult(Op::Move);
 		return Protocol::MovementOf(result.Value("fly"), result.Value("speed"));
+	}
+
+	void ForgetMovement()
+	{
+		std::lock_guard<std::mutex> lock(g_mutex);
+		if (!ServerListsLocked(OpName(Op::Move)))
+			return;
+
+		// A reply to anything sent before now is no longer taken for movement.
+		Result& result = ResultOf(Op::Move);
+		result.fields.clear();
+		result.order = ++g_order;
+		g_state.Want();
 	}
 
 	bool ServerOwns(Row row)

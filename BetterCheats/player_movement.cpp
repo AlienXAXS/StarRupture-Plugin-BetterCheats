@@ -237,6 +237,14 @@ namespace BetterCheats::Panels::Movement
 			snprintf(out, outSize, "%s", g_noClipKey);
 		}
 
+		// Local flight doesn't start while a server is still being asked whether it
+		// runs movement. Turning it off always works.
+		void SetNoClipWanted(bool wanted)
+		{
+			if (!wanted || ServerLink::RouteOf(ServerLink::Op::Move) != ServerLink::Route::Checking)
+				g_noClipWanted.store(wanted);
+		}
+
 		void OnNoClipKeyPressed(EModKey /*key*/, EModKeyEvent /*event*/)
 		{
 			if (!GameContext::IsInChimeraMain() || !GameContext::AreCheatsAllowed() || !Features::Usable(Features::Movement))
@@ -245,7 +253,7 @@ namespace BetterCheats::Panels::Movement
 			if (const auto server = ServerLink::ServerMovement())
 				ServerLink::Queue(ServerLink::Op::Move, ServerProtocol::FlyFields(!server->fly));
 			else
-				g_noClipWanted.store(!g_noClipWanted.load());
+				SetNoClipWanted(!g_noClipWanted.load());
 		}
 
 		// Swaps the live registration and persists the new combo. The loader
@@ -1547,6 +1555,15 @@ namespace BetterCheats::Panels::Movement
 		{
 			SDK::ACrCharacterPlayerBase* character = GetLocalCharacter();
 
+			// What a server reported was for the pawn of that moment, so another
+			// one gets nothing until the server is asked again. Only compared.
+			static SDK::ACrCharacterPlayerBase* s_reportedFor = nullptr;
+			if (character != s_reportedFor)
+			{
+				s_reportedFor = character;
+				ServerLink::ForgetMovement();
+			}
+
 			// Respawn or a world change replaces the pawn; the one we altered is
 			// gone, so forget it rather than writing through a freed pointer.
 			if (g_appliedTo && g_appliedTo != character)
@@ -1720,7 +1737,7 @@ namespace BetterCheats::Panels::Movement
 				if (server)
 					ServerLink::Queue(ServerLink::Op::Move, ServerProtocol::FlyFields(noClip));
 				else
-					g_noClipWanted.store(noClip);
+					SetNoClipWanted(noClip);
 			}
 
 			imgui->SameLine(0.0f, 12.0f);

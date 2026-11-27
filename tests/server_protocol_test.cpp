@@ -282,6 +282,19 @@ int main()
 	state.Clear();
 	CHECK(!state.Due(1000000));
 
+	// The look at what is on, between the requests that are due.
+	state.Sent(3, 200000);
+	CHECK(!state.WatchDue(200000 + kStateWatchMs - 1) && state.WatchDue(200000 + kStateWatchMs));
+	state.Watched(205000);
+	CHECK(!state.WatchDue(205000 + kStateWatchMs - 1) && state.WatchDue(205000 + kStateWatchMs));
+	state.Unanswered(3);                                        // the retry comes first
+	CHECK(!state.WatchDue(300000) && state.Due(205000 + kStateRetryMs));
+	state.Drop();
+	state.Want();
+	CHECK(!state.WatchDue(300000));
+	CHECK(!Movement{}.On());
+	CHECK((Movement{ true, 1.0f }.On()) && (Movement{ false, 2.0f }.On()));
+
 	// MovementOf and the movement request fields.
 	CHECK(MovementOf("on", "4").fly && MovementOf("on", "4").speed == 4.0f);
 	CHECK(MovementOf("off", "off").speed == 1.0f);
