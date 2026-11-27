@@ -387,6 +387,10 @@ namespace BetterCheats::ServerLink
 			if (reply->status != Protocol::Status::Ok)
 			{
 				NoteRefusalLocked(*reply, OpName(entry->what.op));
+				// This game runs flight by what was last reported, and a refusal
+				// doesn't say what stands now.
+				if (entry->what.op == Op::Move)
+					g_state.Want();
 				return;
 			}
 
@@ -533,7 +537,12 @@ namespace BetterCheats::ServerLink
 				else if (expired.what.kind == Kind::Cap)
 					FailCapLocked(Protocol::kNoCapAnswer);
 				else
+				{
 					ResultOf(expired.what.op).text = Protocol::kNoAnswer;
+					// The server may have acted on it all the same.
+					if (expired.what.op == Op::Move)
+						g_state.Want();
+				}
 			}
 
 			const bool firstCap = g_cap == Cap::NotSent && now >= g_capRetryMs && !ServerLoaderTooOldLocked();

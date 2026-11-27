@@ -106,7 +106,7 @@ namespace BetterCheats::Panels::Movement
 			return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 		}
 
-		void Enable(SDK::ACrCharacterPlayerBase* character, bool passThrough)
+		void Enable(SDK::ACrCharacterPlayerBase* character)
 		{
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			SDK::UCapsuleComponent* capsule = character->CapsuleComponent;
@@ -118,7 +118,7 @@ namespace BetterCheats::Panels::Movement
 			g_savedFlyingBraking = move->BrakingDecelerationFlying;
 			g_savedCheatFlying   = move->bCheatFlying != 0;
 
-			if (passThrough)
+			if (g_passThroughWalls.load())
 				capsule->SetCollisionEnabled(SDK::ECollisionEnabled::NoCollision);
 			move->bCheatFlying = 1;
 			move->SetMovementMode(SDK::EMovementMode::MOVE_Flying, 0);
@@ -155,7 +155,7 @@ namespace BetterCheats::Panels::Movement
 			LOG_INFO("Movement: no-clip disabled.");
 		}
 
-		void MaintainNoClip(SDK::ACrCharacterPlayerBase* character, float multiplier, bool wantGhost)
+		void MaintainNoClip(SDK::ACrCharacterPlayerBase* character, float multiplier)
 		{
 			SDK::UCharacterMovementComponent* move = character->CharacterMovement;
 			if (!move)
@@ -170,6 +170,7 @@ namespace BetterCheats::Panels::Movement
 			// the player land and take off again.
 			if (SDK::UCapsuleComponent* capsule = character->CapsuleComponent)
 			{
+				const bool wantGhost = g_passThroughWalls.load();
 				const bool isGhost   = capsule->GetCollisionEnabled() == SDK::ECollisionEnabled::NoCollision;
 				if (wantGhost && !isGhost)
 					capsule->SetCollisionEnabled(SDK::ECollisionEnabled::NoCollision);
@@ -1565,24 +1566,23 @@ namespace BetterCheats::Panels::Movement
 				return;
 			}
 
-			// While the server runs movement, this game only matches what it
-			// reports. The choice made here is dropped, so flight doesn't start
-			// again by itself afterwards. The server's flight passes through walls,
-			// and the saved settings stay as they are.
+			// While the server runs movement, this game only matches the flight and
+			// fly speed it reports. The choice made here is dropped, so flight
+			// doesn't start again by itself afterwards, and the saved settings stay
+			// as they are.
 			const auto server = ServerLink::ServerMovement();
 			if (server)
 				g_noClipWanted.store(false);
-			const bool  wanted      = server ? server->fly : g_noClipWanted.load();
-			const bool  passThrough = server || g_passThroughWalls.load();
-			const float multiplier  = server ? server->speed : g_flySpeedMultiplier.load();
+			const bool  wanted     = server ? server->fly : g_noClipWanted.load();
+			const float multiplier = server ? server->speed : g_flySpeedMultiplier.load();
 
 			if (wanted && !g_active)
-				Enable(character, passThrough);
+				Enable(character);
 			else if (!wanted && g_active)
 				Disable(character);
 
 			if (g_active)
-				MaintainNoClip(character, multiplier, passThrough);
+				MaintainNoClip(character, multiplier);
 
 			// Independent of no-clip -- these are gameplay-effect re-evaluated
 			// attributes, so an active override has to be re-asserted every tick.
@@ -1697,7 +1697,7 @@ namespace BetterCheats::Panels::Movement
 			s_speedEdit.reset();
 
 		bool  noClip = !greyed && (server ? server->fly : g_noClipWanted.load());
-		bool  ghost  = !greyed && (server || g_passThroughWalls.load());
+		bool  ghost  = !greyed && g_passThroughWalls.load();
 		float speed  = greyed ? kMinFlySpeedMultiplier
 			: !server ? g_flySpeedMultiplier.load()
 			: s_speedEdit ? s_speedEdit->first : server->speed;
@@ -1746,13 +1746,11 @@ namespace BetterCheats::Panels::Movement
 				                  "Off: Retain collision so you can fly around without clipping through floors.");
 
 			imgui->TableSetColumnIndex(1);
-			imgui->BeginDisabled(server.has_value());
 			if (imgui->Checkbox("Enabled##passwalls", &ghost))
 			{
 				g_passThroughWalls.store(ghost);
 				SessionConfig::Set("playerMovement.passThroughWalls", ghost);
 			}
-			imgui->EndDisabled();
 
 			// Row 3: Fly Speed
 			imgui->TableNextRow(0, 0.0f);
