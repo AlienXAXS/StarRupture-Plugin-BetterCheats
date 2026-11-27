@@ -32,10 +32,13 @@
 #define BC_FIELD_ANY_SIZE(Class, Member) PluginField<decltype(SDK::Class::Member)>{ SR_FIELD_ANY_SIZE(Class, Member, 0) }
 
 // A member the SDK dumps as padding, so it has no name or offset to compile in:
-// the loader's map holds it under this key, and Offset is the row for the build
-// this plugin was compiled against.
-#define BC_NATIVE(Type, Class, Member, Offset) \
-	PluginField<Type>{ { #Class "::" #Member, #Class, #Member, PLUGIN_FIELD_NATIVE, sizeof(Type), (Offset) } }
+// the loader's map holds it under this key. The plugin's own rows for it, one
+// per game build, are listed under the field and used where the map has none.
+#define BC_NATIVE(Type, Class, Member) \
+	PluginField<Type>{ { #Class "::" #Member, #Class, #Member, PLUGIN_FIELD_NATIVE, sizeof(Type), -1 } }
+
+// One of those rows: the member's offset on one game build.
+#define BC_ROW(Type, Build, Offset) { (Build), (Offset), static_cast<uint32_t>(sizeof(Type)), 0, nullptr }
 
 namespace BetterCheats::Fields
 {
@@ -94,10 +97,20 @@ namespace BetterCheats::Fields
 	inline auto CrWeaponAttributeSet_SwayModMultiplier = BC_FIELD(UCrWeaponAttributeSet, SwayModMultiplier);
 
 	// UCrGameInstance
-	inline auto CrGameInstance_ServerSessionName = BC_NATIVE(SDK::FString, UCrGameInstance, ServerSessionName, 0x290);
+	inline auto CrGameInstance_ServerSessionName = BC_NATIVE(SDK::FString, UCrGameInstance, ServerSessionName);
+	inline const PluginFieldCandidate kCrGameInstance_ServerSessionNameRows[] = {
+		BC_ROW(SDK::FString, 127004, 0x290),
+		BC_ROW(SDK::FString, 128786, 0x2A0),
+		BC_ROW(SDK::FString, 130045, 0x2A0),
+	};
 
 	// ACrTechnologyKeeper
-	inline auto CrTechnologyKeeper_bUnlockAllBuildings = BC_NATIVE(bool, ACrTechnologyKeeper, bUnlockAllBuildings, 0x3A8);
+	inline auto CrTechnologyKeeper_bUnlockAllBuildings = BC_NATIVE(bool, ACrTechnologyKeeper, bUnlockAllBuildings);
+	inline const PluginFieldCandidate kCrTechnologyKeeper_bUnlockAllBuildingsRows[] = {
+		BC_ROW(bool, 127004, 0x3A8),
+		BC_ROW(bool, 128786, 0x3A8),
+		BC_ROW(bool, 130045, 0x3A8),
+	};
 
 	// UCrEnviroWaveTimerSubsystem: the countdown to the next rupture. The SDK folds
 	// everything before TimerActor into Pad_30; Tick() only decrements NextWaveTimer
@@ -106,25 +119,65 @@ namespace BetterCheats::Fields
 	// a member of this class on CL-128786, and a native that cannot resolve would
 	// refuse the whole plugin there, so it is not requested: world_wave.cpp keeps
 	// the calm length it reads from NextWaveTimer instead.
-	inline auto CrEnviroWaveTimerSubsystem_NextWaveTimer       = BC_NATIVE(float, UCrEnviroWaveTimerSubsystem, NextWaveTimer, 0x7C);
-	inline auto CrEnviroWaveTimerSubsystem_bWaitingForNextWave = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bWaitingForNextWave, 0x80);
-	inline auto CrEnviroWaveTimerSubsystem_bPause              = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bPause, 0x81);
-	inline auto CrEnviroWaveTimerSubsystem_bStopWaves          = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bStopWaves, 0x83);
+	inline auto CrEnviroWaveTimerSubsystem_NextWaveTimer       = BC_NATIVE(float, UCrEnviroWaveTimerSubsystem, NextWaveTimer);
+	inline const PluginFieldCandidate kCrEnviroWaveTimerSubsystem_NextWaveTimerRows[] = {
+		BC_ROW(float, 127004, 0x7C),
+		BC_ROW(float, 128786, 0x88),
+		BC_ROW(float, 130045, 0x88),
+	};
+	inline auto CrEnviroWaveTimerSubsystem_bWaitingForNextWave = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bWaitingForNextWave);
+	inline const PluginFieldCandidate kCrEnviroWaveTimerSubsystem_bWaitingForNextWaveRows[] = {
+		BC_ROW(bool, 127004, 0x80),
+		BC_ROW(bool, 128786, 0x8C),
+		BC_ROW(bool, 130045, 0x8C),
+	};
+	inline auto CrEnviroWaveTimerSubsystem_bPause              = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bPause);
+	inline const PluginFieldCandidate kCrEnviroWaveTimerSubsystem_bPauseRows[] = {
+		BC_ROW(bool, 127004, 0x81),
+		BC_ROW(bool, 128786, 0x8D),
+		BC_ROW(bool, 130045, 0x8D),
+	};
+	inline auto CrEnviroWaveTimerSubsystem_bStopWaves          = BC_NATIVE(bool, UCrEnviroWaveTimerSubsystem, bStopWaves);
+	inline const PluginFieldCandidate kCrEnviroWaveTimerSubsystem_bStopWavesRows[] = {
+		BC_ROW(bool, 127004, 0x83),
+		BC_ROW(bool, 128786, 0x8F),
+		BC_ROW(bool, 130045, 0x8F),
+	};
 
 	// FMassEnemyHealthFragment: a Mass fragment, not a UObject, so Dumper-7 pads it out as
 	// unnamed bytes and HP (the first member) has no name in the SDK. Confirmed from the PDB.
-	inline auto MassEnemyHealthFragment_HP = BC_NATIVE(float, FMassEnemyHealthFragment, HP, 0x0);
+	inline auto MassEnemyHealthFragment_HP = BC_NATIVE(float, FMassEnemyHealthFragment, HP);
+	inline const PluginFieldCandidate kMassEnemyHealthFragment_HPRows[] = {
+		BC_ROW(float, 127004, 0x0),
+		BC_ROW(float, 128786, 0x0),
+		BC_ROW(float, 130045, 0x0),
+	};
 
 	// UCrUW_InventoryContainer: a private TWeakObjectPtr<UCrInventoryComponent>
-	inline auto CrUW_InventoryContainer_InventoryComponent = BC_NATIVE(SDK::FWeakObjectPtr, UCrUW_InventoryContainer, InventoryComponent, 0x468);
+	inline auto CrUW_InventoryContainer_InventoryComponent = BC_NATIVE(SDK::FWeakObjectPtr, UCrUW_InventoryContainer, InventoryComponent);
+	inline const PluginFieldCandidate kCrUW_InventoryContainer_InventoryComponentRows[] = {
+		BC_ROW(SDK::FWeakObjectPtr, 127004, 0x468),
+		BC_ROW(SDK::FWeakObjectPtr, 128786, 0x468),
+		BC_ROW(SDK::FWeakObjectPtr, 130045, 0x468),
+	};
 
 	// FGameplayEffectSpec: the two SetByCaller maps, which Dumper-7 folds into Pad_1D8
 	// (name-keyed, then tag-keyed; an FGameplayTag is a single FName, so both share one
 	// layout). The grenade throw probe reads them from the engine's struct.
 	using SetByCallerMap = UC::TMap<SDK::FName, float>;
 	static_assert(sizeof(SetByCallerMap) == 0x50, "TMap layout");
-	inline auto GameplayEffectSpec_SetByCallerNameMagnitudes = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerNameMagnitudes, 0x1D8);
-	inline auto GameplayEffectSpec_SetByCallerTagMagnitudes  = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerTagMagnitudes, 0x228);
+	inline auto GameplayEffectSpec_SetByCallerNameMagnitudes = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerNameMagnitudes);
+	inline const PluginFieldCandidate kGameplayEffectSpec_SetByCallerNameMagnitudesRows[] = {
+		BC_ROW(SetByCallerMap, 127004, 0x1D8),
+		BC_ROW(SetByCallerMap, 128786, 0x1D8),
+		BC_ROW(SetByCallerMap, 130045, 0x1D8),
+	};
+	inline auto GameplayEffectSpec_SetByCallerTagMagnitudes  = BC_NATIVE(SetByCallerMap, FGameplayEffectSpec, SetByCallerTagMagnitudes);
+	inline const PluginFieldCandidate kGameplayEffectSpec_SetByCallerTagMagnitudesRows[] = {
+		BC_ROW(SetByCallerMap, 127004, 0x228),
+		BC_ROW(SetByCallerMap, 128786, 0x228),
+		BC_ROW(SetByCallerMap, 130045, 0x228),
+	};
 
 	// FMassEntityManager::ConstSharedFragmentsContainer: a TSharedFragmentsContainer<FConstSharedStruct>.
 	// Neither class is reflected (plain engine C++), so the loader serves them from the map's rows.
@@ -462,15 +515,20 @@ namespace BetterCheats::Fields
 		return at ? *at : scratch;
 	}
 
+	// Asks the loader for a BC_NATIVE field, offering this plugin's rows. No
+	// build is named: the field has no compiled-in offset to stand for one.
+	template <size_t N>
+	bool ResolveNative(IPluginHookScanner* scanner, IPluginSelf* self, PluginFieldSpec& field,
+		const PluginFieldCandidate (&rows)[N])
+	{
+		return PluginMap::ResolveField(scanner, self, field, rows, static_cast<uint32_t>(N), 0);
+	}
+
 	// Asks the loader for every row above. False when any did not resolve; the
 	// loader has then recorded the failure and refuses the plugin.
 	inline bool Resolve(IPluginSelf* self, IPluginHookScanner* scanner)
 	{
 		bool all = PluginMap::ResolveFields(scanner, self,
-			CrGameInstance_ServerSessionName, CrTechnologyKeeper_bUnlockAllBuildings,
-			CrEnviroWaveTimerSubsystem_NextWaveTimer, CrEnviroWaveTimerSubsystem_bWaitingForNextWave, CrEnviroWaveTimerSubsystem_bPause,
-			CrEnviroWaveTimerSubsystem_bStopWaves, CrUW_InventoryContainer_InventoryComponent,
-			MassEnemyHealthFragment_HP, GameplayEffectSpec_SetByCallerNameMagnitudes, GameplayEffectSpec_SetByCallerTagMagnitudes,
 			MassEntityManager_ConstSharedFragmentsContainer,
 			AuAddedItem_Size, CrSkillData_Size, CrElectricityParameters_Size,
 			CrCharacterPlayerBase_ADSMoveSpeed, CrCharacterPlayerBase_AccelerationAndDeceleration, CrCharacterPlayerBase_CrouchedMoveSpeed,
@@ -488,6 +546,16 @@ namespace BetterCheats::Fields
 			CrWeaponAttributeSet_MaxMagAmmoModOffset, CrWeaponAttributeSet_PossibleEnemiesHitPerTrace, CrWeaponAttributeSet_RecoilModMultiplier,
 			CrWeaponAttributeSet_ReloadSpeedModMultiplier, CrWeaponAttributeSet_SpreadModMultiplier, CrWeaponAttributeSet_SwayModMultiplier
 		);
+		all = ResolveNative(scanner, self, CrGameInstance_ServerSessionName, kCrGameInstance_ServerSessionNameRows) && all;
+		all = ResolveNative(scanner, self, CrTechnologyKeeper_bUnlockAllBuildings, kCrTechnologyKeeper_bUnlockAllBuildingsRows) && all;
+		all = ResolveNative(scanner, self, CrEnviroWaveTimerSubsystem_NextWaveTimer, kCrEnviroWaveTimerSubsystem_NextWaveTimerRows) && all;
+		all = ResolveNative(scanner, self, CrEnviroWaveTimerSubsystem_bWaitingForNextWave, kCrEnviroWaveTimerSubsystem_bWaitingForNextWaveRows) && all;
+		all = ResolveNative(scanner, self, CrEnviroWaveTimerSubsystem_bPause, kCrEnviroWaveTimerSubsystem_bPauseRows) && all;
+		all = ResolveNative(scanner, self, CrEnviroWaveTimerSubsystem_bStopWaves, kCrEnviroWaveTimerSubsystem_bStopWavesRows) && all;
+		all = ResolveNative(scanner, self, MassEnemyHealthFragment_HP, kMassEnemyHealthFragment_HPRows) && all;
+		all = ResolveNative(scanner, self, CrUW_InventoryContainer_InventoryComponent, kCrUW_InventoryContainer_InventoryComponentRows) && all;
+		all = ResolveNative(scanner, self, GameplayEffectSpec_SetByCallerNameMagnitudes, kGameplayEffectSpec_SetByCallerNameMagnitudesRows) && all;
+		all = ResolveNative(scanner, self, GameplayEffectSpec_SetByCallerTagMagnitudes, kGameplayEffectSpec_SetByCallerTagMagnitudesRows) && all;
 		all = PluginMap::ResolveFields(scanner, self,
 			AuWeaponItemDataBase_bIsUsingDamageFalloff, MassEnemyCharacterBase_bIsInPool, MassEnemyCharacterBase_AllowedAttackDistance,
 			MassEnemyCharacterBase_AllowedAttackConeHalfAngle, MassEnemyCharacterBase_AllowedBuildingAttackDistance,
