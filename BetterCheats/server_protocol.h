@@ -25,6 +25,10 @@ namespace BetterCheats::ServerProtocol
 	inline constexpr size_t      kMaxAssetPath = 256;
 	inline constexpr size_t      kMaxWaiting   = 8;
 	inline constexpr uint64_t    kTimeoutMs    = 10000;
+	// Between two cheat.state requests: for a new reason to ask, and for asking
+	// again after one that got no answer.
+	inline constexpr uint64_t    kStateSpacingMs = 1000;
+	inline constexpr uint64_t    kStateRetryMs   = 10000;
 	inline constexpr uint32_t    kMaxId        = 2147483647u;
 	inline constexpr const char* kTag          = "su.cheat";
 	inline constexpr const char* kTarget       = "ServerUtility";
@@ -41,6 +45,8 @@ namespace BetterCheats::ServerProtocol
 	inline constexpr const char* kNoAnswer          = "No answer from the server.";
 	inline constexpr const char* kTooManyWaiting    = "Still waiting for the server. Try again in a moment.";
 	inline constexpr const char* kNoReason          = "The server gave no reason.";
+	// The server's own words for a request it turned away for coming too soon.
+	inline constexpr const char* kRateLimited       = "Too many requests. Wait a moment.";
 
 	using Fields = std::vector<std::pair<std::string, std::string>>;
 
@@ -207,7 +213,7 @@ namespace BetterCheats::ServerProtocol
 
 	// What a cheat.state reply reports on. Both build rules that can be switched
 	// off share the parts list.
-	enum class Held { Stack, Wave, Power, Enemy, Weapon, Grid, Plant, Mine, BuildParts, BuildUnlock };
+	enum class Held { Stack, Wave, Power, Corp, Enemy, Weapon, Grid, Plant, Mine, BuildParts, BuildUnlock };
 
 	inline bool IsNumberIn(std::string_view text, float min, float max)
 	{
@@ -284,6 +290,10 @@ namespace BetterCheats::ServerProtocol
 		case Held::Power:
 			number("power", "edited", "0", [](std::string_view v) { return IsWholeIn(v, 0, 1000000); });
 			break;
+		case Held::Corp:
+			if (const std::string* points = state.Find("points"); points && IsWholeIn(*points, 0, 999999999))
+				out.emplace_back("points", *points);
+			break;
 		case Held::Enemy:
 			onOff("ai", "ai");
 			onOff("onehit", "onehit");
@@ -316,6 +326,105 @@ namespace BetterCheats::ServerProtocol
 		}
 		return out;
 	}
+
+	// One building of a cheat.power list reply.
+	struct PowerValue
+	{
+		std::string asset;
+		float       value  = 0.0f;
+		float       normal = 0.0f;   // before any edit
+	};
+
+	struct PowerList
+	{
+		std::vector<PowerValue> entries;
+		bool                    more = false;   // the reply could not hold every building
+	};
+
+	inline constexpr size_t kMaxPowerAsset = 128;
+
+	// "b<n>=<asset>~<type>~<value>~<normal>" per building, and "more=1". An entry
+	// that can't be read whole is left out. The type is not kept.
+	inline PowerList ParsePowerList(const Reply& reply)
+	{
+		PowerList out;
+		const auto number = [](std::string_view text) -> std::optional<float>
+		{
+			float value = 0.0f;
+			const char* const end = text.data() + text.size();
+			const auto [stopped, error] = std::from_chars(text.data(), end, value);
+			if (error != std::errc() || stopped != end || !(value >= 0.0f && value <= 1.0e9f))
+				return std::nullopt;
+			return value;
+		};
+		for (const auto& [key, text] : reply.fields)
+		{
+			if (key == "more")
+				out.more = text == "1";
+			if (key.size() < 2 || key[0] != 'b' || !ParseNumber(std::string_view(key).substr(1), 1000000u))
+				continue;
+			if (std::count(text.begin(), text.end(), '~') != 3)
+				continue;
+			std::string_view part[4];
+			std::string_view rest = text;
+			for (std::string_view& one : part)
+			{
+				const size_t at = rest.find('~');
+				one = rest.substr(0, at);
+				rest.remove_prefix(at == std::string_view::npos ? rest.size() : at + 1);
+			}
+			if (part[0].empty() || part[0].size() > kMaxPowerAsset)
+				continue;
+			const auto value  = number(part[2]);
+			const auto normal = number(part[3]);
+			if (value && normal)
+				out.entries.push_back({ std::string(part[0]), *value, *normal });
+		}
+		return out;
+	}
+
+	// When the next cheat.state is due. The owner sends it and says what came of it.
+	class StateRequest
+	{
+	public:
+		// Something changed what the server would answer.
+		void Want() { m_wanted = true; }
+
+		void Sent(uint32_t id, uint64_t nowMs)
+		{
+			m_wanted = false;
+			m_again  = false;
+			m_latest = id;
+			m_sentMs = nowMs;
+		}
+
+		// `id` was told to wait, or went unanswered. One older than the last sent
+		// no longer matters: that one's answer is on its way.
+		void Unanswered(uint32_t id)
+		{
+			if (id == m_latest)
+				m_again = true;
+		}
+
+		bool Due(uint64_t nowMs) const
+		{
+			if (m_wanted)
+				return nowMs - m_sentMs >= kStateSpacingMs;
+			return m_again && nowMs - m_sentMs >= kStateRetryMs;
+		}
+
+		// Nothing to ask for now.
+		void Drop() { m_wanted = m_again = false; }
+
+		// A new connection.
+		void Clear() { *this = {}; }
+
+	private:
+		bool     m_wanted = false;
+		bool     m_again  = false;
+		uint32_t m_latest = 0;
+		uint64_t m_sentMs = 0;
+	};
 
 	// True only for a readable "major.minor.patch" (a leading v and a suffix are
 	// ignored) that is older than 1.28.0. A "-dev" build is named after the last

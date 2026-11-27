@@ -856,7 +856,7 @@ namespace BetterCheats::Panels::Building
 
 	namespace
 	{
-		void TickUnlock()
+		void TickUnlock(bool own)
 		{
 			// No Stability Check is purely hook-driven (see Detour_CheckStabilityCustom /
 			// Detour_CheckStabilityDynamicPillar above) — nothing to do here per-tick.
@@ -872,11 +872,11 @@ namespace BetterCheats::Panels::Building
 				ReleaseValues();
 			else if (ServerLink::ServerOwns(ServerLink::Rows::UnlockAll))
 			{
-				// The server makes a joined player's unlock. The copy here follows
-				// its ok reply, which is forgotten on deny and with the connection.
-				if (!Features::Usable(Features::BuildUnlock)
-					|| ServerLink::RouteOf(ServerLink::Op::BuildUnlock) != ServerLink::Route::Server
-					|| ServerLink::LastResult(ServerLink::Op::BuildUnlock).Value("on") != "on")
+				// The server makes a joined player's unlock, and it stands for every
+				// player. The copy here follows its word, whatever this player's own
+				// rules say about asking for it.
+				if (!Features::Built(Features::BuildUnlock) || !ServerLink::HoldsUnlock()
+					|| ServerLink::RouteOf(ServerLink::Op::BuildUnlock) != ServerLink::Route::Server)
 					ReleaseValues();
 				else if (!g_keeperUnlockWritten)
 					WriteKeeperUnlock();
@@ -884,7 +884,7 @@ namespace BetterCheats::Panels::Building
 				// player's own setting replaces whatever the server's reply wrote.
 				g_prevUnlockAllBuildings = !g_unlockAllBuildings;
 			}
-			else if (Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
+			else if (own && Features::Usable(Features::BuildUnlock) && g_unlockAllBuildings != g_prevUnlockAllBuildings)
 			{
 				g_prevUnlockAllBuildings = g_unlockAllBuildings;
 				LOG_INFO("Building: unlock all buildings -> %s", g_unlockAllBuildings ? "enabled" : "disabled");
@@ -911,9 +911,9 @@ namespace BetterCheats::Panels::Building
 		g_serverBenches       = ServerHasPart(ServerLink::Op::BuildAnywhere, "benches");
 	}
 
-	void Tick(float /*deltaSeconds*/)
+	void Tick(bool own)
 	{
-		TickUnlock();
+		TickUnlock(own);
 	}
 
 	void ApplySavedConfig()

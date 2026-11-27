@@ -441,9 +441,10 @@ static void OnEngineTick(float deltaSeconds)
 			nullptr, &Panels::Building::ApplySavedConfig);
 		FollowFlag(g_initRan.BuildAnywhere, Features::Usable(Features::BuildAnywhere), g_wasOn.BuildAnywhere,
 			nullptr, &Panels::Building::ApplySavedConfig);
-		if (FollowFlag(g_initRan.BuildUnlock, Features::Usable(Features::BuildUnlock), g_wasOn.BuildUnlock,
-				&Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig))
-			Panels::Building::Tick(deltaSeconds);
+		// Ticked either way: a server's unlock reaches a player whose own rules
+		// switched the feature off.
+		Panels::Building::Tick(FollowFlag(g_initRan.BuildUnlock, Features::Usable(Features::BuildUnlock),
+			g_wasOn.BuildUnlock, &Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig));
 		Panels::Building::SyncServerBuild();
 
 		if (FollowFlag(g_initRan.Inventory, Features::Usable(Features::Inventory), g_wasOn.Inventory,

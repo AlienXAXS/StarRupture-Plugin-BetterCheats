@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace BetterCheats::ServerLink
 {
@@ -58,6 +59,17 @@ namespace BetterCheats::ServerLink
 			seen = stamp;
 			return true;
 		}
+	};
+
+	// The server's buildings with their power values, as far as its list reply
+	// could hold them. Untrusted text.
+	struct PowerList
+	{
+		std::vector<ServerProtocol::PowerValue> values;
+		bool        more   = false;   // the server could not list every building
+		// Why the last request for it got no list.
+		std::string note;
+		uint64_t    stamp  = 0;       // changes with the list, as Result::stamp does
 	};
 
 	// PluginInit / PluginShutdown.
@@ -127,6 +139,17 @@ namespace BetterCheats::ServerLink
 
 	// Any thread.
 	Result LastResult(Op op);
+
+	// Any thread. Whether the server says Unlock All Buildings stands, so this
+	// player's game needs its own copy.
+	bool HoldsUnlock();
+
+	// Any thread. Call while the power page is shown: the list is asked for only
+	// then, and only when a building has an edited value.
+	PowerList ShowPowerList();
+
+	// Any thread. Asks for the list again.
+	void RescanPowerList();
 
 	// A multiplier as a request field: two decimals.
 	inline std::string Number(float value)

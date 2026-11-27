@@ -145,7 +145,7 @@ int main()
 		const auto reply = Parse(std::string("res|1|1|ok|State.") + fields);
 		return reply ? HeldFields(*reply, what) : Fields{ { "unparsed", "" } };
 	};
-	const Held all[] = { Held::Stack, Held::Wave, Held::Power, Held::Enemy, Held::Weapon,
+	const Held all[] = { Held::Stack, Held::Wave, Held::Power, Held::Corp, Held::Enemy, Held::Weapon,
 		Held::Grid, Held::Plant, Held::Mine, Held::BuildParts, Held::BuildUnlock };
 	for (Held what : all)
 		CHECK(held("", what).empty());                    // missing keys
@@ -179,6 +179,51 @@ int main()
 	CHECK((held("|build=none", Held::BuildParts) == Fields{ { "parts", "" } }));
 	CHECK((held("|unlock=on", Held::BuildUnlock) == Fields{ { "on", "on" } }));
 	CHECK(held("|unlock=maybe", Held::BuildUnlock).empty());
+	CHECK((held("|points=0", Held::Corp) == Fields{ { "points", "0" } }));
+	CHECK((held("|points=999999999", Held::Corp) == Fields{ { "points", "999999999" } }));
+	for (const char* bad : { "|points=1000000000", "|points=-1", "|points=1.5", "|points=", "|points=off" })
+		CHECK(held(bad, Held::Corp).empty());
+
+	// ParsePowerList: a cheat.power list reply.
+	const auto listed = [](const std::string& fields)
+	{
+		const auto reply = Parse("res|1|1|ok|List." + fields);
+		CHECK(reply.has_value());
+		return reply ? ParsePowerList(*reply) : PowerList{};
+	};
+	const PowerList two = listed("|count=2|b0=DA_Wind~wind~500~100|b1=DA_Solar~~2.5~2.5");
+	CHECK(two.entries.size() == 2 && !two.more);
+	CHECK(two.entries.size() == 2 && two.entries[0].asset == "DA_Wind" && two.entries[0].value == 500.0f
+		&& two.entries[0].normal == 100.0f && two.entries[1].asset == "DA_Solar" && two.entries[1].value == 2.5f);
+	CHECK(listed("|count=0").entries.empty());
+	CHECK(listed("|b0=DA_Wind~wind~1~1|more=1").more && !listed("|more=0").more);
+	for (const char* bad : { "|b0=DA_Wind~wind~1", "|b0=DA_Wind~wind~1~1~1", "|b0=~wind~1~1",
+		"|b0=DA_Wind~wind~x~1", "|b0=DA_Wind~wind~1~-1", "|b0=DA_Wind~wind~inf~1", "|b0=DA_Wind~wind~1e10~1",
+		"|b=DA_Wind~wind~1~1", "|bx=DA_Wind~wind~1~1", "|x0=DA_Wind~wind~1~1" })
+		CHECK(listed(bad).entries.empty());
+	CHECK(listed("|b0=" + std::string(kMaxPowerAsset, 'a') + "~t~1~1").entries.size() == 1);
+	CHECK(listed("|b0=" + std::string(kMaxPowerAsset + 1, 'a') + "~t~1~1").entries.empty());
+	CHECK(listed("|b0=bad|b1=DA_Wind~t~1~1").entries.size() == 1);
+
+	// StateRequest: when the next cheat.state is due.
+	StateRequest state;
+	CHECK(!state.Due(100000));
+	state.Want();
+	CHECK(state.Due(100000));
+	state.Sent(1, 100000);
+	CHECK(!state.Due(200000));                                  // answered, or still waiting
+	state.Want();
+	CHECK(!state.Due(100000 + kStateSpacingMs - 1) && state.Due(100000 + kStateSpacingMs));
+	state.Sent(2, 101000);
+	state.Unanswered(1);                                        // an older one no longer matters
+	CHECK(!state.Due(101000 + kStateRetryMs));
+	state.Unanswered(2);
+	CHECK(!state.Due(101000 + kStateRetryMs - 1) && state.Due(101000 + kStateRetryMs));
+	state.Drop();
+	CHECK(!state.Due(1000000));
+	state.Want();
+	state.Clear();
+	CHECK(!state.Due(1000000));
 
 	std::printf(g_failed ? "%d check(s) failed\n" : "all checks passed\n", g_failed);
 	return g_failed ? 1 : 0;

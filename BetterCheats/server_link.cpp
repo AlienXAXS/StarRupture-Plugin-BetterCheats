@@ -25,13 +25,15 @@ namespace BetterCheats::ServerLink
 		constexpr const char* kDone      = "Done.";
 		constexpr size_t      kMaxKept   = 32;
 
-		enum class Kind { Click, Cap, State };
+		enum class Kind { Click, Cap, State, List };
 
 		struct What
 		{
 			Op       op    = Op::Give;
 			Kind     kind  = Kind::Click;
 			uint64_t order = 0;
+			// A cheat.power click that puts every building back.
+			bool     resetsAllPower = false;
 		};
 
 		struct Queued
@@ -52,9 +54,24 @@ namespace BetterCheats::ServerLink
 		// Never reset, so no stamp or send order is used twice.
 		uint64_t                 g_stamp          = 0;
 		uint64_t                 g_order          = 0;
-		// Set by every cap answer: what is on for this player is asked next.
-		bool                     g_stateWanted    = false;
-		uint64_t                 g_stateSentMs    = 0;
+		// What is on for this player is asked after every cap answer and every
+		// change of a feature flag.
+		Protocol::StateRequest   g_state;
+		uint32_t                 g_flags          = 0;
+		bool                     g_flagsSeen      = false;
+		// The server's last word on Unlock All Buildings. The server tells every
+		// player, whatever their own rules, so it is not part of a slot's result.
+		std::atomic<bool>        g_unlockHeld{ false };
+		uint64_t                 g_unlockOrder    = 0;
+		// The edited power values, asked for while the power page is shown.
+		PowerList                g_power;
+		bool                     g_powerEdited    = false;
+		bool                     g_powerDue       = false;
+		bool                     g_powerWaiting   = false;
+		// A list sent at or before this send order is out of date.
+		uint64_t                 g_powerFloor     = 0;
+		uint64_t                 g_powerSentMs    = 0;
+		std::atomic<bool>        g_powerShown{ false };
 		Cap                      g_cap = Cap::NotSent;
 		Protocol::Reply          g_capReply;
 		std::string              g_capFailure;
@@ -87,7 +104,7 @@ namespace BetterCheats::ServerLink
 			{ "cheat.give",   &Features::Items, {} },
 			{ "cheat.wave",   &Features::Wave, Held::Wave },
 			{ "cheat.stack",  &Features::StackSize, Held::Stack },
-			{ "cheat.corp",   &Features::Corporations, {} },
+			{ "cheat.corp",   &Features::Corporations, Held::Corp },
 			{ "cheat.power",  &Features::Power, Held::Power },
 			{ "cheat.enemy",  &Features::Enemies, Held::Enemy },
 			{ "cheat.weapon", &Features::Weapons, Held::Weapon },
@@ -99,6 +116,24 @@ namespace BetterCheats::ServerLink
 			{ "cheat.build",  &Features::BuildUnlock, Held::BuildUnlock },
 		};
 		static_assert(sizeof(kOps) / sizeof(kOps[0]) == kOpCount);
+
+		// False when a server's rules or the loader switched every feature off:
+		// nothing is sent then.
+		bool ModOn()
+		{
+			return Features::WithAll([](const auto&... features) { return (features.On() || ...); });
+		}
+
+		// One bit per feature, to see that one changed.
+		uint32_t FlagBits()
+		{
+			return Features::WithAll([](const auto&... features)
+			{
+				uint32_t bits = 0;
+				((bits = (bits << 1) | (features.On() ? 1u : 0u)), ...);
+				return bits;
+			});
+		}
 
 		const char* OpName(Op op) { return kOps[static_cast<size_t>(op)].name; }
 
@@ -119,8 +154,18 @@ namespace BetterCheats::ServerLink
 			g_results = {};
 			for (Result& result : g_results)
 				result.stamp = ++g_stamp;
-			g_stateWanted = false;
-			g_stateSentMs = 0;
+			g_state.Clear();
+			g_flagsSeen   = false;
+			g_unlockHeld  = false;
+			g_unlockOrder = 0;
+			g_power = {};
+			g_power.stamp  = ++g_stamp;
+			g_powerEdited  = false;
+			g_powerDue     = false;
+			g_powerWaiting = false;
+			g_powerFloor   = 0;
+			g_powerSentMs  = 0;
+			g_powerShown   = false;
 			g_cap = Cap::NotSent;
 			g_capReply = {};
 			g_capFailure.clear();
@@ -131,6 +176,32 @@ namespace BetterCheats::ServerLink
 			g_neverReady    = false;
 			g_capStale      = false;
 			g_capSentMs     = 0;
+		}
+
+		// What was listed at or before send order `order` no longer holds. It is
+		// asked again only when some building still has an edited value.
+		void PowerChangedLocked(uint64_t order, bool anyEdited)
+		{
+			g_power = {};
+			g_power.stamp = ++g_stamp;
+			g_powerEdited = g_powerDue = anyEdited;
+			g_powerFloor  = order;
+		}
+
+		bool ServerListsLocked(const char* op)
+		{
+			if (g_cap != Cap::Got)
+				return false;
+			const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, op);
+			return handler.version && handler.on;
+		}
+
+		// The server listed the op as on and now can't run it, so what it can do
+		// has changed.
+		void NoteRefusalLocked(const Protocol::Reply& reply, const char* op)
+		{
+			if (reply.reason == Protocol::kNotOnThisBuild && ServerListsLocked(op))
+				g_capStale = true;
 		}
 
 		bool ServerLoaderTooOldLocked()
@@ -161,7 +232,18 @@ namespace BetterCheats::ServerLink
 			if (result == -1)
 				FailCapLocked(text);
 			else if (what.kind == Kind::State)
-				g_stateWanted = result == 0;   // not ready after all: asked again shortly
+			{
+				if (result == 0)
+					g_state.Want();     // not ready after all: asked again shortly
+			}
+			else if (what.kind == Kind::List)
+			{
+				g_powerWaiting = false;
+				if (result == 0)
+					g_powerDue = g_powerEdited;
+				else
+					g_power.note = text;
+			}
 			else if (cap && g_cap == Cap::Got)
 				g_capStale = true;      // asking again failed: the last answer stands for now
 			else if (cap && result == 0)
@@ -199,19 +281,31 @@ namespace BetterCheats::ServerLink
 
 		// A cheat.state answer. A slot it does not report is not on, unless a
 		// request sent after this one has already been answered for it.
-	void ApplyStateLocked(const Protocol::Reply& state, uint64_t order)
-	{
-		for (size_t i = 0; i < kOpCount; ++i)
+		void ApplyStateLocked(const Protocol::Reply& state, uint64_t order)
 		{
-			Result& result = g_results[i];
-			if (!kOps[i].held || !kOps[i].feature->On() || order <= result.order)
-				continue;
-			result.fields = Protocol::HeldFields(state, *kOps[i].held);
-			result.order    = order;
-			result.stamp    = ++g_stamp;
-			result.readBack = true;
+			for (size_t i = 0; i < kOpCount; ++i)
+			{
+				Result& result = g_results[i];
+				if (!kOps[i].held || !kOps[i].feature->On() || order <= result.order)
+					continue;
+				result.fields = Protocol::HeldFields(state, *kOps[i].held);
+				result.order    = order;
+				result.stamp    = ++g_stamp;
+				result.readBack = true;
+				if (static_cast<Op>(i) == Op::Power)
+				{
+					const std::string edited = result.Value("edited");
+					PowerChangedLocked(order, !edited.empty() && edited != "0");
+				}
+			}
+			// Not behind this player's own rules. A missing key is off.
+			if (order > g_unlockOrder)
+			{
+				const std::string* unlock = state.Find("unlock");
+				g_unlockHeld  = unlock && *unlock == "on";
+				g_unlockOrder = order;
+			}
 		}
-	}
 
 		void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
 		{
@@ -226,9 +320,35 @@ namespace BetterCheats::ServerLink
 
 			if (entry->what.kind == Kind::State)
 			{
-				// Refused: what earlier replies reported stands.
 				if (reply->status == Protocol::Status::Ok)
+				{
 					ApplyStateLocked(*reply, entry->what.order);
+					return;
+				}
+				// Refused: what earlier replies reported stands.
+				if (reply->reason == Protocol::kRateLimited)
+					g_state.Unanswered(entry->id);
+				NoteRefusalLocked(*reply, Protocol::kStateOp);
+				return;
+			}
+
+			if (entry->what.kind == Kind::List)
+			{
+				g_powerWaiting = false;
+				if (entry->what.order <= g_powerFloor)
+					return;
+				if (reply->status != Protocol::Status::Ok)
+				{
+					// Not asked again by itself: the page says why and has Rescan.
+					g_power.note = reply->reason.empty() ? std::string(Protocol::kNoReason) : reply->reason;
+					NoteRefusalLocked(*reply, OpName(Op::Power));
+					return;
+				}
+				Protocol::PowerList list = Protocol::ParsePowerList(*reply);
+				g_power.values = std::move(list.entries);
+				g_power.more   = list.more;
+				g_power.note.clear();
+				g_power.stamp  = ++g_stamp;
 				return;
 			}
 
@@ -238,7 +358,7 @@ namespace BetterCheats::ServerLink
 				{
 					g_capReply = std::move(*reply);
 					g_cap = Cap::Got;
-					g_stateWanted = true;
+					g_state.Want();
 				}
 				else if (g_cap == Cap::Got)
 				{
@@ -256,13 +376,18 @@ namespace BetterCheats::ServerLink
 			result.text = reply->reason.empty() ? kDone : reply->reason;
 			if (reply->status != Protocol::Status::Ok)
 			{
-				// The server listed this op as on and now can't run it, so what
-				// it can do has changed.
-				if (reply->reason == Protocol::kNotOnThisBuild && g_cap == Cap::Got
-					&& Protocol::HandlerOf(g_capReply, OpName(entry->what.op)).on)
-					g_capStale = true;
+				NoteRefusalLocked(*reply, OpName(entry->what.op));
 				return;
 			}
+
+			if (entry->what.op == Op::BuildUnlock && entry->what.order > g_unlockOrder)
+				if (const std::string* on = reply->Find("on"); on && *on == "on")
+				{
+					g_unlockHeld  = true;
+					g_unlockOrder = entry->what.order;
+				}
+			if (entry->what.op == Op::Power && entry->what.order > g_powerFloor)
+				PowerChangedLocked(entry->what.order, !entry->what.resetsAllPower);
 
 			if (entry->what.order < result.order)
 				return;
@@ -357,12 +482,38 @@ namespace BetterCheats::ServerLink
 			for (size_t i = 0; i < kOpCount; ++i)
 				if (!kOps[i].feature->On())
 					g_results[i] = {};
+			if (!Features::Power.On())
+				PowerChangedLocked(g_order, false);
+
+			const uint32_t flags = FlagBits();
+			if (g_flagsSeen && flags != g_flags)
+				g_state.Want();
+			g_flags     = flags;
+			g_flagsSeen = true;
+
+			const bool modOn = ModOn();
+			if (!modOn)
+				g_state.Drop();
+			// A server without cheat.state can't say the unlock still stands for a
+			// player whose own rules switched it off.
+			if (!modOn || (!Features::BuildUnlock.On() && !ServerListsLocked(Protocol::kStateOp)))
+				g_unlockHeld = false;
 
 			for (const auto& expired : g_waiting.Expire(now))
 			{
 				// An unanswered cheat.state changes nothing and no row waits on it.
 				if (expired.what.kind == Kind::State)
+				{
+					g_state.Unanswered(expired.id);
 					continue;
+				}
+				if (expired.what.kind == Kind::List)
+				{
+					g_powerWaiting = false;
+					if (expired.what.order > g_powerFloor)
+						g_power.note = Protocol::kNoAnswer;
+					continue;
+				}
 				if (expired.what.kind == Kind::Cap && g_cap == Cap::Got)
 					g_capStale = true;
 				else if (expired.what.kind == Kind::Cap)
@@ -373,7 +524,7 @@ namespace BetterCheats::ServerLink
 
 			const bool firstCap = g_cap == Cap::NotSent && now >= g_capRetryMs && !ServerLoaderTooOldLocked();
 			const bool capAgain = g_cap == Cap::Got && g_capStale && now - g_capSentMs >= kCapAgainMs;
-			if (firstCap || capAgain)
+			if (modOn && (firstCap || capAgain))
 			{
 				const What what{ Op::Give, Kind::Cap, ++g_order };
 				if (const uint32_t id = g_waiting.Add(what, now))
@@ -392,13 +543,10 @@ namespace BetterCheats::ServerLink
 			}
 
 			// Ahead of the clicks, so their replies are the newer ones.
-			if (g_stateWanted && g_cap == Cap::Got && now - g_stateSentMs >= kRetryMs)
+			if (g_cap == Cap::Got && g_state.Due(now))
 			{
-				const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, Protocol::kStateOp);
-				const bool anyAllowed = std::any_of(std::begin(kOps), std::end(kOps),
-					[](const OpInfo& op) { return op.held && op.feature->On(); });
-				if (!handler.version || !handler.on || !anyAllowed)
-					g_stateWanted = false;   // an older server: nothing shows as on
+				if (!modOn || !ServerListsLocked(Protocol::kStateOp))
+					g_state.Drop();     // an older server: nothing shows as on
 				else if (!g_waiting.Full())
 				{
 					const What what{ Op::Give, Kind::State, ++g_order };
@@ -406,8 +554,7 @@ namespace BetterCheats::ServerLink
 					if (auto message = Protocol::BuildRequest(id, Protocol::kStateOp, {}))
 					{
 						outgoing.push_back({ id, what, std::move(*message) });
-						g_stateWanted = false;
-						g_stateSentMs = now;
+						g_state.Sent(id, now);
 					}
 				}
 			}
@@ -420,7 +567,10 @@ namespace BetterCheats::ServerLink
 					ResultOf(queued.op).text.clear();
 					continue;
 				}
-				const What what{ queued.op, Kind::Click, ++g_order };
+				const bool resetsAllPower = queued.op == Op::Power
+					&& std::any_of(queued.fields.begin(), queued.fields.end(),
+						[](const auto& field) { return field.first == "do" && field.second == "reset-all"; });
+				const What what{ queued.op, Kind::Click, ++g_order, resetsAllPower };
 				const uint32_t id = g_waiting.Add(what, now);
 				if (id == 0)
 				{
@@ -437,6 +587,23 @@ namespace BetterCheats::ServerLink
 				outgoing.push_back({ id, what, std::move(*message) });
 			}
 			g_queued.clear();
+
+			// After the clicks, so the list holds what they changed. Only while the
+			// page is shown, and one at a time.
+			if (g_powerShown.exchange(false) && g_powerDue && !g_powerWaiting && Features::Power.On()
+				&& now - g_powerSentMs >= Protocol::kStateSpacingMs && !g_waiting.Full()
+				&& ServerListsLocked(Protocol::kStateOp) && ServerListsLocked(OpName(Op::Power)))
+			{
+				const What what{ Op::Power, Kind::List, ++g_order };
+				const uint32_t id = g_waiting.Add(what, now);
+				if (auto message = Protocol::BuildRequest(id, OpName(Op::Power), { { "do", "list" } }))
+				{
+					outgoing.push_back({ id, what, std::move(*message) });
+					g_powerDue     = false;
+					g_powerWaiting = true;
+					g_powerSentMs  = now;
+				}
+			}
 		}
 
 		// Outside the lock: the loader is not called while it is held.
@@ -521,6 +688,25 @@ namespace BetterCheats::ServerLink
 	{
 		std::lock_guard<std::mutex> lock(g_mutex);
 		return ResultOf(op);
+	}
+
+	bool HoldsUnlock()
+	{
+		return g_unlockHeld && ModOn();
+	}
+
+	PowerList ShowPowerList()
+	{
+		g_powerShown = true;
+		std::lock_guard<std::mutex> lock(g_mutex);
+		return g_power;
+	}
+
+	void RescanPowerList()
+	{
+		std::lock_guard<std::mutex> lock(g_mutex);
+		g_powerDue = g_powerEdited;
+		g_power.note.clear();
 	}
 
 	void Say(IModLoaderImGui* imgui, const std::string& text)
