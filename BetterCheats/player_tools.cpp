@@ -506,8 +506,9 @@ namespace BetterCheats::Panels::Tools
 		// character, or a tag something else removed, within a second.
 		void UpdateHeatTag(float deltaSeconds, SDK::ACrCharacterPlayerBase* character)
 		{
-			// On a joined client the tag is the server's to hold.
-			const bool wanted = g_noDrillOverheat.load() && !BetterCheats::GameContext::IsJoinedClient();
+			// While the server holds the row, the tag is the server's to hold.
+			const bool wanted = g_noDrillOverheat.load()
+				&& !BetterCheats::ServerLink::ServerOwns(BetterCheats::ServerLink::Rows::DrillHeat);
 			if (wanted != g_heatTagWanted)
 			{
 				g_heatTagWanted = wanted;
@@ -893,13 +894,22 @@ namespace BetterCheats::Panels::Tools
 			const std::string blocker = ServerLink::Blocker(kOp);
 			if (!blocker.empty())
 			{
-				ServerLink::Say(imgui, "No Handheld Drill Overheat and Mining Boost: " + blocker);
+				const char* held = !ServerLink::ServerOwns(ServerLink::Rows::MiningBoost) ? "No Handheld Drill Overheat"
+					: !ServerLink::ServerOwns(ServerLink::Rows::DrillHeat) ? "Mining Boost"
+					: "No Handheld Drill Overheat and Mining Boost";
+				ServerLink::Say(imgui, held + (": " + blocker));
 				return;
 			}
 
-			static float boost = 1.0f;
+			static float    boost = 1.0f;
+			static uint64_t seen  = 0;
+			const ServerLink::Result last = ServerLink::LastResult(kOp);
+			if (last.ChangedSince(seen))
+				boost = last.NumberOr("boost", 1.0f, 10.0f, 1.0f);
 
 			ServerLink::Say(imgui, "The server runs the drill overheat and mining boost cheats here. 1x boost is off.");
+			if (const std::string heat = last.Value("heat"); last.readBack && !heat.empty())
+				ServerLink::Say(imgui, "No drill overheat on the server: " + heat);
 			if (imgui->SmallButton("No drill overheat: on##server_mine"))
 				ServerLink::Queue(kOp, { { "heat", "on" } });
 			imgui->SameLine(0.0f, 8.0f);
@@ -1004,7 +1014,7 @@ namespace BetterCheats::Panels::Tools
 		// clamps Current against it.
 		const float boostValue  = g_miningBoostValue.load();
 		const bool  boostActive = BetterCheats::DiffersFromDefault(boostValue, 1.0f)
-			&& !BetterCheats::GameContext::IsJoinedClient();
+			&& !BetterCheats::ServerLink::ServerOwns(BetterCheats::ServerLink::Rows::MiningBoost);
 		try
 		{
 			SDK::UCrMiningBoostAttributeSet* boost = BetterCheats::Fields::ValueOr(BetterCheats::Fields::CrCharacterPlayerBase_MiningBoostAttributes, character);
@@ -1062,8 +1072,10 @@ namespace BetterCheats::Panels::Tools
 		// none of the saved settings.
 		imgui->SeparatorText("Mining");
 
-		const bool joined = !greyed && BetterCheats::GameContext::IsJoinedClient();
-		if (joined)
+		namespace ServerLink = BetterCheats::ServerLink;
+		const bool heatHeld  = !greyed && ServerLink::ServerOwns(ServerLink::Rows::DrillHeat);
+		const bool boostHeld = !greyed && ServerLink::ServerOwns(ServerLink::Rows::MiningBoost);
+		if (heatHeld || boostHeld)
 			RenderServerMine(imgui);
 
 		if (imgui->BeginTable("##mining_table", 2, kToolsTableFlags))
@@ -1089,8 +1101,8 @@ namespace BetterCheats::Panels::Tools
 			imgui->TableSetColumnIndex(0);
 			imgui->Text("No Handheld Drill Overheat");
 			imgui->TableSetColumnIndex(1);
-			bool noDrillOverheat = !greyed && !joined && g_noDrillOverheat.load();
-			imgui->BeginDisabled(joined);
+			bool noDrillOverheat = !greyed && !heatHeld && g_noDrillOverheat.load();
+			imgui->BeginDisabled(heatHeld);
 			if (imgui->Checkbox("##no_drill_overheat", &noDrillOverheat))
 			{
 				g_noDrillOverheat.store(noDrillOverheat);
@@ -1129,8 +1141,8 @@ namespace BetterCheats::Panels::Tools
 
 			for (int s = 0; s < kStatCount; ++s)
 				RenderStatRow(imgui, s, equipped, labelReserve, greyed);
-			imgui->BeginDisabled(joined);
-			RenderBoostRow(imgui, labelReserve, greyed || joined);
+			imgui->BeginDisabled(boostHeld);
+			RenderBoostRow(imgui, labelReserve, greyed || boostHeld);
 			imgui->EndDisabled();
 
 			imgui->EndTable();

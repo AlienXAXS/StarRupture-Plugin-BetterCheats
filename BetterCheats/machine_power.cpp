@@ -1129,6 +1129,10 @@ namespace BetterCheats::Panels::Power
 
 		imgui->InputFloat("Power##server_power", &s_value, 1.0f, 100.0f, "%.2f");
 		s_value = std::clamp(s_value, 0.01f, 1000000.0f);
+		imgui->TextWrapped("Power starts at this game's value for the building.");
+		// Only a read-back counts them, and a change to power drops the count.
+		if (const std::string edited = BetterCheats::ServerLink::LastResult(Op::Power).Value("edited"); !edited.empty())
+			BetterCheats::ServerLink::Say(imgui, "Buildings with edited power on the server: " + edited);
 
 		char value[32];
 		snprintf(value, sizeof(value), "%.2f", s_value);

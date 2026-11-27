@@ -198,7 +198,7 @@ namespace BetterCheats::ServerLink
 		}
 
 		// A cheat.state answer. A slot it does not report is not on, unless a
-	// request sent after this one has already been answered for it.
+		// request sent after this one has already been answered for it.
 	void ApplyStateLocked(const Protocol::Reply& state, uint64_t order)
 	{
 		for (size_t i = 0; i < kOpCount; ++i)
@@ -207,12 +207,13 @@ namespace BetterCheats::ServerLink
 			if (!kOps[i].held || !kOps[i].feature->On() || order <= result.order)
 				continue;
 			result.fields = Protocol::HeldFields(state, *kOps[i].held);
-			result.order  = order;
-			result.stamp  = ++g_stamp;
+			result.order    = order;
+			result.stamp    = ++g_stamp;
+			result.readBack = true;
 		}
 	}
 
-	void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
+		void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
 		{
 			auto reply = Protocol::ParseReply(data, size);
 			if (!reply)
@@ -237,7 +238,7 @@ namespace BetterCheats::ServerLink
 				{
 					g_capReply = std::move(*reply);
 					g_cap = Cap::Got;
-				g_stateWanted = true;
+					g_stateWanted = true;
 				}
 				else if (g_cap == Cap::Got)
 				{
@@ -266,7 +267,6 @@ namespace BetterCheats::ServerLink
 			if (entry->what.order < result.order)
 				return;
 			result.order = entry->what.order;
-			result.stamp = ++g_stamp;
 			// The count of edited power values only comes with cheat.state, so a
 			// change makes the one held out of date.
 			result.fields.erase(std::remove_if(result.fields.begin(), result.fields.end(),
@@ -489,6 +489,13 @@ namespace BetterCheats::ServerLink
 			return g_capRefused ? Route::Refused : Route::Local;
 		const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, OpName(op));
 		return g_cap == Cap::Got && handler.version && !handler.on ? Route::Refused : Route::Local;
+	}
+
+	bool ServerOwns(Row row)
+	{
+		if (!GameContext::IsJoinedClient())
+			return false;
+		return row.without == Without::Grey || RouteOf(row.op) != Route::Local;
 	}
 
 	void Queue(Op op, Protocol::Fields fields)

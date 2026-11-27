@@ -1723,13 +1723,15 @@ namespace BetterCheats::Panels::Weapons
 		}
 
 		// The two rows a server runs, as one setting for every weapon.
-		bool IsServerAttr(int attr)
+		bool ServerOwnsAttr(int attr)
 		{
-			return attr == kAttrDamage || attr == kAttrFireRate;
+			namespace ServerLink = BetterCheats::ServerLink;
+			return (attr == kAttrDamage && ServerLink::ServerOwns(ServerLink::Rows::WeaponDamage))
+				|| (attr == kAttrFireRate && ServerLink::ServerOwns(ServerLink::Rows::WeaponFireRate));
 		}
 
-		// Drawn above the rows on a joined client: the server's controls, or why
-		// the two server rows are greyed out.
+		// Drawn above the rows while the server holds either: the server's
+		// controls, or why the held rows are greyed out.
 		void RenderServerWeapon(IModLoaderImGui* imgui)
 		{
 			namespace ServerLink = BetterCheats::ServerLink;
@@ -1738,12 +1740,20 @@ namespace BetterCheats::Panels::Weapons
 			const std::string blocker = ServerLink::Blocker(kOp);
 			if (!blocker.empty())
 			{
-				ServerLink::Say(imgui, "Damage and Fire Rate: " + blocker);
+				const char* held = !ServerOwnsAttr(kAttrFireRate) ? "Damage"
+					: !ServerOwnsAttr(kAttrDamage) ? "Fire Rate" : "Damage and Fire Rate";
+				ServerLink::Say(imgui, held + (": " + blocker));
 				return;
 			}
 
-			static float damage = 1.0f;
-			static float rate   = 1.0f;
+			static float    damage = 1.0f;
+			static float    rate   = 1.0f;
+			static uint64_t seen   = 0;
+			if (const ServerLink::Result last = ServerLink::LastResult(kOp); last.ChangedSince(seen))
+			{
+				damage = last.NumberOr("damage", kAttrs[kAttrDamage].minValue, kAttrs[kAttrDamage].maxValue, 1.0f);
+				rate   = last.NumberOr("rate", kAttrs[kAttrFireRate].minValue, kAttrs[kAttrFireRate].maxValue, 1.0f);
+			}
 
 			ServerLink::Say(imgui, "Damage and Fire Rate here are one server setting for every weapon. 1x is off.");
 			imgui->SliderFloat("Damage##server_weapon", &damage, kAttrs[kAttrDamage].minValue,
@@ -2140,8 +2150,6 @@ namespace BetterCheats::Panels::Weapons
 
 			if (weapons)
 			{
-				// On a server the damage and fire rate multipliers are the server's.
-				const bool joined = BetterCheats::GameContext::IsJoinedClient();
 				for (int a = 0; a < kAttrCount; ++a)
 				{
 					if (a == kAttrMagazine)
@@ -2157,7 +2165,7 @@ namespace BetterCheats::Panels::Weapons
 					// hands Damage back to the game's own aggregate once this turns off.
 					const bool oneHitKill = a == kAttrDamage && profile.oneHitKill;
 					const bool active     = oneHitKill
-						|| (!(joined && IsServerAttr(a)) && IsActive(a, profile.values[a]));
+						|| (!ServerOwnsAttr(a) && IsActive(a, profile.values[a]));
 					const ComposeStep step = oneHitKill
 						? ApplyComposedRow(g_composed[a], weapons, attr.CurrentValue, key, active,
 							kOneHitKillDamage, BetterCheats::ComposedAttribute::Mode::Absolute,
@@ -3260,8 +3268,7 @@ namespace BetterCheats::Panels::Weapons
 			imgui->Spacing();
 
 			// ---- attributes ----------------------------------------------------
-			const bool joined = !greyed && BetterCheats::GameContext::IsJoinedClient();
-			if (joined)
+			if (!greyed && (ServerOwnsAttr(kAttrDamage) || ServerOwnsAttr(kAttrFireRate)))
 				RenderServerWeapon(imgui);
 
 			if (imgui->BeginTable("##weapon_attr_table", 3, kWeaponsTableFlags))
@@ -3284,7 +3291,7 @@ namespace BetterCheats::Panels::Weapons
 					const bool ownedByOneHitKill = (a == kAttrDamage && profile.oneHitKill);
 					const bool rowActive         = IsActive(a, value) && !ownedByOneHitKill;
 
-					const bool serverRow = joined && IsServerAttr(a);
+					const bool serverRow = !greyed && ServerOwnsAttr(a);
 
 					imgui->PushIDInt(a);
 					imgui->TableNextRow(0, 0.0f);

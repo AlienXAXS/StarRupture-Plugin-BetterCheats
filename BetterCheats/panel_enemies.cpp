@@ -4,13 +4,16 @@
 #include "map_fields.h"
 #include "server_link.h"
 
+#include <string>
+
 namespace BetterCheats::Panels
 {
 	namespace
 	{
-		// A server-wide setting reads as unknown after a join, so each has an On
-		// and an Off button and no checkbox.
-		void RenderServerSetting(IModLoaderImGui* imgui, const char* label, const char* key)
+		// A server may not report a server-wide setting, so each has an On and an
+		// Off button and no checkbox.
+		void RenderServerSetting(IModLoaderImGui* imgui, const ServerLink::Result& last,
+			const char* label, const char* key)
 		{
 			imgui->PushIDStr(key);
 			imgui->AlignTextToFramePadding();
@@ -21,14 +24,20 @@ namespace BetterCheats::Panels
 			imgui->SameLine(0.0f, 8.0f);
 			if (imgui->Button("Off"))
 				ServerLink::Queue(ServerLink::Op::Enemy, { { key, "off" } });
+			if (const std::string now = last.Value(key); last.readBack && (now == "on" || now == "off"))
+			{
+				imgui->SameLine(0.0f, 8.0f);
+				imgui->TextDisabled(now == "on" ? "Now on" : "Now off");
+			}
 			imgui->PopID();
 		}
 
 		void RenderServerEnemies(IModLoaderImGui* imgui)
 		{
 			imgui->SeparatorText("Enemies");
-			RenderServerSetting(imgui, "Disable enemy AI", "ai");
-			RenderServerSetting(imgui, "One-hit kill", "onehit");
+			const ServerLink::Result last = ServerLink::LastResult(ServerLink::Op::Enemy);
+			RenderServerSetting(imgui, last, "Disable enemy AI", "ai");
+			RenderServerSetting(imgui, last, "One-hit kill", "onehit");
 		}
 	}
 

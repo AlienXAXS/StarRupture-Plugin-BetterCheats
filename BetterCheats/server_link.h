@@ -25,8 +25,11 @@ namespace BetterCheats::ServerLink
 		// Every field the server's replies have reported, the latest value of
 		// each. Forgotten on deny and with the connection. Untrusted text.
 		ServerProtocol::Fields fields;
-		// Changes whenever `fields` does, so a menu draft knows to follow them.
+		// Changes with each cheat.state answer and with the connection, so a menu
+		// draft knows to follow `fields`. The player's own requests leave it.
 		uint64_t stamp = 0;
+		// The server has answered cheat.state for this slot.
+		bool readBack = false;
 		// The send order of the newest request whose reply set `fields`. A reply
 		// to an older one does not overwrite them.
 		uint64_t order = 0;
@@ -38,6 +41,22 @@ namespace BetterCheats::ServerLink
 				if (field.first == key)
 					return field.second;
 			return {};
+		}
+
+		// The same as a number from a control's range, else `fallback`.
+		float NumberOr(const char* key, float min, float max, float fallback) const
+		{
+			return ServerProtocol::NumberOr(Value(key), min, max, fallback);
+		}
+
+		// True once each time `stamp` changes, so a menu draft is reloaded then
+		// and left alone while it is being edited.
+		bool ChangedSince(uint64_t& seen) const
+		{
+			if (stamp == seen)
+				return false;
+			seen = stamp;
+			return true;
 		}
 	};
 
@@ -70,6 +89,38 @@ namespace BetterCheats::ServerLink
 
 	// Any thread.
 	Route RouteOf(Op op);
+
+	// What a joined player's row does while the server can't run its cheat: Grey
+	// greys it under the reason, Own leaves it to this plugin's own switch.
+	enum class Without { Grey, Own };
+
+	struct Row
+	{
+		Op      op;
+		Without without;
+	};
+
+	// The spawner, wave, corporations, enemies, power and stack size rows are not
+	// listed: Features::kNeedsServer holds them on every joined client.
+	namespace Rows
+	{
+		inline constexpr Row WeaponDamage  { Op::Weapon,        Without::Grey };
+		inline constexpr Row WeaponFireRate{ Op::Weapon,        Without::Grey };
+		inline constexpr Row DrillHeat     { Op::Mine,          Without::Grey };
+		inline constexpr Row MiningBoost   { Op::Mine,          Without::Grey };
+		inline constexpr Row PlantPickup   { Op::Plant,         Without::Grey };
+		inline constexpr Row FreeCost      { Op::BuildFree,     Without::Grey };
+		inline constexpr Row FreeStability { Op::BuildFree,     Without::Grey };
+		inline constexpr Row UnlockAll     { Op::BuildUnlock,   Without::Grey };
+		inline constexpr Row Windows       { Op::BuildAnywhere, Without::Own };
+		inline constexpr Row Benches       { Op::BuildAnywhere, Without::Own };
+		inline constexpr Row Grid          { Op::Grid,          Without::Own };
+	}
+
+	// Any thread. Whether this plugin's own switch is held back for the row: only
+	// on a joined client, and for an Own row only while the server runs the cheat,
+	// is being asked or has said no.
+	bool ServerOwns(Row row);
 
 	// Any thread. Ignored while the op is blocked.
 	void Queue(Op op, ServerProtocol::Fields fields);

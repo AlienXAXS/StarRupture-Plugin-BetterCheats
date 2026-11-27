@@ -34,14 +34,15 @@ namespace BetterCheats::Panels::Building
 
 		namespace ServerLink = BetterCheats::ServerLink;
 
-		// On a joined client the build cheats are the server's. These hold the
-		// parts it has said are on for this player: set on the tick, read by the
-		// detours. g_anywhereFromServer is also set while the server is being
-		// asked or has said no, so the saved setting does not apply then.
-		std::atomic<bool> g_joinedBuild{ false };
+		// Set on the tick, read by the detours. While a row is held for the
+		// server (ServerLink::ServerOwns) the saved setting does not apply, and
+		// the matching g_server flag says whether the server has the part on.
+		std::atomic<bool> g_heldCost{ false };
+		std::atomic<bool> g_heldStability{ false };
+		std::atomic<bool> g_heldWindows{ false };
+		std::atomic<bool> g_heldBenches{ false };
 		std::atomic<bool> g_serverFreeCost{ false };
 		std::atomic<bool> g_serverFreeStability{ false };
-		std::atomic<bool> g_anywhereFromServer{ false };
 		std::atomic<bool> g_serverWindows{ false };
 		std::atomic<bool> g_serverBenches{ false };
 
@@ -81,7 +82,7 @@ namespace BetterCheats::Panels::Building
 
 		int64_t __fastcall Detour_GetPlacementResourceConditionResult(void* self)
 		{
-			const bool noCost = g_joinedBuild.load() ? g_serverFreeCost.load() : g_noBuildCost;
+			const bool noCost = g_heldCost.load() ? g_serverFreeCost.load() : g_noBuildCost;
 			if (noCost && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-build-cost"))
 				return 1; // EAuAPlacementConditionResult::Valid
 
@@ -113,7 +114,7 @@ namespace BetterCheats::Panels::Building
 
 		bool StabilitySkipped()
 		{
-			const bool skip = g_joinedBuild.load() ? g_serverFreeStability.load() : g_noStabilityCheck;
+			const bool skip = g_heldStability.load() ? g_serverFreeStability.load() : g_noStabilityCheck;
 			return skip && Features::Usable(Features::BuildFree) && !Defer::DeferredTo("no-stability-check");
 		}
 
@@ -294,7 +295,7 @@ namespace BetterCheats::Panels::Building
 		//
 		// The placing client decides placement, so this covers your own
 		// placements in any world, including as a client, and nobody else's.
-		// A server that runs this cheat switches it instead (g_anywhereFromServer).
+		// A server that runs this cheat switches it instead.
 		// -------------------------------------------------------------------------
 
 		using CheckMainMeshCollisionFn = uint8_t(__fastcall*)(SDK::ACrAPHelper* self, const void* placementData);
@@ -317,12 +318,12 @@ namespace BetterCheats::Panels::Building
 		// feature. The saved setting itself is never changed.
 		bool WindowsAnywhereOn()
 		{
-			const bool on = g_anywhereFromServer.load() ? g_serverWindows.load() : g_buildWindowsAnywhere.load();
+			const bool on = g_heldWindows.load() ? g_serverWindows.load() : g_buildWindowsAnywhere.load();
 			return on && !Defer::DeferredTo("build-anywhere");
 		}
 		bool BenchesAnywhereOn()
 		{
-			const bool on = g_anywhereFromServer.load() ? g_serverBenches.load() : g_buildBenchesAnywhere.load();
+			const bool on = g_heldBenches.load() ? g_serverBenches.load() : g_buildBenchesAnywhere.load();
 			return on && !Defer::DeferredTo("build-anywhere");
 		}
 
@@ -846,8 +847,10 @@ namespace BetterCheats::Panels::Building
 		g_prevUnlockAllBuildings  = false;
 		g_keeperUnlockWritten     = false;
 		g_checkAvailableBuildings = nullptr;
-		g_joinedBuild             = false;
-		g_anywhereFromServer      = false;
+		g_heldCost                = false;
+		g_heldStability           = false;
+		g_heldWindows             = false;
+		g_heldBenches             = false;
 		ForgetServerBuild();
 	}
 
@@ -867,7 +870,7 @@ namespace BetterCheats::Panels::Building
 			// Best Builder goes away.
 			if (Defer::DeferredTo("unlock-all-buildings"))
 				ReleaseValues();
-			else if (BetterCheats::GameContext::IsJoinedClient())
+			else if (ServerLink::ServerOwns(ServerLink::Rows::UnlockAll))
 			{
 				// The server makes a joined player's unlock. The copy here follows
 				// its ok reply, which is forgotten on deny and with the connection.
@@ -895,14 +898,10 @@ namespace BetterCheats::Panels::Building
 
 	void SyncServerBuild()
 	{
-		const bool joined = BetterCheats::GameContext::IsJoinedClient();
-		g_joinedBuild        = joined;
-		g_anywhereFromServer = joined && ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
-		if (!joined)
-		{
-			ForgetServerBuild();
-			return;
-		}
+		g_heldCost            = ServerLink::ServerOwns(ServerLink::Rows::FreeCost);
+		g_heldStability       = ServerLink::ServerOwns(ServerLink::Rows::FreeStability);
+		g_heldWindows         = ServerLink::ServerOwns(ServerLink::Rows::Windows);
+		g_heldBenches         = ServerLink::ServerOwns(ServerLink::Rows::Benches);
 		g_serverFreeCost      = ServerHasPart(ServerLink::Op::BuildFree, "cost");
 		g_serverFreeStability = ServerHasPart(ServerLink::Op::BuildFree, "stability");
 		g_serverWindows       = ServerHasPart(ServerLink::Op::BuildAnywhere, "windows");
@@ -960,37 +959,38 @@ namespace BetterCheats::Panels::Building
 			}
 		}
 
-		// On a joined client, a live row the server is asked for: the reason or
-		// the server's last answer under the description. Rows that stay the
-		// client's own while the server can't run the cheat say nothing then. Two
-		// rows that share an op each give the reason, and the last of them alone
-		// the answer.
-		void ServerNote(IModLoaderImGui* imgui, const PluginMap::Feature& feature, ServerLink::Op op, bool clientFallback,
+		// A live row held for the server: the reason or the server's last answer
+		// under the description. Two rows that share an op each give the reason,
+		// and only the one last clicked the answer.
+		void ServerNote(IModLoaderImGui* imgui, const PluginMap::Feature& feature, ServerLink::Row row,
 			bool showAnswer = true)
 		{
-			if (Features::StateOf(feature) != Features::Why::Live || !BetterCheats::GameContext::IsJoinedClient())
+			if (Features::StateOf(feature) != Features::Why::Live || !ServerLink::ServerOwns(row))
 				return;
-			const ServerLink::Route route = ServerLink::RouteOf(op);
-			if ((clientFallback && route == ServerLink::Route::Local) || (!showAnswer && route == ServerLink::Route::Server))
+			const ServerLink::Route route = ServerLink::RouteOf(row.op);
+			if (!showAnswer && route == ServerLink::Route::Server)
 				return;
 			const std::string text = route == ServerLink::Route::Server
-				? ServerLink::LastResult(op).text : ServerLink::Blocker(op);
+				? ServerLink::LastResult(row.op).text : ServerLink::Blocker(row.op);
 			if (!text.empty())
 				ServerLink::Say(imgui, text);
 		}
 
 		// A joined player's checkbox for one part of a build rule. It shows what
 		// the server says is on, a click asks the server, and it is disabled when
-		// the server can't run the rule. The saved setting is never touched.
-		void ServerCheckbox(IModLoaderImGui* imgui, ServerLink::Op op, const char* rule, const char* part,
+		// the server can't run the rule. The saved setting is never touched. True
+		// when a click asked.
+		bool ServerCheckbox(IModLoaderImGui* imgui, ServerLink::Op op, const char* rule, const char* part,
 			const char* id, bool serverOn)
 		{
 			const bool live = ServerLink::RouteOf(op) == ServerLink::Route::Server;
 			bool on = live && serverOn;
 			imgui->BeginDisabled(!live);
-			if (imgui->Checkbox(id, &on) && live)
+			const bool asked = imgui->Checkbox(id, &on) && live;
+			if (asked)
 				ServerLink::Queue(op, { { "rule", rule }, { "on", on ? "on" : "off" }, { "part", part } });
 			imgui->EndDisabled();
+			return asked;
 		}
 
 		// Says why a row is greyed out, under its description.
@@ -1044,10 +1044,10 @@ namespace BetterCheats::Panels::Building
 
 		imgui->SeparatorText("Placement");
 		const bool anywhereDeferred = Defer::DeferredTo("build-anywhere");
-		const bool joined = BetterCheats::GameContext::IsJoinedClient();
-		// While the server can't run it, "anywhere" stays the client's own.
-		const bool anywhereFromServer = joined
-			&& ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
+		// Which row of each shared op shows the server's answer: the one last
+		// clicked, at first the lower one.
+		static bool costAnswers    = false;
+		static bool windowsAnswers = false;
 
 		if (imgui->BeginTable("##building_placement_table", 2, kTableFlags))
 		{
@@ -1063,13 +1063,16 @@ namespace BetterCheats::Panels::Building
 			if (noBuildCostDeferred)
 				ControlledBy(imgui, "no-build-cost");
 			HeldBack(imgui, Features::BuildFree);
-			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false, false);
+			ServerNote(imgui, Features::BuildFree, ServerLink::Rows::FreeCost, costAnswers);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noBuildCostDeferred);
 			if (RowOn(imgui, Features::BuildFree, "##no_build_cost"))
 			{
-				if (joined)
-					ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "cost", "##no_build_cost", g_serverFreeCost.load());
+				if (ServerLink::ServerOwns(ServerLink::Rows::FreeCost))
+				{
+					if (ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "cost", "##no_build_cost", g_serverFreeCost.load()))
+						costAnswers = true;
+				}
 				else if (imgui->Checkbox("##no_build_cost", &g_noBuildCost))
 					SessionConfig::Set("playerBuilding.noBuildCost", g_noBuildCost);
 			}
@@ -1084,13 +1087,16 @@ namespace BetterCheats::Panels::Building
 			if (noStabilityDeferred)
 				ControlledBy(imgui, "no-stability-check");
 			HeldBack(imgui, Features::BuildFree);
-			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false);
+			ServerNote(imgui, Features::BuildFree, ServerLink::Rows::FreeStability, !costAnswers);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noStabilityDeferred);
 			if (RowOn(imgui, Features::BuildFree, "##no_stability_check"))
 			{
-				if (joined)
-					ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "stability", "##no_stability_check", g_serverFreeStability.load());
+				if (ServerLink::ServerOwns(ServerLink::Rows::FreeStability))
+				{
+					if (ServerCheckbox(imgui, ServerLink::Op::BuildFree, "free", "stability", "##no_stability_check", g_serverFreeStability.load()))
+						costAnswers = false;
+				}
 				else if (imgui->Checkbox("##no_stability_check", &g_noStabilityCheck))
 					SessionConfig::Set("playerBuilding.noStabilityCheck", g_noStabilityCheck);
 			}
@@ -1125,14 +1131,17 @@ namespace BetterCheats::Panels::Building
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
 			HeldBack(imgui, Features::BuildAnywhere);
-			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true, false);
+			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Rows::Windows, windowsAnswers);
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
 			if (RowOn(imgui, Features::BuildAnywhere, "##build_windows_anywhere"))
 			{
-				if (anywhereFromServer)
-					ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "windows", "##build_windows_anywhere", g_serverWindows.load());
+				if (ServerLink::ServerOwns(ServerLink::Rows::Windows))
+				{
+					if (ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "windows", "##build_windows_anywhere", g_serverWindows.load()))
+						windowsAnswers = true;
+				}
 				else if (imgui->Checkbox("##build_windows_anywhere", &buildWindowsAnywhere))
 				{
 					g_buildWindowsAnywhere = buildWindowsAnywhere;
@@ -1151,14 +1160,17 @@ namespace BetterCheats::Panels::Building
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
 			HeldBack(imgui, Features::BuildAnywhere);
-			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true);
+			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Rows::Benches, !windowsAnswers);
 			imgui->TableSetColumnIndex(1);
 			bool buildBenchesAnywhere = g_buildBenchesAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);
 			if (RowOn(imgui, Features::BuildAnywhere, "##build_benches_anywhere"))
 			{
-				if (anywhereFromServer)
-					ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "benches", "##build_benches_anywhere", g_serverBenches.load());
+				if (ServerLink::ServerOwns(ServerLink::Rows::Benches))
+				{
+					if (ServerCheckbox(imgui, ServerLink::Op::BuildAnywhere, "anywhere", "benches", "##build_benches_anywhere", g_serverBenches.load()))
+						windowsAnswers = false;
+				}
 				else if (imgui->Checkbox("##build_benches_anywhere", &buildBenchesAnywhere))
 				{
 					g_buildBenchesAnywhere = buildBenchesAnywhere;
@@ -1190,12 +1202,12 @@ namespace BetterCheats::Panels::Building
 			if (unlockBuildingsDeferred)
 				ControlledBy(imgui, "unlock-all-buildings");
 			HeldBack(imgui, Features::BuildUnlock);
-			ServerNote(imgui, Features::BuildUnlock, ServerLink::Op::BuildUnlock, false);
+			ServerNote(imgui, Features::BuildUnlock, ServerLink::Rows::UnlockAll);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(unlockBuildingsDeferred);
 			if (RowOn(imgui, Features::BuildUnlock, "##unlock_buildings"))
 			{
-				if (!joined)
+				if (!ServerLink::ServerOwns(ServerLink::Rows::UnlockAll))
 				{
 					if (imgui->Checkbox("##unlock_buildings", &g_unlockAllBuildings))
 						SessionConfig::Set("playerBuilding.unlockAllBuildings", g_unlockAllBuildings);

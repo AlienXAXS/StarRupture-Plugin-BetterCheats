@@ -506,12 +506,10 @@ namespace BetterCheats::Panels::Inventory
 
 			// On a server that runs the grid, or refused it, nothing is resized
 			// from here. While it is still being asked, the resize waits.
-			const ServerLink::Route route = ServerLink::RouteOf(ServerLink::Op::Grid);
-			if (route == ServerLink::Route::Checking)
-				return;
-			if (route != ServerLink::Route::Local)
+			if (ServerLink::ServerOwns(ServerLink::Rows::Grid))
 			{
-				g_pendingResize.store(false);
+				if (ServerLink::RouteOf(ServerLink::Op::Grid) != ServerLink::Route::Checking)
+					g_pendingResize.store(false);
 				return;
 			}
 
@@ -2179,9 +2177,9 @@ namespace BetterCheats::Panels::Inventory
 		// ResourceCount only when the value it should hold changes.
 		void ApplyGatherMultiplier(float deltaSeconds)
 		{
-			// On a joined client the pickup count is not this game's to set, so
-			// anything written earlier is handed back.
-			const float multiplier = BetterCheats::GameContext::IsJoinedClient()
+			// While the server holds the row, the pickup count is not this game's
+			// to set, so anything written earlier is handed back.
+			const float multiplier = ServerLink::ServerOwns(ServerLink::Rows::PlantPickup)
 				? kGatherMultDefault : g_gatherMultiplier.load();
 
 			g_gatherRescanTimer += deltaSeconds;
@@ -2239,7 +2237,10 @@ namespace BetterCheats::Panels::Inventory
 				return;
 			}
 
-			static int multiplier = 1;
+			static int      multiplier = 1;
+			static uint64_t seen       = 0;
+			if (const ServerLink::Result last = ServerLink::LastResult(kOp); last.ChangedSince(seen))
+				multiplier = static_cast<int>(last.NumberOr("mult", 1.0f, 5.0f, 1.0f));
 
 			ServerLink::Say(imgui, "The server runs the pickup multiplier here. 1x is off.");
 			imgui->SliderInt("Plant Pickup##server_plant", &multiplier, 1, 5, "%dx");
@@ -2265,13 +2266,13 @@ namespace BetterCheats::Panels::Inventory
 			                    "picked up. Crops (regrowing bushes) are not covered by this.");
 			imgui->Spacing();
 
-			const bool joined = !greyed && BetterCheats::GameContext::IsJoinedClient();
-			if (joined)
+			const bool serverHeld = !greyed && ServerLink::ServerOwns(ServerLink::Rows::PlantPickup);
+			if (serverHeld)
 				RenderServerPlant(imgui);
-			const bool rowOff = greyed || joined;
+			const bool rowOff = greyed || serverHeld;
 
 			float multiplier = rowOff ? kGatherMultDefault : g_gatherMultiplier.load();
-			imgui->BeginDisabled(joined);
+			imgui->BeginDisabled(serverHeld);
 			if (imgui->BeginTable("##gather_mult_table", 3, kTableFlags))
 			{
 				const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
@@ -2701,10 +2702,29 @@ namespace BetterCheats::Panels::Inventory
 		if (!greyed && wantColumns != seenColumns) { columns = wantColumns; seenColumns = wantColumns; }
 		if (!greyed && wantRows    != seenRows)    { rows    = wantRows;    seenRows    = wantRows; }
 
+		// The server's grid goes into the steppers only, never the saved setting.
+		static uint64_t seenServerGrid = 0;
+		static bool     serverInSteppers = false;
+		if (const ServerLink::Result last = ServerLink::LastResult(ServerLink::Op::Grid);
+			!greyed && last.ChangedSince(seenServerGrid))
+		{
+			// With no grid read back, steppers that never held a server's stay as
+			// the player left them.
+			const bool reported = last.readBack && !last.Value("cols").empty();
+			if (reported || serverInSteppers)
+			{
+				columns = static_cast<int>(last.NumberOr("cols", static_cast<float>(kMinGridColumns),
+					static_cast<float>(kMaxGridColumns), static_cast<float>(wantColumns)));
+				rows = static_cast<int>(last.NumberOr("rows", static_cast<float>(kMinGridRows),
+					static_cast<float>(kMaxGridRows), static_cast<float>(wantRows)));
+			}
+			serverInSteppers = reported;
+		}
+
+		const bool serverGrid = !greyed && ServerLink::ServerOwns(ServerLink::Rows::Grid);
 		const ServerLink::Route gridRoute =
-			greyed ? ServerLink::Route::Local : ServerLink::RouteOf(ServerLink::Op::Grid);
-		const bool gridHeld =
-			gridRoute == ServerLink::Route::Checking || gridRoute == ServerLink::Route::Refused;
+			serverGrid ? ServerLink::RouteOf(ServerLink::Op::Grid) : ServerLink::Route::Local;
+		const bool gridHeld = serverGrid && gridRoute != ServerLink::Route::Server;
 		if (gridHeld)
 		{
 			ServerLink::Say(imgui, ServerLink::Blocker(ServerLink::Op::Grid));
@@ -2799,7 +2819,11 @@ namespace BetterCheats::Panels::Inventory
 	{
 		void RenderServerStackSizes(IModLoaderImGui* imgui)
 		{
-			static int size = 0;
+			static int      size = 0;
+			static uint64_t seen = 0;
+			const ServerLink::Result last = ServerLink::LastResult(ServerLink::Op::Stack);
+			if (last.ChangedSince(seen))
+				size = static_cast<int>(last.NumberOr("size", 0.0f, 9999.0f, 0.0f));
 
 			imgui->SeparatorText("Item Stack Sizes");
 			imgui->InputInt("##server_stack_size", &size, 1, 100);
@@ -2809,7 +2833,7 @@ namespace BetterCheats::Panels::Inventory
 				ServerLink::Queue(ServerLink::Op::Stack, { { "size", std::to_string(size) } });
 			imgui->TextDisabled("0 puts the server's own sizes back. A size only raises a stack.");
 
-			const std::string current = ServerLink::LastResult(ServerLink::Op::Stack).Value("size");
+			const std::string current = last.Value("size");
 			if (!current.empty())
 				ServerLink::Say(imgui, "In effect: " + current);
 		}

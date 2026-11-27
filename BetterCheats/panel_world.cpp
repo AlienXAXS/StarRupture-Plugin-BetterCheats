@@ -53,8 +53,15 @@ namespace BetterCheats::Panels
 		void RenderServerCorporations(IModLoaderImGui* imgui)
 		{
 			// Apply sets the server's total, so the untouched 0 is never sent.
-			static int  points  = 0;
-			static bool entered = false;
+			static int      points     = 0;
+			static bool     entered    = false;
+			static uint32_t connection = 0;
+			if (const uint32_t now = ServerLink::Connection(); connection != now)
+			{
+				connection = now;
+				points     = 0;
+				entered    = false;
+			}
 
 			imgui->SeparatorText("Data Points");
 			if (imgui->InputInt("##server_data_points", &points, 1, 100))

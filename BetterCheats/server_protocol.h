@@ -217,6 +217,15 @@ namespace BetterCheats::ServerProtocol
 		return error == std::errc() && stopped == end && value >= min && value <= max;
 	}
 
+	inline float NumberOr(std::string_view text, float min, float max, float fallback)
+	{
+		if (!IsNumberIn(text, min, max))
+			return fallback;
+		float value = fallback;
+		std::from_chars(text.data(), text.data() + text.size(), value, std::chars_format::fixed);
+		return value;
+	}
+
 	inline bool IsWholeIn(std::string_view text, uint32_t min, uint32_t max)
 	{
 		const auto value = ParseNumber(text, max);
