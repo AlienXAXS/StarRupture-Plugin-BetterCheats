@@ -435,7 +435,8 @@ static void OnEngineTick(float deltaSeconds)
 
 		// Three flags share the Building panel: its saved settings are read per flag,
 		// so any of them coming back on re-reads them all. Only Unlock All Buildings
-		// wrote something that has to be taken back, and only it has a tick.
+		// wrote something that has to be taken back, and only it has a tick of its
+		// own. The server's build parts are read whichever of them are on.
 		FollowFlag(g_initRan.BuildFree, Features::Usable(Features::BuildFree), g_wasOn.BuildFree,
 			nullptr, &Panels::Building::ApplySavedConfig);
 		FollowFlag(g_initRan.BuildAnywhere, Features::Usable(Features::BuildAnywhere), g_wasOn.BuildAnywhere,
@@ -443,6 +444,7 @@ static void OnEngineTick(float deltaSeconds)
 		if (FollowFlag(g_initRan.BuildUnlock, Features::Usable(Features::BuildUnlock), g_wasOn.BuildUnlock,
 				&Panels::Building::ReleaseValues, &Panels::Building::ApplySavedConfig))
 			Panels::Building::Tick(deltaSeconds);
+		Panels::Building::SyncServerBuild();
 
 		if (FollowFlag(g_initRan.Inventory, Features::Usable(Features::Inventory), g_wasOn.Inventory,
 				&Panels::Inventory::ReleaseValues, &Panels::Inventory::ApplySavedConfig))

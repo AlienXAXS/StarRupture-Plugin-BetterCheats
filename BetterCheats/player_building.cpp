@@ -45,10 +45,12 @@ namespace BetterCheats::Panels::Building
 		std::atomic<bool> g_serverWindows{ false };
 		std::atomic<bool> g_serverBenches{ false };
 
-		// Whether the server's last reply for the rule lists the part. The list
-		// is the server's text, so only an exact entry counts.
+		// Whether the server runs the rule and its last reply for it lists the
+		// part. The list is the server's text, so only an exact entry counts.
 		bool ServerHasPart(ServerLink::Op op, const char* part)
 		{
+			if (ServerLink::RouteOf(op) != ServerLink::Route::Server)
+				return false;
 			const std::string parts = ServerLink::LastResult(op).Value("parts");
 			const size_t length = std::strlen(part);
 			for (size_t start = 0; start <= parts.size(); )
@@ -69,23 +71,6 @@ namespace BetterCheats::Panels::Building
 			g_serverFreeStability = false;
 			g_serverWindows       = false;
 			g_serverBenches       = false;
-		}
-
-		// Game thread.
-		void SyncServerBuild()
-		{
-			const bool joined = BetterCheats::GameContext::IsJoinedClient();
-			g_joinedBuild        = joined;
-			g_anywhereFromServer = joined && ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
-			if (!joined)
-			{
-				ForgetServerBuild();
-				return;
-			}
-			g_serverFreeCost      = ServerHasPart(ServerLink::Op::BuildFree, "cost");
-			g_serverFreeStability = ServerHasPart(ServerLink::Op::BuildFree, "stability");
-			g_serverWindows       = ServerHasPart(ServerLink::Op::BuildAnywhere, "windows");
-			g_serverBenches       = ServerHasPart(ServerLink::Op::BuildAnywhere, "benches");
 		}
 
 		using GetPlacementResourceConditionResultFn = int64_t(__fastcall*)(void* self);
@@ -786,6 +771,7 @@ namespace BetterCheats::Panels::Building
 	void ForgetSettings()
 	{
 		ReleaseValues();
+		ForgetServerBuild();
 		g_noBuildCost                   = false;
 		g_noStabilityCheck              = false;
 		g_unlockAllBuildings            = false;
@@ -886,6 +872,7 @@ namespace BetterCheats::Panels::Building
 				// The server makes a joined player's unlock. The copy here follows
 				// its ok reply, which is forgotten on deny and with the connection.
 				if (!Features::Usable(Features::BuildUnlock)
+					|| ServerLink::RouteOf(ServerLink::Op::BuildUnlock) != ServerLink::Route::Server
 					|| ServerLink::LastResult(ServerLink::Op::BuildUnlock).Value("on") != "on")
 					ReleaseValues();
 				else if (!g_keeperUnlockWritten)
@@ -906,9 +893,24 @@ namespace BetterCheats::Panels::Building
 		}
 	}
 
+	void SyncServerBuild()
+	{
+		const bool joined = BetterCheats::GameContext::IsJoinedClient();
+		g_joinedBuild        = joined;
+		g_anywhereFromServer = joined && ServerLink::RouteOf(ServerLink::Op::BuildAnywhere) != ServerLink::Route::Local;
+		if (!joined)
+		{
+			ForgetServerBuild();
+			return;
+		}
+		g_serverFreeCost      = ServerHasPart(ServerLink::Op::BuildFree, "cost");
+		g_serverFreeStability = ServerHasPart(ServerLink::Op::BuildFree, "stability");
+		g_serverWindows       = ServerHasPart(ServerLink::Op::BuildAnywhere, "windows");
+		g_serverBenches       = ServerHasPart(ServerLink::Op::BuildAnywhere, "benches");
+	}
+
 	void Tick(float /*deltaSeconds*/)
 	{
-		SyncServerBuild();
 		TickUnlock();
 	}
 

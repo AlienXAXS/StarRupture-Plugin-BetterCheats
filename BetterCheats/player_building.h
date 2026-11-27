@@ -21,6 +21,13 @@ namespace BetterCheats::Panels::Building
 
 	// For a world that has ended: ForgetSettings without writing to it.
 	void ForgetWorld();
+
+	// Takes the build parts the server reports as on, for the detours. Runs on
+	// every tick with the cheats gate open, whichever Building flags are on.
+	// Game thread only.
+	void SyncServerBuild();
+
+	// Unlock All Buildings only.
 	void Tick(float deltaSeconds);
 	void RenderImGui(IModLoaderImGui* imgui);
 

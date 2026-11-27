@@ -52,14 +52,21 @@ namespace BetterCheats::Panels
 
 		void RenderServerCorporations(IModLoaderImGui* imgui)
 		{
-			static int points = 0;
+			// Apply sets the server's total, so the untouched 0 is never sent.
+			static int  points  = 0;
+			static bool entered = false;
 
 			imgui->SeparatorText("Data Points");
-			imgui->InputInt("##server_data_points", &points, 1, 100);
+			if (imgui->InputInt("##server_data_points", &points, 1, 100))
+				entered = true;
 			points = std::clamp(points, 0, 999999999);
 			imgui->SameLine(0.0f, 8.0f);
+			imgui->BeginDisabled(!entered);
 			if (imgui->SmallButton("Apply##server_data_points"))
 				ServerLink::Queue(ServerLink::Op::Corp, { { "points", std::to_string(points) } });
+			imgui->EndDisabled();
+			if (!entered)
+				imgui->TextWrapped("Enter a value to turn on Apply. It replaces the server's current Data Points.");
 		}
 	}
 
