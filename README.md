@@ -75,7 +75,7 @@ Set the grid to any **Columns x Rows** from 8 x 8 to 40 x 40, saved per save. Th
 
 #### Plant Pickup <sup>[✦](#msantoro12)</sup>
 
-A whole-number multiplier, 1x to 5x (default 1x), on what a wild plant, mushroom or rock gives when picked up. Crops (regrowing bushes) are not covered.
+A whole-number multiplier, 1x to 5x (default 1x), on what a wild plant, mushroom or rock gives when picked up. Crops (regrowing bushes) are not covered. When you join someone else's game, your own multiplier doesn't apply there and the row is greyed out.
 
 #### Item Stack Sizes <sup>[✦](#msantoro12)</sup>
 
@@ -94,6 +94,8 @@ Raises stack caps, up to 9999, for all items at once, per category (Combat, Reso
 <img src="images/weapons.png" width="480" alt="Weapon page with the Better Weapons preset applied to the Pistol tab">
 
 Tabs for **Pistol**, **Rifle**, **Shotgun** and **Machine Gun**; any other weapon or grenade gets a tab when first equipped. Live values show the weapon in your hand, other tabs an estimate. The shot shows the **Better Weapons** preset applied to the Pistol.
+
+When you join someone else's game, your own **Damage** and **Fire Rate** settings don't apply there and the two rows are greyed out with the reason.
 
 - **Infinite clip - ALL weapons**: the clip stays full, no reload, reserve never drawn.
 - **Keep ammo stocked**: tops up the equipped weapon's own ammo type with the shortfall. You still reload. Off by default.
@@ -137,7 +139,7 @@ Everything is off by default and saved per save. The Research options sit under 
 - **Build Windows Anywhere**: puts a window into a habitat or Hub wall slot even when a machine or other building is in it. <sup>[✦](#msantoro12)</sup>
 - **Build Benches Anywhere**: does the same for Analyzer, Armory, Cloning Bed, Food Processor, Item Printer, Recipe Table, Recycler, Research Terminal, Suit Workshop and Upgrade Station. The game only records that a slot is taken, so a bench can also go into a slot holding a window, airlock, bridge or personal storage. <sup>[✦](#msantoro12)</sup>
 
-The two "anywhere" options relax only the collision check for the piece you place, so the ghost goes green. Your own placements only, also as a client in multiplayer. Like every Building option, a toggle left on stays on when you join someone else's game. Still refused:
+The two "anywhere" options relax only the collision check for the piece you place, so the ghost goes green. Your own placements only, also as a client in multiplayer. A toggle left on for either of these, or for **Deconstruct Windows During Waves**, stays on when you join someone else's game. Your own **No Build Cost**, **No Stability Check** and **Unlock All Buildings** settings don't apply there, and those rows are greyed out with the reason. Still refused:
 
 - a player or drone in the collision box;
 - a window not snapped to a habitat or the Hub, or into a slot already holding a window, airlock or bridge;
@@ -158,6 +160,7 @@ Creatures, characters and plants in the volume are let through only when a build
 **One Hit Kill Laser** is a flat 10000 mining damage and overrides Mining Damage. **No Handheld Drill Overheat** keeps the handheld drill from ever heating.
 
 - No Handheld Drill Overheat holds the game's own heat-immunity tag while on; a drill that is already hot cools normally. The tag comes off when you switch it off, the world ends or the plugin unloads.
+- When you join someone else's game, your own **No Handheld Drill Overheat** and **Mining Boost** settings don't apply there and the two rows are greyed out.
 
 #### Mining Power <sup>[✦](#msantoro12)</sup>
 
