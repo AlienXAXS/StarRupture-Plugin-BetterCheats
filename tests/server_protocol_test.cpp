@@ -133,6 +133,53 @@ int main()
 	timedOut += static_cast<int>(shared.Expire(kTimeoutMs).size());
 	CHECK(answered + timedOut == sent && shared.Size() == 0);
 
+	// NumberOr: the whole text, plain notation, inside the range.
+	CHECK(NumberOr("2.50", 1.0f, 5.0f, 9.0f) == 2.5f);
+	CHECK(NumberOr("1", 1.0f, 5.0f, 9.0f) == 1.0f && NumberOr("5", 1.0f, 5.0f, 9.0f) == 5.0f);
+	for (const char* bad : { "", "0.99", "5.01", "2x", " 2", "2 ", "1e0", "nan", "inf", "%s", "0x2", "+2" })
+		CHECK(NumberOr(bad, 1.0f, 5.0f, 9.0f) == 9.0f);
+
+	// HeldFields: a cheat.state reply under the names the op replies use.
+	const auto held = [](const char* fields, Held what)
+	{
+		const auto reply = Parse(std::string("res|1|1|ok|State.") + fields);
+		return reply ? HeldFields(*reply, what) : Fields{ { "unparsed", "" } };
+	};
+	const Held all[] = { Held::Stack, Held::Wave, Held::Power, Held::Enemy, Held::Weapon,
+		Held::Grid, Held::Plant, Held::Mine, Held::BuildParts, Held::BuildUnlock };
+	for (Held what : all)
+		CHECK(held("", what).empty());                    // missing keys
+	for (Held what : all)
+		CHECK(held("|later=on", what).empty());           // unknown keys
+
+	CHECK((held("|stack=250", Held::Stack) == Fields{ { "size", "250" } }));
+	CHECK((held("|stack=off", Held::Stack) == Fields{ { "size", "0" } }));
+	CHECK(held("|stack=10000", Held::Stack).empty() && held("|stack=-1", Held::Stack).empty());
+	CHECK((held("|wave=none", Held::Wave) == Fields{ { "state", "idle" } }));
+	CHECK((held("|wave=paused", Held::Wave) == Fields{ { "state", "paused" } }));
+	CHECK(held("|wave=%n", Held::Wave).empty());
+	CHECK((held("|power=3", Held::Power) == Fields{ { "edited", "3" } }));
+	CHECK((held("|power=off", Held::Power) == Fields{ { "edited", "0" } }));
+	CHECK(held("|power=1000001", Held::Power).empty());
+	CHECK((held("|ai=on|onehit=off", Held::Enemy) == Fields{ { "ai", "on" }, { "onehit", "off" } }));
+	CHECK((held("|ai=yes|onehit=on", Held::Enemy) == Fields{ { "onehit", "on" } }));
+	CHECK((held("|weapon=2.00,1.50", Held::Weapon) == Fields{ { "damage", "2.00" }, { "rate", "1.50" } }));
+	CHECK((held("|weapon=off", Held::Weapon) == Fields{ { "damage", "1" }, { "rate", "1" } }));
+	for (const char* bad : { "|weapon=2", "|weapon=2,9", "|weapon=26,1", "|weapon=2,1,1", "|weapon=," })
+		CHECK(held(bad, Held::Weapon).empty());
+	CHECK((held("|grid=10x12", Held::Grid) == Fields{ { "cols", "10" }, { "rows", "12" } }));
+	CHECK(held("|grid=7x12", Held::Grid).empty() && held("|grid=10x41", Held::Grid).empty()
+		&& held("|grid=off", Held::Grid).empty());
+	CHECK((held("|plant=3", Held::Plant) == Fields{ { "mult", "3" } }));
+	CHECK((held("|plant=off", Held::Plant) == Fields{ { "mult", "1" } }));
+	CHECK(held("|plant=6", Held::Plant).empty());
+	CHECK((held("|mine=4.00|heat=on", Held::Mine) == Fields{ { "boost", "4.00" }, { "heat", "on" } }));
+	CHECK((held("|mine=off|heat=1", Held::Mine) == Fields{ { "boost", "1" } }));
+	CHECK((held("|build=free,anywhere", Held::BuildParts) == Fields{ { "parts", "free,anywhere" } }));
+	CHECK((held("|build=none", Held::BuildParts) == Fields{ { "parts", "" } }));
+	CHECK((held("|unlock=on", Held::BuildUnlock) == Fields{ { "on", "on" } }));
+	CHECK(held("|unlock=maybe", Held::BuildUnlock).empty());
+
 	std::printf(g_failed ? "%d check(s) failed\n" : "all checks passed\n", g_failed);
 	return g_failed ? 1 : 0;
 }
