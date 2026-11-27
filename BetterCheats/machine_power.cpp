@@ -57,6 +57,7 @@ namespace BetterCheats::Panels::Power
 			std::string name;
 		};
 		std::vector<ServerBuilding> g_serverBuildings;   // under g_pendingMutex
+		bool                        g_serverScanned = false;  // under g_pendingMutex
 
 		// Pristine (unmodified) ElectricityValue per asset, captured the first time
 		// a config asset is seen — i.e. before any override from this session has
@@ -554,6 +555,7 @@ namespace BetterCheats::Panels::Power
 				if (forServer)
 				{
 					g_serverBuildings = std::move(serverBuildings);
+					g_serverScanned   = true;
 				}
 				else
 				{
@@ -1079,13 +1081,16 @@ namespace BetterCheats::Panels::Power
 		static float       s_value = 100.0f;
 
 		std::vector<ServerBuilding> buildings;
+		bool scanned = false;
 		{
 			std::lock_guard<std::mutex> lock(g_pendingMutex);
 			buildings = g_serverBuildings;
+			scanned   = g_serverScanned;
 		}
 
 		imgui->SeparatorText("Power Output / Consumption");
-		if (buildings.empty())
+		// Once, then on request: an empty result must not rescan every frame.
+		if (!scanned || imgui->Button("Rescan##server_power"))
 			RequestRescan();
 
 		const ServerBuilding* selected = nullptr;
