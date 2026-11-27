@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -24,10 +25,13 @@ namespace BetterCheats::ServerLink
 		constexpr const char* kDone      = "Done.";
 		constexpr size_t      kMaxKept   = 32;
 
+		enum class Kind { Click, Cap, State };
+
 		struct What
 		{
-			Op   op  = Op::Give;
-			bool cap = false;
+			Op       op    = Op::Give;
+			Kind     kind  = Kind::Click;
+			uint64_t order = 0;
 		};
 
 		struct Queued
@@ -45,6 +49,12 @@ namespace BetterCheats::ServerLink
 		Protocol::Waiting<What>  g_waiting{ static_cast<uint32_t>(GetTickCount64() % Protocol::kMaxId) };
 		std::vector<Queued>      g_queued;
 		std::array<Result, kOpCount> g_results;
+		// Never reset, so no stamp or send order is used twice.
+		uint64_t                 g_stamp          = 0;
+		uint64_t                 g_order          = 0;
+		// Set by every cap answer: what is on for this player is asked next.
+		bool                     g_stateWanted    = false;
+		uint64_t                 g_stateSentMs    = 0;
 		Cap                      g_cap = Cap::NotSent;
 		Protocol::Reply          g_capReply;
 		std::string              g_capFailure;
@@ -67,23 +77,26 @@ namespace BetterCheats::ServerLink
 		{
 			const char*               name;
 			const PluginMap::Feature* feature;
+			// What cheat.state reports for this slot. Empty: nothing.
+			std::optional<Protocol::Held> held;
 		};
+		using Held = Protocol::Held;
 
 		// In Op order.
 		const OpInfo kOps[] = {
-			{ "cheat.give",   &Features::Items },
-			{ "cheat.wave",   &Features::Wave },
-			{ "cheat.stack",  &Features::StackSize },
-			{ "cheat.corp",   &Features::Corporations },
-			{ "cheat.power",  &Features::Power },
-			{ "cheat.enemy",  &Features::Enemies },
-			{ "cheat.weapon", &Features::Weapons },
-			{ "cheat.grid",   &Features::Inventory },
-			{ "cheat.plant",  &Features::Inventory },
-			{ "cheat.mine",   &Features::Mining },
-			{ "cheat.build",  &Features::BuildFree },
-			{ "cheat.build",  &Features::BuildAnywhere },
-			{ "cheat.build",  &Features::BuildUnlock },
+			{ "cheat.give",   &Features::Items, {} },
+			{ "cheat.wave",   &Features::Wave, Held::Wave },
+			{ "cheat.stack",  &Features::StackSize, Held::Stack },
+			{ "cheat.corp",   &Features::Corporations, {} },
+			{ "cheat.power",  &Features::Power, Held::Power },
+			{ "cheat.enemy",  &Features::Enemies, Held::Enemy },
+			{ "cheat.weapon", &Features::Weapons, Held::Weapon },
+			{ "cheat.grid",   &Features::Inventory, Held::Grid },
+			{ "cheat.plant",  &Features::Inventory, Held::Plant },
+			{ "cheat.mine",   &Features::Mining, Held::Mine },
+			{ "cheat.build",  &Features::BuildFree, Held::BuildParts },
+			{ "cheat.build",  &Features::BuildAnywhere, Held::BuildParts },
+			{ "cheat.build",  &Features::BuildUnlock, Held::BuildUnlock },
 		};
 		static_assert(sizeof(kOps) / sizeof(kOps[0]) == kOpCount);
 
@@ -104,6 +117,10 @@ namespace BetterCheats::ServerLink
 			g_waiting.Clear();
 			g_queued.clear();
 			g_results = {};
+			for (Result& result : g_results)
+				result.stamp = ++g_stamp;
+			g_stateWanted = false;
+			g_stateSentMs = 0;
 			g_cap = Cap::NotSent;
 			g_capReply = {};
 			g_capFailure.clear();
@@ -140,16 +157,19 @@ namespace BetterCheats::ServerLink
 		void SendFailedLocked(const What& what, int result)
 		{
 			const char* text = Protocol::SendFailureText(result);
+			const bool cap = what.kind == Kind::Cap;
 			if (result == -1)
 				FailCapLocked(text);
-			else if (what.cap && g_cap == Cap::Got)
+			else if (what.kind == Kind::State)
+				g_stateWanted = result == 0;   // not ready after all: asked again shortly
+			else if (cap && g_cap == Cap::Got)
 				g_capStale = true;      // asking again failed: the last answer stands for now
-			else if (what.cap && result == 0)
+			else if (cap && result == 0)
 				g_cap = Cap::NotSent;   // not ready after all: asked again shortly
-			else if (what.cap)
+			else if (cap)
 				FailCapLocked(text);
 
-			if (!what.cap)
+			if (what.kind == Kind::Click)
 				ResultOf(what.op).text = text;
 		}
 
@@ -177,7 +197,22 @@ namespace BetterCheats::ServerLink
 			g_serverTagSeen = true;
 		}
 
-		void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
+		// A cheat.state answer. A slot it does not report is not on, unless a
+	// request sent after this one has already been answered for it.
+	void ApplyStateLocked(const Protocol::Reply& state, uint64_t order)
+	{
+		for (size_t i = 0; i < kOpCount; ++i)
+		{
+			Result& result = g_results[i];
+			if (!kOps[i].held || !kOps[i].feature->On() || order <= result.order)
+				continue;
+			result.fields = Protocol::HeldFields(state, *kOps[i].held);
+			result.order  = order;
+			result.stamp  = ++g_stamp;
+		}
+	}
+
+	void OnMessage(const char* /*pluginName*/, const char* /*typeTag*/, const uint8_t* data, size_t size)
 		{
 			auto reply = Protocol::ParseReply(data, size);
 			if (!reply)
@@ -188,12 +223,21 @@ namespace BetterCheats::ServerLink
 			if (!entry)
 				return;
 
-			if (entry->what.cap)
+			if (entry->what.kind == Kind::State)
+			{
+				// Refused: what earlier replies reported stands.
+				if (reply->status == Protocol::Status::Ok)
+					ApplyStateLocked(*reply, entry->what.order);
+				return;
+			}
+
+			if (entry->what.kind == Kind::Cap)
 			{
 				if (reply->status == Protocol::Status::Ok)
 				{
 					g_capReply = std::move(*reply);
 					g_cap = Cap::Got;
+				g_stateWanted = true;
 				}
 				else if (g_cap == Cap::Got)
 				{
@@ -218,6 +262,15 @@ namespace BetterCheats::ServerLink
 					g_capStale = true;
 				return;
 			}
+
+			if (entry->what.order < result.order)
+				return;
+			result.order = entry->what.order;
+			result.stamp = ++g_stamp;
+			// The count of edited power values only comes with cheat.state, so a
+			// change makes the one held out of date.
+			result.fields.erase(std::remove_if(result.fields.begin(), result.fields.end(),
+				[](const auto& field) { return field.first == "edited"; }), result.fields.end());
 
 			for (auto& [key, value] : reply->fields)
 			{
@@ -307,9 +360,12 @@ namespace BetterCheats::ServerLink
 
 			for (const auto& expired : g_waiting.Expire(now))
 			{
-				if (expired.what.cap && g_cap == Cap::Got)
+				// An unanswered cheat.state changes nothing and no row waits on it.
+				if (expired.what.kind == Kind::State)
+					continue;
+				if (expired.what.kind == Kind::Cap && g_cap == Cap::Got)
 					g_capStale = true;
-				else if (expired.what.cap)
+				else if (expired.what.kind == Kind::Cap)
 					FailCapLocked(Protocol::kNoCapAnswer);
 				else
 					ResultOf(expired.what.op).text = Protocol::kNoAnswer;
@@ -319,7 +375,7 @@ namespace BetterCheats::ServerLink
 			const bool capAgain = g_cap == Cap::Got && g_capStale && now - g_capSentMs >= kCapAgainMs;
 			if (firstCap || capAgain)
 			{
-				const What what{ Op::Give, true };
+				const What what{ Op::Give, Kind::Cap, ++g_order };
 				if (const uint32_t id = g_waiting.Add(what, now))
 				{
 					if (auto message = Protocol::BuildRequest(id, "cap", {}))
@@ -335,6 +391,27 @@ namespace BetterCheats::ServerLink
 				}
 			}
 
+			// Ahead of the clicks, so their replies are the newer ones.
+			if (g_stateWanted && g_cap == Cap::Got && now - g_stateSentMs >= kRetryMs)
+			{
+				const Protocol::Handler handler = Protocol::HandlerOf(g_capReply, Protocol::kStateOp);
+				const bool anyAllowed = std::any_of(std::begin(kOps), std::end(kOps),
+					[](const OpInfo& op) { return op.held && op.feature->On(); });
+				if (!handler.version || !handler.on || !anyAllowed)
+					g_stateWanted = false;   // an older server: nothing shows as on
+				else if (!g_waiting.Full())
+				{
+					const What what{ Op::Give, Kind::State, ++g_order };
+					const uint32_t id = g_waiting.Add(what, now);
+					if (auto message = Protocol::BuildRequest(id, Protocol::kStateOp, {}))
+					{
+						outgoing.push_back({ id, what, std::move(*message) });
+						g_stateWanted = false;
+						g_stateSentMs = now;
+					}
+				}
+			}
+
 			for (Queued& queued : g_queued)
 			{
 				// Denied since the click: nothing is sent.
@@ -343,7 +420,7 @@ namespace BetterCheats::ServerLink
 					ResultOf(queued.op).text.clear();
 					continue;
 				}
-				const What what{ queued.op, false };
+				const What what{ queued.op, Kind::Click, ++g_order };
 				const uint32_t id = g_waiting.Add(what, now);
 				if (id == 0)
 				{
@@ -416,10 +493,14 @@ namespace BetterCheats::ServerLink
 
 	void Queue(Op op, Protocol::Fields fields)
 	{
+		// Taken first: a click judged against one connection never joins the next.
+		const uint32_t connection = g_connection;
 		if (!FeatureOf(op).On() || !Blocker(op).empty())
 			return;
 
 		std::lock_guard<std::mutex> lock(g_mutex);
+		if (connection != g_connection)
+			return;
 		if (g_queued.size() + g_waiting.Size() >= Protocol::kMaxWaiting)
 		{
 			ResultOf(op).text = Protocol::kTooManyWaiting;

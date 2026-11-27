@@ -22,9 +22,14 @@ namespace BetterCheats::ServerLink
 	struct Result
 	{
 		std::string text;
-		// Every field the server's ok replies have reported, the latest value of
+		// Every field the server's replies have reported, the latest value of
 		// each. Forgotten on deny and with the connection. Untrusted text.
 		ServerProtocol::Fields fields;
+		// Changes whenever `fields` does, so a menu draft knows to follow them.
+		uint64_t stamp = 0;
+		// The send order of the newest request whose reply set `fields`. A reply
+		// to an older one does not overwrite them.
+		uint64_t order = 0;
 
 		// Empty when the server has not reported the key.
 		std::string Value(const char* key) const

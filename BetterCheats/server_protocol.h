@@ -6,6 +6,7 @@
 // Everything received is untrusted text.
 
 #include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -27,6 +28,7 @@ namespace BetterCheats::ServerProtocol
 	inline constexpr uint32_t    kMaxId        = 2147483647u;
 	inline constexpr const char* kTag          = "su.cheat";
 	inline constexpr const char* kTarget       = "ServerUtility";
+	inline constexpr const char* kStateOp      = "cheat.state";
 
 	inline constexpr const char* kNeedsClientLoader = "Needs ModLoader 1.28.0 or newer.";
 	inline constexpr const char* kNoServerUtility   = "This server does not run ServerUtility.";
@@ -201,6 +203,109 @@ namespace BetterCheats::ServerProtocol
 		if (!version || *version == 0)
 			return {};
 		return { *version, std::string_view(*value).substr(comma + 1) == "on" };
+	}
+
+	// What a cheat.state reply reports on. Both build rules that can be switched
+	// off share the parts list.
+	enum class Held { Stack, Wave, Power, Enemy, Weapon, Grid, Plant, Mine, BuildParts, BuildUnlock };
+
+	inline bool IsNumberIn(std::string_view text, float min, float max)
+	{
+		float value = 0.0f;
+		const char* const end = text.data() + text.size();
+		const auto [stopped, error] = std::from_chars(text.data(), end, value, std::chars_format::fixed);
+		return error == std::errc() && stopped == end && value >= min && value <= max;
+	}
+
+	inline bool IsWholeIn(std::string_view text, uint32_t min, uint32_t max)
+	{
+		const auto value = ParseNumber(text, max);
+		return value && *value >= min;
+	}
+
+	// One part of a cheat.state reply, under the names the op's own replies use.
+	// A key that is missing or unreadable adds nothing, which shows as not on.
+	inline Fields HeldFields(const Reply& state, Held what)
+	{
+		Fields out;
+		const auto onOff = [&](const char* key, const char* as)
+		{
+			const std::string* value = state.Find(key);
+			if (value && (*value == "on" || *value == "off"))
+				out.emplace_back(as, *value);
+		};
+		// "off" reads as the value that switches the op off.
+		const auto number = [&](const char* key, const char* as, const char* off, auto valid)
+		{
+			const std::string* value = state.Find(key);
+			if (value && *value == "off")
+				out.emplace_back(as, off);
+			else if (value && valid(std::string_view(*value)))
+				out.emplace_back(as, *value);
+		};
+		// Two values in one field, split on `separator`, both of them or neither.
+		const auto pair = [&](const char* key, char separator, const char* first, const char* second, auto firstOk, auto secondOk)
+		{
+			const std::string* value = state.Find(key);
+			if (!value)
+				return;
+			const std::string_view text = *value;
+			const size_t at = text.find(separator);
+			if (at == std::string_view::npos || !firstOk(text.substr(0, at)) || !secondOk(text.substr(at + 1)))
+				return;
+			out.emplace_back(first, std::string(text.substr(0, at)));
+			out.emplace_back(second, std::string(text.substr(at + 1)));
+		};
+		const auto side = [](std::string_view v) { return IsWholeIn(v, 8, 40); };
+
+		switch (what)
+		{
+		case Held::Stack:
+			number("stack", "size", "0", [](std::string_view v) { return IsWholeIn(v, 0, 9999); });
+			break;
+		case Held::Wave:
+			if (const std::string* wave = state.Find("wave"))
+			{
+				if (*wave == "none")
+					out.emplace_back("state", "idle");
+				else if (*wave == "running" || *wave == "paused")
+					out.emplace_back("state", *wave);
+			}
+			break;
+		case Held::Power:
+			number("power", "edited", "0", [](std::string_view v) { return IsWholeIn(v, 0, 1000000); });
+			break;
+		case Held::Enemy:
+			onOff("ai", "ai");
+			onOff("onehit", "onehit");
+			break;
+		case Held::Weapon:
+			if (const std::string* weapon = state.Find("weapon"); weapon && *weapon == "off")
+				out = { { "damage", "1" }, { "rate", "1" } };
+			else
+				pair("weapon", ',', "damage", "rate",
+					[](std::string_view v) { return IsNumberIn(v, 0.1f, 25.0f); },
+					[](std::string_view v) { return IsNumberIn(v, 0.1f, 5.0f); });
+			break;
+		case Held::Grid:
+			pair("grid", 'x', "cols", "rows", side, side);
+			break;
+		case Held::Plant:
+			number("plant", "mult", "1", [](std::string_view v) { return IsWholeIn(v, 1, 5); });
+			break;
+		case Held::Mine:
+			number("mine", "boost", "1", [](std::string_view v) { return IsNumberIn(v, 1.0f, 10.0f); });
+			onOff("heat", "heat");
+			break;
+		case Held::BuildParts:
+			if (const std::string* parts = state.Find("build"))
+				out.emplace_back("parts", *parts == "none" ? std::string() : *parts);
+			break;
+		case Held::BuildUnlock:
+			onOff("unlock", "on");
+			break;
+		}
+		return out;
 	}
 
 	// True only for a readable "major.minor.patch" (a leading v and a suffix are
