@@ -633,20 +633,24 @@ namespace BetterCheats::Panels::Items
 		}
 		else
 		{
+			// A server takes at most 9999 items in one request.
+			constexpr int64_t kServerMost = 9999;
+			const int64_t serverCount = std::clamp<int64_t>(static_cast<int64_t>(g_stacks) * maxStack, 1, kServerMost);
+			const bool capped = server && static_cast<int64_t>(g_stacks) * maxStack > kServerMost;
 			if (imgui->Button("Give Item"))
 			{
 				if (server)
 				{
-					const int64_t count = std::clamp<int64_t>(static_cast<int64_t>(g_stacks) * maxStack, 1, 9999);
 					BetterCheats::ServerLink::Queue(BetterCheats::ServerLink::Op::Give,
-						{ { "item", selected->assetPath }, { "count", std::to_string(count) } });
+						{ { "item", selected->assetPath }, { "count", std::to_string(serverCount) } });
 				}
 				else
 					RequestGiveItem(selected->uniqueName, totalAmount, g_stacks, maxStack, selected->name, selected->assetData);
 			}
 			imgui->SameLine(0.0f, 6.0f);
 			char totalLabel[64];
-			snprintf(totalLabel, sizeof(totalLabel), "x%d  (stack %d)", totalAmount, maxStack);
+			snprintf(totalLabel, sizeof(totalLabel), "x%d  (stack %d%s)",
+				capped ? static_cast<int>(serverCount) : totalAmount, maxStack, capped ? ", most per click" : "");
 			imgui->TextDisabled(totalLabel);
 		}
 

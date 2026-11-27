@@ -80,6 +80,11 @@ int main()
 	CHECK(waiting.Size() == 0 && !waiting.Take(*ids.rbegin()));
 	CHECK(waiting.Add(0, 3000) > *ids.rbegin());
 
+	Waiting<int> seeded(500);
+	CHECK(seeded.Add(0, 0) == 501 && !seeded.Take(1));
+	Waiting<int> last(kMaxId);
+	CHECK(last.Add(0, 0) == 1);
+
 	// Sender, receiver and timer on their own threads under the owner's lock:
 	// every request ends exactly once.
 	Waiting<int> shared;

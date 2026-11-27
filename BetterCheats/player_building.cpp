@@ -962,13 +962,16 @@ namespace BetterCheats::Panels::Building
 
 		// On a joined client, a live row the server is asked for: the reason or
 		// the server's last answer under the description. Rows that stay the
-		// client's own while the server can't run the cheat say nothing then.
-		void ServerNote(IModLoaderImGui* imgui, const PluginMap::Feature& feature, ServerLink::Op op, bool clientFallback)
+		// client's own while the server can't run the cheat say nothing then. Two
+		// rows that share an op each give the reason, and the last of them alone
+		// the answer.
+		void ServerNote(IModLoaderImGui* imgui, const PluginMap::Feature& feature, ServerLink::Op op, bool clientFallback,
+			bool showAnswer = true)
 		{
 			if (Features::StateOf(feature) != Features::Why::Live || !BetterCheats::GameContext::IsJoinedClient())
 				return;
 			const ServerLink::Route route = ServerLink::RouteOf(op);
-			if (clientFallback && route == ServerLink::Route::Local)
+			if ((clientFallback && route == ServerLink::Route::Local) || (!showAnswer && route == ServerLink::Route::Server))
 				return;
 			const std::string text = route == ServerLink::Route::Server
 				? ServerLink::LastResult(op).text : ServerLink::Blocker(op);
@@ -1060,7 +1063,7 @@ namespace BetterCheats::Panels::Building
 			if (noBuildCostDeferred)
 				ControlledBy(imgui, "no-build-cost");
 			HeldBack(imgui, Features::BuildFree);
-			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false);
+			ServerNote(imgui, Features::BuildFree, ServerLink::Op::BuildFree, false, false);
 			imgui->TableSetColumnIndex(1);
 			imgui->BeginDisabled(noBuildCostDeferred);
 			if (RowOn(imgui, Features::BuildFree, "##no_build_cost"))
@@ -1122,7 +1125,7 @@ namespace BetterCheats::Panels::Building
 			if (anywhereDeferred)
 				ControlledBy(imgui, "build-anywhere");
 			HeldBack(imgui, Features::BuildAnywhere);
-			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true);
+			ServerNote(imgui, Features::BuildAnywhere, ServerLink::Op::BuildAnywhere, true, false);
 			imgui->TableSetColumnIndex(1);
 			bool buildWindowsAnywhere = g_buildWindowsAnywhere.load();
 			imgui->BeginDisabled(anywhereDeferred);

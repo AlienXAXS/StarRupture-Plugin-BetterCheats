@@ -29,7 +29,6 @@ namespace BetterCheats::Panels
 			imgui->SeparatorText("Enemies");
 			RenderServerSetting(imgui, "Disable enemy AI", "ai");
 			RenderServerSetting(imgui, "One-hit kill", "onehit");
-			imgui->TextWrapped("The other enemy options are not on a server yet.");
 		}
 	}
 

@@ -40,7 +40,9 @@ namespace BetterCheats::ServerLink
 
 		std::mutex               g_mutex;
 		std::atomic<uint32_t>    g_connection{ 0 };
-		Protocol::Waiting<What>  g_waiting;
+		// Counts from the clock, so a RELOAD does not hand out the same ids again
+		// while a reply to one of them may still arrive.
+		Protocol::Waiting<What>  g_waiting{ static_cast<uint32_t>(GetTickCount64() % Protocol::kMaxId) };
 		std::vector<Queued>      g_queued;
 		std::array<Result, kOpCount> g_results;
 		Cap                      g_cap = Cap::NotSent;
@@ -140,6 +142,8 @@ namespace BetterCheats::ServerLink
 			const char* text = Protocol::SendFailureText(result);
 			if (result == -1)
 				FailCapLocked(text);
+			else if (what.cap && g_cap == Cap::Got)
+				g_capStale = true;      // asking again failed: the last answer stands for now
 			else if (what.cap && result == 0)
 				g_cap = Cap::NotSent;   // not ready after all: asked again shortly
 			else if (what.cap)

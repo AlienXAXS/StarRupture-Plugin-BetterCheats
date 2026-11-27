@@ -234,6 +234,9 @@ namespace BetterCheats::ServerProtocol
 			What     what{};
 		};
 
+		// Ids count up from the one after `lastId`.
+		explicit Waiting(uint32_t lastId = 0) : m_lastId(lastId) {}
+
 		bool Full() const { return m_entries.size() >= kMaxWaiting; }
 		size_t Size() const { return m_entries.size(); }
 
@@ -284,6 +287,6 @@ namespace BetterCheats::ServerProtocol
 
 	private:
 		std::vector<Entry> m_entries;
-		uint32_t           m_lastId = 0;
+		uint32_t           m_lastId;
 	};
 }
