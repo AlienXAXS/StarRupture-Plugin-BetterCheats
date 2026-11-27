@@ -2179,7 +2179,10 @@ namespace BetterCheats::Panels::Inventory
 		// ResourceCount only when the value it should hold changes.
 		void ApplyGatherMultiplier(float deltaSeconds)
 		{
-			const float multiplier = g_gatherMultiplier.load();
+			// On a joined client the pickup count is not this game's to set, so
+			// anything written earlier is handed back.
+			const float multiplier = BetterCheats::GameContext::IsJoinedClient()
+				? kGatherMultDefault : g_gatherMultiplier.load();
 
 			g_gatherRescanTimer += deltaSeconds;
 			const bool periodic = g_gatherRescanTimer >= kGatherRescanSeconds &&
@@ -2223,6 +2226,31 @@ namespace BetterCheats::Panels::Inventory
 			catch (...) {}
 		}
 
+		// The pickup multiplier a joined player asks the server for.
+		void RenderServerPlant(IModLoaderImGui* imgui)
+		{
+			namespace ServerLink = BetterCheats::ServerLink;
+			constexpr ServerLink::Op kOp = ServerLink::Op::Plant;
+
+			const std::string blocker = ServerLink::Blocker(kOp);
+			if (!blocker.empty())
+			{
+				ServerLink::Say(imgui, "Plant Pickup: " + blocker);
+				return;
+			}
+
+			static int multiplier = 1;
+
+			ServerLink::Say(imgui, "The server runs the pickup multiplier here. 1x is off.");
+			imgui->SliderInt("Plant Pickup##server_plant", &multiplier, 1, 5, "%dx");
+			if (imgui->SmallButton("Apply##server_plant"))
+				ServerLink::Queue(kOp, { { "mult", std::to_string((std::min)((std::max)(multiplier, 1), 5)) } });
+
+			const std::string result = ServerLink::LastResult(kOp).text;
+			if (!result.empty())
+				ServerLink::Say(imgui, result);
+		}
+
 		// Render thread. Single global multiplier row, same BuildRow shape as
 		// the stack-size rows.
 		void RenderPlantPickup(IModLoaderImGui* imgui, bool greyed)
@@ -2237,7 +2265,13 @@ namespace BetterCheats::Panels::Inventory
 			                    "picked up. Crops (regrowing bushes) are not covered by this.");
 			imgui->Spacing();
 
-			float multiplier = greyed ? kGatherMultDefault : g_gatherMultiplier.load();
+			const bool joined = !greyed && BetterCheats::GameContext::IsJoinedClient();
+			if (joined)
+				RenderServerPlant(imgui);
+			const bool rowOff = greyed || joined;
+
+			float multiplier = rowOff ? kGatherMultDefault : g_gatherMultiplier.load();
+			imgui->BeginDisabled(joined);
 			if (imgui->BeginTable("##gather_mult_table", 3, kTableFlags))
 			{
 				const float labelReserve = BetterCheats::UI::PrescanLabelWidth(imgui, 1,
@@ -2267,9 +2301,9 @@ namespace BetterCheats::Panels::Inventory
 				spec.format       = "%.0fx";
 				spec.wholeNumbers = true;
 				spec.resetValue   = kGatherMultDefault;
-				spec.active       = !greyed && BetterCheats::DiffersFromDefault(multiplier, kGatherMultDefault);
+				spec.active       = !rowOff && BetterCheats::DiffersFromDefault(multiplier, kGatherMultDefault);
 				spec.labelReserve = labelReserve;
-				spec.greyed       = greyed;
+				spec.greyed       = rowOff;
 
 				// BuildRow rounds and clamps both the slider and the typed box.
 				if (BetterCheats::UI::BuildRow(imgui, spec).changed)
@@ -2280,6 +2314,7 @@ namespace BetterCheats::Panels::Inventory
 
 				imgui->EndTable();
 			}
+			imgui->EndDisabled();
 		}
 	}
 
